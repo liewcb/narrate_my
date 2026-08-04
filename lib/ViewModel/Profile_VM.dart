@@ -1,7 +1,7 @@
 ﻿// lib/ViewModel/Profile_VM.dart
 
 import 'package:flutter/foundation.dart';
-import '../Model/Business Logic/profile_logic.dart';
+import '../Model/Business Logic/profile_service.dart';
 
 /// ViewModel: contains business logic, validation, and coordinates repository.
 class ProfileVM extends ChangeNotifier {

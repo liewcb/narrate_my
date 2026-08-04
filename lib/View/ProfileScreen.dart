@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import '../ViewModel/Profile_VM.dart';
-import '../Model/Business Logic/profile_logic.dart';
+import '../Model/Business Logic/profile_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
