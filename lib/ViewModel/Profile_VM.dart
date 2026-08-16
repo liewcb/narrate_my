@@ -1,7 +1,8 @@
 ﻿// lib/ViewModel/Profile_VM.dart
 
 import 'package:flutter/foundation.dart';
-import '../Model/Business Logic/profile_service.dart';
+import '../Model/Entity/profile.dart';
+import '../Model/Repository/profile_repository.dart';
 
 /// ViewModel: contains business logic, validation, and coordinates repository.
 class ProfileVM extends ChangeNotifier {
@@ -29,7 +30,7 @@ class ProfileVM extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      _profile = await repository.fetchProfile();
+      _profile = await repository.fetchProfile('user_1');
       name = _profile?.name ?? '';
       ageText = _profile?.age?.toString();
       religion = _profile?.religion;

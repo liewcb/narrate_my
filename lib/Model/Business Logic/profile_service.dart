@@ -1,5 +1,5 @@
 ﻿import '../Entity/profile.dart';
-import '../../Repository/profile_repository.dart';
+import '../Repository/profile_repository.dart';
 
 Map<String,String> validateProfileFields(String name, String? ageText) {
   final errors = <String,String>{};

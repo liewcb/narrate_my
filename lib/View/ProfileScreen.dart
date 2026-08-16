@@ -2,7 +2,8 @@
 
 import 'package:flutter/material.dart';
 import '../ViewModel/Profile_VM.dart';
-import '../Model/Business Logic/profile_service.dart';
+import '../Model/Repository/adapter/profile_adapter.dart';
+import '../Model/Entity/profile.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -23,7 +24,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    vm = ProfileVM(repository: ProfileRepository());
+    vm = ProfileVM(repository: InMemoryProfileAdapter());
     vm.addListener(_onVm);
     vm.load();
   }
