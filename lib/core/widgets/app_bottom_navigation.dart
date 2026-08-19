@@ -53,37 +53,37 @@ class AppBottomNavBar extends StatelessWidget {
           height: _height,
           child: Row(
             children: List.generate(items.length, (index) {
-            final item = items[index];
-            final selected = index == currentIndex;
-            final color = selected ? primary : _unselectedColor;
+              final item = items[index];
+              final selected = index == currentIndex;
+              final color = selected ? primary : _unselectedColor;
 
-            return Expanded(
-              child: InkWell(
-                onTap: () => onTap(index),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      selected ? (item.selectedIcon ?? item.icon) : item.icon,
-                      color: color,
-                      size: 24,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              return Expanded(
+                child: InkWell(
+                  onTap: () => onTap(index),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        selected ? (item.selectedIcon ?? item.icon) : item.icon,
                         color: color,
+                        size: 24,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                          color: color,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
           ),
         ),
       ),

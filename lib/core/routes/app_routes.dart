@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
-import '../ar_screen.dart';
-import '../itinerary_screen.dart';
-import '../nearby_recommendation_screen.dart';
-import '../profile_screen.dart';
-import 'bottom_nav_bar.dart';
+import '../../View/ar_screen.dart';
+import '../../View/itinerary_screen.dart';
+import '../../View/nearby_recommendation_screen.dart';
+import '../../View/profile_screen.dart';
+import '../widgets/app_bottom_navigation.dart';
 
-/// Top-level scaffold that owns the bottom navigation and swaps between
-/// the AR, Itinerary, Nearby, and Profile tabs without losing their state.
-class RootShell extends StatefulWidget {
-  const RootShell({super.key});
+/// The main routing shell of the application that manages the bottom navigation
+/// and swaps between the AR, Itinerary, Nearby, and Profile tabs.
+class AppRoutes extends StatefulWidget {
+  const AppRoutes({super.key});
 
   @override
-  State<RootShell> createState() => _RootShellState();
+  State<AppRoutes> createState() => _AppRoutesState();
 }
 
-class _RootShellState extends State<RootShell> {
+class _AppRoutesState extends State<AppRoutes> {
   int _index = 0;
 
   static const _screens = [

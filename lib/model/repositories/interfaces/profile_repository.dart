@@ -1,4 +1,4 @@
-import '../Entity/profile.dart';
+import '../../entities/Profile.dart';
 
 abstract class ProfileRepository {
   Future<Profile> fetchProfile(String id);

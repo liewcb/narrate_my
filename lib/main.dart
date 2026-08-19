@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'View/global widgets/root_shell.dart';
+import 'core/routes/app_routes.dart';
 
 void main() {
   runApp(const MyApp());
@@ -13,9 +13,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'narrate_my',
       theme: ThemeData(
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const RootShell(),
+      home: const AppRoutes(),
     );
   }
 }

@@ -1,5 +1,5 @@
-import '../profile_repository.dart';
-import '../../Entity/profile.dart';
+import '../interfaces/profile_repository.dart';
+import '../../entities//Profile.dart';
 
 class InMemoryProfileAdapter implements ProfileRepository {
   Profile? _cached;
