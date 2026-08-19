@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'ar_screen.dart';
-import 'itinerary_screen.dart';
-import 'nearby_recommendation_screen.dart';
-import 'profile_screen.dart';
-import 'widgets/bottom_nav_bar.dart';
+import '../ar_screen.dart';
+import '../itinerary_screen.dart';
+import '../nearby_recommendation_screen.dart';
+import '../profile_screen.dart';
+import 'bottom_nav_bar.dart';
 
 /// Top-level scaffold that owns the bottom navigation and swaps between
 /// the AR, Itinerary, Nearby, and Profile tabs without losing their state.

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'View/root_shell.dart';
+import 'View/global widgets/root_shell.dart';
 
 void main() {
   runApp(const MyApp());
