@@ -30,6 +30,12 @@ class ARExplorationViewModel extends ChangeNotifier {
   ARMarker? primaryMarker;
   double deviceHeadingDegrees = 0;
 
+  // --- Diagnostics for the debug HUD ---
+  double? userLat;
+  double? userLng;
+  int rawFetchedCount = 0;
+  List<ARMarker> allComputedMarkers = [];
+
   StreamSubscription<ARSceneState>? _sceneSub;
 
   /// UC100 BF-1 -> BF-7 entry point. Call from the View's initState.
@@ -73,6 +79,10 @@ class ARExplorationViewModel extends ChangeNotifier {
     nearbyMarkers = scene.nearbyMarkers;
     primaryMarker = scene.primaryMarker;
     deviceHeadingDegrees = scene.deviceHeadingDegrees;
+    userLat = scene.userLat;
+    userLng = scene.userLng;
+    rawFetchedCount = scene.rawFetchedCount;
+    allComputedMarkers = scene.allComputedMarkers;
     notifyListeners();
   }
 

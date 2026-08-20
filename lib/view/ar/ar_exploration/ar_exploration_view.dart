@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../viewmodel/ar/ar_exploration_viewmodel.dart';
 import 'widgets/ar_camera_view.dart';
 import 'widgets/ar_marker_overlay.dart';
+import 'widgets/ar_notification_banner.dart';
 
 /// UC100 — AR Exploration Module (BF-1 through BF-7).
 /// Notification banner intentionally omitted for now per current scope;
@@ -21,8 +22,15 @@ class ARExplorationView extends StatelessWidget {
   }
 }
 
-class _ARExplorationScaffold extends StatelessWidget {
+class _ARExplorationScaffold extends StatefulWidget {
   const _ARExplorationScaffold();
+
+  @override
+  State<_ARExplorationScaffold> createState() => _ARExplorationScaffoldState();
+}
+
+class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
+  bool _showDebugHud = true; // default ON while you're diagnosing; flip to false later
 
   @override
   Widget build(BuildContext context) {
@@ -32,29 +40,106 @@ class _ARExplorationScaffold extends StatelessWidget {
       backgroundColor: Colors.black,
       body: switch (vm.state) {
         ARViewState.idle || ARViewState.checkingPermissions || ARViewState.loading =>
-          const Center(child: CircularProgressIndicator(color: Colors.white)),
+        const Center(child: CircularProgressIndicator(color: Colors.white)),
         ARViewState.permissionDenied => _PermissionDeniedView(message: vm.errorMessage),
         ARViewState.error => _ErrorView(message: vm.errorMessage),
         ARViewState.ready => Stack(
-            fit: StackFit.expand,
-            children: [
-              const ARCameraView(),
-              ARMarkerOverlay(
-                nearbyMarkers: vm.nearbyMarkers,
-                primaryMarker: vm.primaryMarker,
-                deviceHeadingDegrees: vm.deviceHeadingDegrees,
+          fit: StackFit.expand,
+          children: [
+            const ARCameraView(),
+            ARMarkerOverlay(
+              nearbyMarkers: vm.nearbyMarkers,
+              primaryMarker: vm.primaryMarker,
+              deviceHeadingDegrees: vm.deviceHeadingDegrees,
+              onTapMarker: (marker) {
+                // BF-8 onward (heritage interpretation) is a separate
+                // use case/screen — hook the navigation here once that
+                // flow exists.
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Selected: ${marker.name}')),
+                );
+              },
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: ARNotificationBanner(
+                markers: vm.nearbyMarkers,
                 onTapMarker: (marker) {
-                  // BF-8 onward (heritage interpretation) is a separate
-                  // use case/screen — hook the navigation here once that
-                  // flow exists.
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Selected: ${marker.name}')),
                   );
                 },
               ),
-            ],
-          ),
+            ),
+            Positioned(
+              top: 104,
+              right: 12,
+              child: IconButton(
+                icon: Icon(_showDebugHud ? Icons.bug_report : Icons.bug_report_outlined,
+                    color: Colors.white),
+                onPressed: () => setState(() => _showDebugHud = !_showDebugHud),
+              ),
+            ),
+            if (_showDebugHud) _DebugHud(vm: vm),
+          ],
+        ),
       },
+    );
+  }
+}
+
+/// TEMPORARY diagnostic overlay — remove once marker detection is
+/// confirmed working end-to-end. Shows exactly what the service layer
+/// sees so "why isn't my marker showing" is visible instead of guessed.
+class _DebugHud extends StatelessWidget {
+  const _DebugHud({required this.vm});
+  final ARExplorationViewModel vm;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 12,
+      right: 12,
+      bottom: 96,
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 260),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: SingleChildScrollView(
+          child: DefaultTextStyle(
+            style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontFamily: 'monospace'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('you: ${vm.userLat?.toStringAsFixed(6)}, ${vm.userLng?.toStringAsFixed(6)}'),
+                Text('heading: ${vm.deviceHeadingDegrees.toStringAsFixed(1)}°'),
+                Text('fetched from DB (within scan radius): ${vm.rawFetchedCount}'),
+                Text('within activation_radius: ${vm.nearbyMarkers.length}'),
+                Text('primary (in FOV + facing): ${vm.primaryMarker?.name ?? "none"}'),
+                const Divider(color: Colors.white24),
+                for (final m in vm.allComputedMarkers)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '${m.name}: dist=${m.distanceMeters?.toStringAsFixed(1)}m '
+                          'bearing=${m.bearingFromUser?.toStringAsFixed(1)}° '
+                          'facing=${m.isFacing} '
+                          'inRadius=${m.isWithinActivationRadius}',
+                    ),
+                  ),
+                if (vm.allComputedMarkers.isEmpty)
+                  const Text('(no rows returned by the DB query at all — check RLS policies)',
+                      style: TextStyle(color: Colors.orangeAccent)),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

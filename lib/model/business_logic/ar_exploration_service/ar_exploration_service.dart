@@ -19,10 +19,29 @@ class ARSceneState {
 
   final double deviceHeadingDegrees;
 
+  // --- Diagnostics (not used for rendering logic, only for the debug HUD) ---
+  final double? userLat;
+  final double? userLng;
+
+  /// Count returned by the DB query BEFORE the activation_radius filter
+  /// is applied — lets you tell "query returned nothing" apart from
+  /// "query returned rows but they got filtered out".
+  final int rawFetchedCount;
+
+  /// ALL fetched markers with geometry computed, regardless of
+  /// activation_radius or heading — i.e. the pre-filter debug view.
+  /// [nearbyMarkers] above is the post-filter list actually eligible to
+  /// render.
+  final List<ARMarker> allComputedMarkers;
+
   const ARSceneState({
     required this.nearbyMarkers,
     required this.primaryMarker,
     required this.deviceHeadingDegrees,
+    this.userLat,
+    this.userLng,
+    this.rawFetchedCount = 0,
+    this.allComputedMarkers = const [],
   });
 
   static const empty = ARSceneState(nearbyMarkers: [], primaryMarker: null, deviceHeadingDegrees: 0);
@@ -107,15 +126,16 @@ class ARExplorationService {
       return;
     }
 
-    final computed = _lastFetchedMarkers
+    final allWithGeometry = _lastFetchedMarkers
         .map((m) => m.withComputedGeometry(
-              userLat: pos.latitude,
-              userLng: pos.longitude,
-              deviceHeadingDegrees: _lastHeading,
-              headingToleranceDegrees: AppConfig.headingToleranceDegrees,
-            ))
-        .where((m) => m.isWithinActivationRadius)
-        .toList()
+      userLat: pos.latitude,
+      userLng: pos.longitude,
+      deviceHeadingDegrees: _lastHeading,
+      headingToleranceDegrees: AppConfig.headingToleranceDegrees,
+    ))
+        .toList();
+
+    final computed = allWithGeometry.where((m) => m.isWithinActivationRadius).toList()
       ..sort((a, b) => (a.distanceMeters ?? double.infinity)
           .compareTo(b.distanceMeters ?? double.infinity));
 
@@ -137,6 +157,10 @@ class ARExplorationService {
       nearbyMarkers: computed,
       primaryMarker: primary,
       deviceHeadingDegrees: _lastHeading,
+      userLat: pos.latitude,
+      userLng: pos.longitude,
+      rawFetchedCount: _lastFetchedMarkers.length,
+      allComputedMarkers: allWithGeometry,
     ));
   }
 
