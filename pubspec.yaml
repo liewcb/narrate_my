@@ -35,6 +35,14 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # --- AR Exploration (UC100) ---
+  supabase_flutter: ^2.8.0     # Marker/Attraction data source
+  geolocator: ^13.0.2          # GPS position (lat/lng/altitude), permissions
+  permission_handler: ^11.3.1  # Camera + location permission requests
+  flutter_compass: ^0.8.1      # Device compass heading
+  camera: ^0.11.0+2            # Live camera feed background
+  provider: ^6.1.2             # ChangeNotifier binding for MVVM viewmodels
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
