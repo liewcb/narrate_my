@@ -1,11 +1,11 @@
-// lib/View/widgets/app_bottom_nav_bar.dart
+// lib/view/widgets/app_bottom_nav_bar.dart
 //
-// Custom bottom navigation bar matching the design spec:
-// - white background
-// - fixed 65dp height
-// - thin light-gray (#F3F4F6) top border
+// Custom bottom navigation bar. Colors come from AppColors
+// (core/theme/app_theme.dart) — don't reintroduce local hex constants
+// here if the palette changes, update the theme instead.
 
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// Data for a single bottom nav destination.
 class BottomNavItem {
@@ -33,19 +33,13 @@ class AppBottomNavBar extends StatelessWidget {
   final ValueChanged<int> onTap;
 
   static const double _height = 65;
-  static const Color _borderColor = Color(0xFFF3F4F6);
-  static const Color _unselectedColor = Color(0xFF9CA3AF);
-  // Matches the teal used for the selected "Nearby" pin in the design.
-  static const Color _selectedColor = Color(0xFF2D6A5E);
 
   @override
   Widget build(BuildContext context) {
-    const primary = _selectedColor;
-
     return Container(
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: _borderColor, width: 1)),
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border, width: 1)),
       ),
       child: SafeArea(
         top: false,
@@ -55,7 +49,7 @@ class AppBottomNavBar extends StatelessWidget {
             children: List.generate(items.length, (index) {
               final item = items[index];
               final selected = index == currentIndex;
-              final color = selected ? primary : _unselectedColor;
+              final color = selected ? AppColors.primary : AppColors.unselected;
 
               return Expanded(
                 child: InkWell(
