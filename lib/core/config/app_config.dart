@@ -25,4 +25,18 @@ class AppConfig {
   /// How often we recompute distance/bearing against the live compass +
   /// GPS stream. Kept modest to avoid excessive rebuilds.
   static const Duration recomputeThrottle = Duration(milliseconds: 150);
+
+  // --- Module 5: hCaptcha (REQ_501_12/REQ_502_21, UC400 A8/C4) ---
+
+  /// hCaptcha SITE key — public by design, safe to ship client-side (it
+  /// only identifies which hCaptcha account/site the challenge belongs to;
+  /// the SECRET key that actually verifies a solve never goes in the app —
+  /// it's a Supabase Edge Function secret, see
+  /// `supabase/functions/verify-captcha/index.ts`).
+  ///
+  /// PLACEHOLDER — the OTP screen's CAPTCHA gate (5 failed attempts) will
+  /// not render a real challenge until you replace this with your own
+  /// hCaptcha site key (https://dashboard.hcaptcha.com → your site →
+  /// "Sitekey"). Free tier is enough for this.
+  static const String hcaptchaSiteKey = 'YOUR_HCAPTCHA_SITE_KEY_HERE';
 }

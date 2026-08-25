@@ -24,6 +24,21 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Module 5 (User Profile & Language Management): deep link
+                 target for the Supabase Auth Google OAuth redirect
+                 (io.supabase.narratemy://login-callback/), used by both
+                 UC400/401 Google Sign-In (SupabaseAuthRepositoryAdapter's
+                 `_googleRedirectUrl`) and UC402 A13 Link Google Account.
+                 The matching redirect URL must ALSO be added in Supabase
+                 Dashboard → Authentication → URL Configuration → Redirect
+                 URLs, or Supabase will reject the callback even though the
+                 app itself is ready to receive it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="io.supabase.narratemy" android:host="login-callback"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
