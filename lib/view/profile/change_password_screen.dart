@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../core/widgets/underline_field.dart';
-import '../../model/business_logic/uc402_messages.dart';
-import '../../viewmodel/profile/change_password_vm.dart';
+import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../viewmodel/profile_viewmodel/change_password_vm.dart';
+import '../widgets/primary_button.dart';
+import '../widgets/underline_field.dart';
 
 /// UC402 A16–A18 (C6).
 class ChangePasswordScreen extends StatelessWidget {
@@ -48,7 +48,7 @@ class _ChangePasswordViewState extends State<_ChangePasswordView> {
     );
     if (ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(Uc402Messages.m15PasswordChangedSuccessfully)));
+          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m15PasswordChangedSuccessfully)));
       Navigator.of(context).pop();
     }
   }

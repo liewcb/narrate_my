@@ -1,10 +1,14 @@
 /// UC400 Register Account — message catalog, copied VERBATIM from
 /// `collab temporary workfile 33.pdf`. Do not paraphrase these; they're
 /// what the spec (and, presumably, the grader) expects on screen.
+///
+/// RENAMED (per team format, 25 Aug): was `Uc400Messages` in
+/// `uc400_messages.dart` — message catalogs are named by what they're for,
+/// not by UC number, so this no longer needs to correspond to your UC.
 library;
 
-class Uc400Messages {
-  Uc400Messages._();
+class RegisterMessages {
+  RegisterMessages._();
 
   static const m1RegisteredSuccessfully =
       "Your account has been registered successfully.";

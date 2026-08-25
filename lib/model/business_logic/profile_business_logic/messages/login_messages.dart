@@ -1,9 +1,13 @@
 /// UC401 Login Account — message catalog, copied VERBATIM from
 /// `collab temporary workfile 33.pdf`.
+///
+/// RENAMED (per team format, 25 Aug): was `Uc401Messages` in
+/// `uc401_messages.dart` — message catalogs are named by what they're for,
+/// not by UC number, so this no longer needs to correspond to your UC.
 library;
 
-class Uc401Messages {
-  Uc401Messages._();
+class LoginMessages {
+  LoginMessages._();
 
   static const m1LoginSuccessful =
       "Login successful. Start enjoying your trip with NarrateMy.";

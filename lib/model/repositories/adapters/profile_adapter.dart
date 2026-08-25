@@ -3,11 +3,11 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/errors/failures.dart';
-import '../../business_logic/uc400_messages.dart';
-import '../../business_logic/uc401_messages.dart';
-import '../../business_logic/uc402_messages.dart';
-import '../../business_logic/uc403_messages.dart';
-import '../../business_logic/validators.dart';
+import '../../business_logic/profile_business_logic/messages/login_messages.dart';
+import '../../business_logic/profile_business_logic/messages/password_reset_messages.dart';
+import '../../business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../business_logic/profile_business_logic/messages/register_messages.dart';
+import '../../business_logic/profile_business_logic/validators.dart';
 import '../../data_sources/remote/auth_remote_data_source.dart';
 import '../../data_sources/remote/profile_remote_data_source.dart';
 import '../../dto/preferences_dto.dart';
@@ -60,7 +60,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     if (id == null) {
       // UC402 A8: no active session — the screen that catches this should
       // invoke UC401 Login, per the spec's alt-flow return-target.
-      throw SessionExpiredFailure(Uc401Messages.m4AccountNotFound);
+      throw SessionExpiredFailure(LoginMessages.m4AccountNotFound);
     }
     return id;
   }
@@ -83,18 +83,18 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       // GoogleSignInFailure, rather than escaping uncaught.
       return await _fetchCurrentProfile();
     } catch (_) {
-      throw GoogleSignInFailure(Uc400Messages.m3GoogleSignInFailed);
+      throw GoogleSignInFailure(RegisterMessages.m3GoogleSignInFailed);
     }
   }
 
   @override
   Future<void> sendPhoneRegistrationOtp(String e164Phone) async {
     if (!Validators.isValidPhone(e164Phone)) {
-      throw ValidationFailure(Uc400Messages.m5InvalidPhoneFormat, field: 'phone');
+      throw ValidationFailure(RegisterMessages.m5InvalidPhoneFormat, field: 'phone');
     }
     final existing = await _authDataSource.phoneAccountStatus(e164Phone);
     if (existing != null) {
-      throw PhoneAlreadyRegisteredFailure(Uc400Messages.m4PhoneAlreadyRegistered);
+      throw PhoneAlreadyRegisteredFailure(RegisterMessages.m4PhoneAlreadyRegistered);
     }
     try {
       await _authDataSource.sendOtp(e164Phone, shouldCreateUser: true);
@@ -109,12 +109,12 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     required String otp,
   }) async {
     if (!Validators.isValidOtpFormat(otp)) {
-      throw OtpFailure(Uc400Messages.m6InvalidOrExpiredOtp);
+      throw OtpFailure(RegisterMessages.m6InvalidOrExpiredOtp);
     }
     try {
       await _authDataSource.verifyOtp(e164Phone: e164Phone, otp: otp);
     } on AuthException {
-      throw OtpFailure(Uc400Messages.m6InvalidOrExpiredOtp);
+      throw OtpFailure(RegisterMessages.m6InvalidOrExpiredOtp);
     }
     return _fetchCurrentProfile();
   }
@@ -126,21 +126,21 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     required String e164Phone,
   }) async {
     if (!Validators.isValidUsernameFormat(username)) {
-      throw ValidationFailure(Uc400Messages.m7UsernameTaken, field: 'username');
+      throw ValidationFailure(RegisterMessages.m7UsernameTaken, field: 'username');
     }
     if (!Validators.isValidPassword(password)) {
-      throw ValidationFailure(Uc400Messages.m8InvalidPassword, field: 'password');
+      throw ValidationFailure(RegisterMessages.m8InvalidPassword, field: 'password');
     }
     if (!Validators.isValidPhone(e164Phone)) {
-      throw ValidationFailure(Uc400Messages.m5InvalidPhoneFormat, field: 'phone');
+      throw ValidationFailure(RegisterMessages.m5InvalidPhoneFormat, field: 'phone');
     }
     final existingUsername = await _authDataSource.resolveUsername(username);
     if (existingUsername != null) {
-      throw UsernameTakenFailure(Uc400Messages.m7UsernameTaken);
+      throw UsernameTakenFailure(RegisterMessages.m7UsernameTaken);
     }
     final existingPhone = await _authDataSource.phoneAccountStatus(e164Phone);
     if (existingPhone != null) {
-      throw PhoneAlreadyRegisteredFailure(Uc400Messages.m4PhoneAlreadyRegistered);
+      throw PhoneAlreadyRegisteredFailure(RegisterMessages.m4PhoneAlreadyRegistered);
     }
     try {
       await _authDataSource.signUpWithPhonePassword(
@@ -159,13 +159,13 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     required String otp,
   }) async {
     if (!Validators.isValidOtpFormat(otp)) {
-      throw OtpFailure(Uc400Messages.m6InvalidOrExpiredOtp);
+      throw OtpFailure(RegisterMessages.m6InvalidOrExpiredOtp);
     }
     final AuthResponse response;
     try {
       response = await _authDataSource.verifyOtp(e164Phone: e164Phone, otp: otp);
     } on AuthException {
-      throw OtpFailure(Uc400Messages.m6InvalidOrExpiredOtp);
+      throw OtpFailure(RegisterMessages.m6InvalidOrExpiredOtp);
     }
     final userId = response.user?.id;
     if (userId == null) {
@@ -180,11 +180,11 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   @override
   Future<void> sendPhoneLoginOtp(String e164Phone) async {
     if (!Validators.isValidPhone(e164Phone)) {
-      throw ValidationFailure(Uc401Messages.m4AccountNotFound, field: 'phone');
+      throw ValidationFailure(LoginMessages.m4AccountNotFound, field: 'phone');
     }
     final status = await _authDataSource.phoneAccountStatus(e164Phone);
     if (status == null) {
-      throw AccountNotFoundFailure(Uc401Messages.m4AccountNotFound);
+      throw AccountNotFoundFailure(LoginMessages.m4AccountNotFound);
     }
     try {
       await _authDataSource.sendOtp(e164Phone, shouldCreateUser: false);
@@ -199,12 +199,12 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     required String otp,
   }) async {
     if (!Validators.isValidOtpFormat(otp)) {
-      throw OtpFailure(Uc401Messages.m5InvalidOrExpiredOtp);
+      throw OtpFailure(LoginMessages.m5InvalidOrExpiredOtp);
     }
     try {
       await _authDataSource.verifyOtp(e164Phone: e164Phone, otp: otp);
     } on AuthException {
-      throw OtpFailure(Uc401Messages.m5InvalidOrExpiredOtp);
+      throw OtpFailure(LoginMessages.m5InvalidOrExpiredOtp);
     }
     return _fetchCurrentProfile();
   }
@@ -216,10 +216,10 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   }) async {
     final resolved = await _authDataSource.resolveUsername(username);
     if (resolved == null) {
-      throw AccountNotFoundFailure(Uc401Messages.m4AccountNotFound);
+      throw AccountNotFoundFailure(LoginMessages.m4AccountNotFound);
     }
     if (resolved.lockedUntil != null && resolved.lockedUntil!.isAfter(DateTime.now())) {
-      throw LockedOutFailure(Uc401Messages.m7AccountLocked, lockedUntil: resolved.lockedUntil);
+      throw LockedOutFailure(LoginMessages.m7AccountLocked, lockedUntil: resolved.lockedUntil);
     }
     try {
       await _authDataSource.signInWithPhonePassword(
@@ -231,9 +231,9 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       // this crosses 5.
       final result = await _authDataSource.recordFailedLogin(resolved.userId);
       if (result.lockedUntil != null && result.lockedUntil!.isAfter(DateTime.now())) {
-        throw LockedOutFailure(Uc401Messages.m7AccountLocked, lockedUntil: result.lockedUntil);
+        throw LockedOutFailure(LoginMessages.m7AccountLocked, lockedUntil: result.lockedUntil);
       }
-      throw InvalidCredentialsFailure(Uc401Messages.m6InvalidCredentials);
+      throw InvalidCredentialsFailure(LoginMessages.m6InvalidCredentials);
     }
     // REQ_502_18: successful auth resets the counter. Safe as a plain
     // owner-scoped update — the client is authenticated by this point.
@@ -268,19 +268,19 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   @override
   Future<void> sendPasswordResetOtp(String e164Phone) async {
     if (!Validators.isValidPhone(e164Phone)) {
-      throw ValidationFailure(Uc403Messages.m4PhoneNotRegistered, field: 'phone');
+      throw ValidationFailure(PasswordResetMessages.m4PhoneNotRegistered, field: 'phone');
     }
     final status = await _authDataSource.phoneAccountStatus(e164Phone);
     // A1: not registered at all, OR registered but not via Username &
     // Password — both collapse to the same M4 message.
     if (status == null || !status.hasPassword) {
-      throw AccountNotFoundFailure(Uc403Messages.m4PhoneNotRegistered);
+      throw AccountNotFoundFailure(PasswordResetMessages.m4PhoneNotRegistered);
     }
     try {
       await _authDataSource.sendOtp(e164Phone, shouldCreateUser: false);
     } on AuthException catch (e) {
       if (_looksLikeRateLimit(e)) {
-        throw RateLimitedFailure(Uc403Messages.m8TooManyRequests);
+        throw RateLimitedFailure(PasswordResetMessages.m8TooManyRequests);
       }
       rethrow;
     }
@@ -292,7 +292,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     required String otp,
   }) async {
     if (!Validators.isValidOtpFormat(otp)) {
-      throw OtpFailure(Uc403Messages.m5InvalidOrExpiredOtp);
+      throw OtpFailure(PasswordResetMessages.m5InvalidOrExpiredOtp);
     }
     try {
       // Per spec's own step ordering, this call is what authenticates the
@@ -300,25 +300,25 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       // are shown — resetPassword() below relies on this session.
       await _authDataSource.verifyOtp(e164Phone: e164Phone, otp: otp);
     } on AuthException {
-      throw OtpFailure(Uc403Messages.m5InvalidOrExpiredOtp);
+      throw OtpFailure(PasswordResetMessages.m5InvalidOrExpiredOtp);
     }
   }
 
   @override
   Future<void> resetPassword(String newPassword) async {
     if (!Validators.isValidPassword(newPassword)) {
-      throw ValidationFailure(Uc403Messages.m6InvalidPassword, field: 'password');
+      throw ValidationFailure(PasswordResetMessages.m6InvalidPassword, field: 'password');
     }
     final userId = _authDataSource.currentUser?.id;
     if (userId == null) {
       // Shouldn't happen if verifyPasswordResetOtp succeeded first, but
       // guard against a caller skipping the OTP step.
-      throw SessionExpiredFailure(Uc403Messages.m5InvalidOrExpiredOtp);
+      throw SessionExpiredFailure(PasswordResetMessages.m5InvalidOrExpiredOtp);
     }
     try {
       await _authDataSource.updatePassword(newPassword);
     } catch (_) {
-      throw ServerFailure(Uc403Messages.m8TooManyRequests);
+      throw ServerFailure(PasswordResetMessages.m8TooManyRequests);
     }
     // REQ_502_19: a successful reset clears any active login lockout.
     await _authDataSource.resetFailedLoginCounter(userId);
@@ -339,7 +339,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
         createdAt: user == null ? null : DateTime.tryParse(user.createdAt),
       );
     } catch (_) {
-      throw ServerFailure(Uc402Messages.m3UnableToLoad);
+      throw ServerFailure(ProfileMessages.m3UnableToLoad);
     }
   }
 
@@ -362,7 +362,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     } catch (_) {
       // UC402 A7: caller should keep the unsaved values on screen and offer
       // Retry/Cancel — this failure alone doesn't discard anything.
-      throw ProfileUpdateFailure(Uc402Messages.m6UnableToUpdate);
+      throw ProfileUpdateFailure(ProfileMessages.m6UnableToUpdate);
     }
   }
 
@@ -373,7 +373,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       final dto = await _profileDataSource.fetchPreferencesRow(userId);
       return dto.toEntity();
     } catch (_) {
-      throw ServerFailure(Uc402Messages.m3UnableToLoad);
+      throw ServerFailure(ProfileMessages.m3UnableToLoad);
     }
   }
 
@@ -386,7 +386,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
         PreferencesDto.toUpdateJson(preferences),
       );
     } catch (_) {
-      throw ProfileUpdateFailure(Uc402Messages.m6UnableToUpdate);
+      throw ProfileUpdateFailure(ProfileMessages.m6UnableToUpdate);
     }
   }
 
@@ -396,7 +396,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     try {
       await _profileDataSource.updateLanguage(userId, languageCode);
     } catch (_) {
-      throw ProfileUpdateFailure(Uc402Messages.m6UnableToUpdate);
+      throw ProfileUpdateFailure(ProfileMessages.m6UnableToUpdate);
     }
   }
 
@@ -407,7 +407,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       final rows = await _profileDataSource.fetchBookmarkRows(userId);
       return rows.map((dto) => dto.toEntity()).toList();
     } catch (_) {
-      throw ServerFailure(Uc402Messages.m3UnableToLoad);
+      throw ServerFailure(ProfileMessages.m3UnableToLoad);
     }
   }
 
@@ -417,7 +417,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     try {
       await _profileDataSource.deleteBookmark(userId, bookmarkId);
     } catch (_) {
-      throw ProfileUpdateFailure(Uc402Messages.m6UnableToUpdate);
+      throw ProfileUpdateFailure(ProfileMessages.m6UnableToUpdate);
     }
   }
 
@@ -426,17 +426,17 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   @override
   Future<void> sendPhoneChangeOtp(String newE164Phone) async {
     if (!Validators.isValidPhone(newE164Phone)) {
-      throw ValidationFailure(Uc402Messages.m8InvalidPhoneFormat, field: 'phone');
+      throw ValidationFailure(ProfileMessages.m8InvalidPhoneFormat, field: 'phone');
     }
     final existing = await _authDataSource.phoneAccountStatus(newE164Phone);
     if (existing != null) {
-      throw PhoneAlreadyRegisteredFailure(Uc402Messages.m9PhoneAlreadyRegistered);
+      throw PhoneAlreadyRegisteredFailure(ProfileMessages.m9PhoneAlreadyRegistered);
     }
     try {
       await _authDataSource.sendPhoneChangeOtp(newE164Phone);
     } on AuthException catch (e) {
       if (_looksLikeRateLimit(e)) {
-        throw RateLimitedFailure(Uc402Messages.m6UnableToUpdate);
+        throw RateLimitedFailure(ProfileMessages.m6UnableToUpdate);
       }
       throw ServerFailure(e.message);
     }
@@ -448,12 +448,12 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     required String otp,
   }) async {
     if (!Validators.isValidOtpFormat(otp)) {
-      throw OtpFailure(Uc402Messages.m10InvalidOrExpiredOtp);
+      throw OtpFailure(ProfileMessages.m10InvalidOrExpiredOtp);
     }
     try {
       await _authDataSource.verifyPhoneChangeOtp(newE164Phone: newE164Phone, otp: otp);
     } on AuthException {
-      throw OtpFailure(Uc402Messages.m10InvalidOrExpiredOtp);
+      throw OtpFailure(ProfileMessages.m10InvalidOrExpiredOtp);
     }
   }
 
@@ -465,10 +465,10 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     final user = _authDataSource.currentUser;
     final phone = user?.phone;
     if (user == null || phone == null || phone.isEmpty) {
-      throw SessionExpiredFailure(Uc401Messages.m4AccountNotFound);
+      throw SessionExpiredFailure(LoginMessages.m4AccountNotFound);
     }
     if (!Validators.isValidPassword(newPassword)) {
-      throw ValidationFailure(Uc402Messages.m17InvalidPassword, field: 'newPassword');
+      throw ValidationFailure(ProfileMessages.m17InvalidPassword, field: 'newPassword');
     }
     try {
       // C6: verified via the current password, not OTP, since the tourist
@@ -477,12 +477,12 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       // check endpoint.
       await _authDataSource.signInWithPhonePassword(e164Phone: phone, password: currentPassword);
     } on AuthException {
-      throw InvalidCredentialsFailure(Uc402Messages.m16CurrentPasswordIncorrect);
+      throw InvalidCredentialsFailure(ProfileMessages.m16CurrentPasswordIncorrect);
     }
     try {
       await _authDataSource.updatePassword(newPassword);
     } catch (_) {
-      throw ProfileUpdateFailure(Uc402Messages.m6UnableToUpdate);
+      throw ProfileUpdateFailure(ProfileMessages.m6UnableToUpdate);
     }
   }
 
@@ -490,12 +490,12 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   Future<Profile> linkGoogleAccount() async {
     final user = _authDataSource.currentUser;
     if (user == null) {
-      throw SessionExpiredFailure(Uc401Messages.m4AccountNotFound);
+      throw SessionExpiredFailure(LoginMessages.m4AccountNotFound);
     }
     if (_authDataSource.currentUserHasGoogleIdentity) {
       // C5: linking is only offered when none is linked — guard here too
       // in case the screen's own visibility check is stale.
-      throw GoogleSignInFailure(Uc402Messages.m14GoogleAlreadyLinked);
+      throw GoogleSignInFailure(ProfileMessages.m14GoogleAlreadyLinked);
     }
     try {
       await _authDataSource.linkGoogleAndAwaitUpdate(redirectTo: _googleRedirectUrl);
@@ -503,11 +503,11 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       if (_looksLikeIdentityAlreadyLinked(e)) {
         // REQ_503_16: the Google identity itself is already linked to a
         // DIFFERENT NarrateMy account.
-        throw GoogleSignInFailure(Uc402Messages.m14GoogleAlreadyLinked);
+        throw GoogleSignInFailure(ProfileMessages.m14GoogleAlreadyLinked);
       }
-      throw GoogleSignInFailure(Uc402Messages.m13UnableToLinkGoogle);
+      throw GoogleSignInFailure(ProfileMessages.m13UnableToLinkGoogle);
     } catch (_) {
-      throw GoogleSignInFailure(Uc402Messages.m13UnableToLinkGoogle);
+      throw GoogleSignInFailure(ProfileMessages.m13UnableToLinkGoogle);
     }
     return _fetchCurrentProfile();
   }
@@ -516,18 +516,18 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   Future<void> unlinkGoogleAccount() async {
     final user = _authDataSource.currentUser;
     if (user == null) {
-      throw SessionExpiredFailure(Uc401Messages.m4AccountNotFound);
+      throw SessionExpiredFailure(LoginMessages.m4AccountNotFound);
     }
     // A21: block before the caller even shows the M19 confirmation prompt.
     final dto = await _profileDataSource.fetchProfileRow(user.id);
     final hasPhone = user.phone != null && user.phone!.isNotEmpty;
     if (!dto.hasPassword && !hasPhone) {
-      throw NoRemainingLoginMethodFailure(Uc402Messages.m21MustVerifyPhoneBeforeUnlink);
+      throw NoRemainingLoginMethodFailure(ProfileMessages.m21MustVerifyPhoneBeforeUnlink);
     }
     try {
       await _authDataSource.unlinkGoogleIdentity();
     } catch (_) {
-      throw ProfileUpdateFailure(Uc402Messages.m6UnableToUpdate);
+      throw ProfileUpdateFailure(ProfileMessages.m6UnableToUpdate);
     }
   }
 
@@ -551,7 +551,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       await _profileDataSource.updateAvatarUrl(userId, url);
       return await _reloadAfterWrite(userId);
     } catch (_) {
-      throw ProfileUpdateFailure(Uc402Messages.m25UnableToUpdatePhoto);
+      throw ProfileUpdateFailure(ProfileMessages.m25UnableToUpdatePhoto);
     }
   }
 
@@ -569,7 +569,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       );
       return await _reloadAfterWrite(userId);
     } catch (_) {
-      throw ProfileUpdateFailure(Uc400Messages.m14UnableToSaveDetails);
+      throw ProfileUpdateFailure(RegisterMessages.m14UnableToSaveDetails);
     }
   }
 
@@ -577,12 +577,12 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   Future<void> deleteAccount() async {
     final user = _authDataSource.currentUser;
     if (user == null) {
-      throw SessionExpiredFailure(Uc401Messages.m4AccountNotFound);
+      throw SessionExpiredFailure(LoginMessages.m4AccountNotFound);
     }
     try {
       await _authDataSource.deleteOwnAccount();
     } catch (_) {
-      throw ProfileUpdateFailure(Uc402Messages.m24UnableToDeleteAccount);
+      throw ProfileUpdateFailure(ProfileMessages.m24UnableToDeleteAccount);
     }
     // The RPC deletes the auth.users row server-side, which invalidates the
     // session — sign out locally too so the client's own cached session
@@ -611,7 +611,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   Future<Profile> _fetchCurrentProfile() async {
     final user = _authDataSource.currentUser;
     if (user == null) {
-      throw SessionExpiredFailure(Uc401Messages.m4AccountNotFound);
+      throw SessionExpiredFailure(LoginMessages.m4AccountNotFound);
     }
     final dto = await _profileDataSource.fetchProfileRow(user.id);
     return dto.toEntity(
@@ -627,7 +627,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   }) {
     if (_looksLikeRateLimit(e)) {
       return RateLimitedFailure(
-        useUc401Messages ? Uc401Messages.m8TooManyOtpRequests : Uc400Messages.m9TooManyRequests,
+        useUc401Messages ? LoginMessages.m8TooManyOtpRequests : RegisterMessages.m9TooManyRequests,
       );
     }
     return UnexpectedAuthFailure(e.message);

@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/errors/failures.dart';
-import '../../model/business_logic/uc402_messages.dart';
-import '../../model/business_logic/validators.dart';
+import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../model/business_logic/profile_business_logic/validators.dart';
 import '../../model/repositories/adapters/profile_adapter.dart';
 import '../../model/repositories/interfaces/profile_repository.dart';
 
@@ -29,7 +29,7 @@ class ChangePasswordVm extends ChangeNotifier {
     notifyListeners();
     if (!Validators.passwordsMatch(newPassword, confirmPassword)) {
       isLoading = false;
-      errorMessage = Uc402Messages.m18NewPasswordsDoNotMatch;
+      errorMessage = ProfileMessages.m18NewPasswordsDoNotMatch;
       notifyListeners();
       return false;
     }

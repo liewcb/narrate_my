@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/phone_field.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../viewmodel/auth/otp_vm.dart';
-import '../../viewmodel/auth/reset_password_vm.dart';
+import '../../viewmodel/profile_viewmodel/otp_vm.dart';
+import '../../viewmodel/profile_viewmodel/reset_password_vm.dart';
+import '../widgets/phone_field.dart';
+import '../widgets/primary_button.dart';
 import 'otp_screen.dart';
 
 /// UC403 Reset Password, Basic Flow steps 1–6 (A1). Collects the phone

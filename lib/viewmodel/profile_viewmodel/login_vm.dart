@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/errors/failures.dart';
-import '../../model/business_logic/uc401_messages.dart';
+import '../../model/business_logic/profile_business_logic/messages/login_messages.dart';
 import '../../model/entities/profile.dart';
 import '../../model/repositories/adapters/profile_adapter.dart';
 import '../../model/repositories/interfaces/profile_repository.dart';
@@ -43,7 +43,7 @@ class LoginVm extends ChangeNotifier {
       return null;
     } catch (_) {
       isLoading = false;
-      errorMessage = Uc401Messages.m3GoogleSignInFailed;
+      errorMessage = LoginMessages.m3GoogleSignInFailed;
       notifyListeners();
       return null;
     }

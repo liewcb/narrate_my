@@ -3,15 +3,15 @@ import 'package:provider/provider.dart';
 
 import '../../core/routes/app_routes.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/hcaptcha_widget.dart';
-import '../../core/widgets/otp_box_row.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../model/business_logic/uc400_messages.dart';
-import '../../model/business_logic/uc401_messages.dart';
-import '../../model/business_logic/uc402_messages.dart';
-import '../../model/business_logic/uc403_messages.dart';
-import '../../viewmodel/auth/otp_vm.dart';
+import '../../model/business_logic/profile_business_logic/messages/login_messages.dart';
+import '../../model/business_logic/profile_business_logic/messages/password_reset_messages.dart';
+import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../model/business_logic/profile_business_logic/messages/register_messages.dart';
+import '../../viewmodel/profile_viewmodel/otp_vm.dart';
 import '../onboarding/mandatory_details_screen.dart';
+import '../widgets/hcaptcha_widget.dart';
+import '../widgets/otp_box_row.dart';
+import '../widgets/primary_button.dart';
 import 'reset_password_screen.dart';
 
 /// Shared OTP-verification screen for UC400 A2/A3, UC401 A2, and the
@@ -30,10 +30,10 @@ class OtpScreen extends StatelessWidget {
   });
 
   String get _sentMessage => switch (flow) {
-        OtpFlow.registerPhone || OtpFlow.registerUsername => Uc400Messages.m2OtpSent,
-        OtpFlow.loginPhone => Uc401Messages.m2OtpSent,
-        OtpFlow.resetPassword => Uc403Messages.m2OtpSent,
-        OtpFlow.changePhone => Uc402Messages.m11OtpSent,
+        OtpFlow.registerPhone || OtpFlow.registerUsername => RegisterMessages.m2OtpSent,
+        OtpFlow.loginPhone => LoginMessages.m2OtpSent,
+        OtpFlow.resetPassword => PasswordResetMessages.m2OtpSent,
+        OtpFlow.changePhone => ProfileMessages.m11OtpSent,
       };
 
   @override

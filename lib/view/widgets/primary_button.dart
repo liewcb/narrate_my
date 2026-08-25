@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
+import '../../core/theme/app_theme.dart';
 
 /// The filled terracotta CTA button used throughout the auth flow (design
 /// canvas: "Register", "Log In", "Verify OTP", "Reset Password", etc.).

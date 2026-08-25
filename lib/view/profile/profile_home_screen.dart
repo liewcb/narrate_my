@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../model/business_logic/uc402_messages.dart';
-import '../../viewmodel/profile/profile_vm.dart';
+import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../viewmodel/profile_viewmodel/profile_vm.dart';
 import 'bookmarks_screen.dart';
 import 'language_screen.dart';
 import 'personal_info_screen.dart';
@@ -84,7 +84,7 @@ class _ProfileHomeView extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete Account'),
-        content: const Text(Uc402Messages.m22ConfirmDeleteAccount),
+        content: const Text(ProfileMessages.m22ConfirmDeleteAccount),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -102,7 +102,7 @@ class _ProfileHomeView extends StatelessWidget {
     if (!context.mounted) return;
     if (ok) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(Uc402Messages.m23AccountDeleted)));
+          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m23AccountDeleted)));
       // Same auth-gate mechanism as logout: `ProfileScreen` listens for the
       // (now-invalidated) session to clear and swaps itself to
       // `GuestProfileScreen` on its own.
@@ -128,7 +128,7 @@ class _ProfileHomeView extends StatelessWidget {
                       padding: const EdgeInsets.all(20),
                       children: [
                         Text(
-                          Uc402Messages.m1ScreenSubtitle,
+                          ProfileMessages.m1ScreenSubtitle,
                           style: const TextStyle(color: AppColors.inkSoft, fontSize: 13.5),
                         ),
                         const SizedBox(height: 20),

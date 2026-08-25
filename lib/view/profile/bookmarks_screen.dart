@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../model/entities/bookmark.dart';
-import '../../viewmodel/profile/bookmarks_vm.dart';
+import '../../viewmodel/profile_viewmodel/bookmarks_vm.dart';
 
 /// UC402 A22 (View and Delete Bookmarks, REQ_503_21/22). Viewing the
 /// bookmarked attraction's own detail page (step 4) isn't wired up here —

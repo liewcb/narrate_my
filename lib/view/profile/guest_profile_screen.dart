@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/primary_button.dart';
 import '../auth/login_screen.dart';
 import '../auth/register_screen.dart';
+import '../widgets/primary_button.dart';
 
 /// Shown on the Profile tab when no one is logged in. Guests can still
 /// freely browse AR/Itinerary/Nearby (this gating only applies to the

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../model/business_logic/preference_options.dart';
-import '../theme/app_theme.dart';
+import '../../model/business_logic/profile_business_logic/preference_options.dart';
+import '../../core/theme/app_theme.dart';
 
 /// A single selectable photo tile for an attraction/activity category, used
 /// in both the Initial Preferences (onboarding) screen and the Preferences

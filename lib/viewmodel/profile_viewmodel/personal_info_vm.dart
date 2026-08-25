@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/errors/failures.dart';
-import '../../model/business_logic/uc402_messages.dart';
-import '../../model/business_logic/validators.dart';
+import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../model/business_logic/profile_business_logic/validators.dart';
 import '../../model/entities/profile.dart';
 import '../../model/repositories/adapters/profile_adapter.dart';
 import '../../model/repositories/interfaces/profile_repository.dart';
@@ -49,7 +49,7 @@ class PersonalInfoVm extends ChangeNotifier {
   Future<bool> save({required String fullName, required String bio}) async {
     if (!Validators.isNotEmpty(fullName)) {
       // A5: highlight-and-retry, not a full section reset.
-      errorMessage = Uc402Messages.m4CorrectHighlighted;
+      errorMessage = ProfileMessages.m4CorrectHighlighted;
       fieldError = 'fullName';
       notifyListeners();
       return false;
@@ -79,7 +79,7 @@ class PersonalInfoVm extends ChangeNotifier {
 
   /// A6 (REQ_503_10): the screen discards its own staged controller text
   /// and re-reads `profile`'s last-saved values — this just supplies M5.
-  String get discardedMessage => Uc402Messages.m5ChangesDiscarded;
+  String get discardedMessage => ProfileMessages.m5ChangesDiscarded;
 
   /// UC402 A9 steps 1–4 (A10 format, A11 duplicate). On success the screen
   /// navigates to `OtpScreen(flow: OtpFlow.changePhone, e164Phone:

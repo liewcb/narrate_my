@@ -3,9 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../model/business_logic/uc402_messages.dart';
-import '../../viewmodel/profile/language_vm.dart';
+import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../viewmodel/profile_viewmodel/language_vm.dart';
+import '../widgets/primary_button.dart';
 
 /// UC402 A4 (Manage Preferred Language, C2). Selecting an option updates
 /// the on-screen radio state immediately (a "live preview" in the sense
@@ -31,14 +31,14 @@ class _LanguageView extends StatelessWidget {
     final ok = await vm.save();
     if (ok && context.mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(Uc402Messages.m2UpdatedSuccessfully)));
+          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
     }
   }
 
   void _cancel(BuildContext context, LanguageVm vm) {
     vm.cancel();
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text(Uc402Messages.m5ChangesDiscarded)));
+        .showSnackBar(const SnackBar(content: Text(ProfileMessages.m5ChangesDiscarded)));
   }
 
   @override

@@ -4,12 +4,12 @@ import 'package:provider/provider.dart';
 import '../../core/accessibility/accessibility_vm.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/attraction_tile.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../core/widgets/toggle_preference_tile.dart';
-import '../../model/business_logic/preference_options.dart';
+import '../../model/business_logic/profile_business_logic/preference_options.dart';
 import '../../model/entities/preferences.dart';
-import '../../viewmodel/profile/preferences_vm.dart';
+import '../../viewmodel/profile_viewmodel/preferences_vm.dart';
+import '../widgets/attraction_tile.dart';
+import '../widgets/primary_button.dart';
+import '../widgets/toggle_preference_tile.dart';
 
 /// "Personalize your journey" — the one-time onboarding screen shown right
 /// after a tourist completes registration (see `OtpScreen._submit`, which

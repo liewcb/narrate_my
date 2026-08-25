@@ -1,10 +1,14 @@
 /// UC402 Manage User Profile — message catalog, copied VERBATIM from
 /// `collab temporary workfile 33.pdf`. (M1–M21 all confirmed directly
 /// against the spec text — none of these are approximations.)
+///
+/// RENAMED (per team format, 25 Aug): was `Uc402Messages` in
+/// `uc402_messages.dart` — message catalogs are named by what they're for,
+/// not by UC number, so this no longer needs to correspond to your UC.
 library;
 
-class Uc402Messages {
-  Uc402Messages._();
+class ProfileMessages {
+  ProfileMessages._();
 
   static const m1ScreenSubtitle = "Manage your profile, preferences, and preferred language.";
 

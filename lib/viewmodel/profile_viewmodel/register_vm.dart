@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/errors/failures.dart';
-import '../../model/business_logic/uc400_messages.dart';
-import '../../model/business_logic/validators.dart';
+import '../../model/business_logic/profile_business_logic/messages/register_messages.dart';
+import '../../model/business_logic/profile_business_logic/validators.dart';
 import '../../model/entities/profile.dart';
 import '../../model/repositories/adapters/profile_adapter.dart';
 import '../../model/repositories/interfaces/profile_repository.dart';
@@ -56,7 +56,7 @@ class RegisterVm extends ChangeNotifier {
       _finishWithError(e);
       return null;
     } catch (_) {
-      _finishWithError(GoogleSignInFailure(Uc400Messages.m3GoogleSignInFailed));
+      _finishWithError(GoogleSignInFailure(RegisterMessages.m3GoogleSignInFailed));
       return null;
     }
   }
@@ -91,7 +91,7 @@ class RegisterVm extends ChangeNotifier {
     _startSubmit();
     if (!Validators.passwordsMatch(password, confirmPassword)) {
       _finishWithError(
-        ValidationFailure(Uc400Messages.m10PasswordsDoNotMatch, field: 'confirmPassword'),
+        ValidationFailure(RegisterMessages.m10PasswordsDoNotMatch, field: 'confirmPassword'),
       );
       return false;
     }

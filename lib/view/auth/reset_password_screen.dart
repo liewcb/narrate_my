@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../core/widgets/underline_field.dart';
-import '../../model/business_logic/uc403_messages.dart';
+import '../../model/business_logic/profile_business_logic/messages/password_reset_messages.dart';
 import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../viewmodel/auth/reset_password_vm.dart';
+import '../../viewmodel/profile_viewmodel/reset_password_vm.dart';
+import '../widgets/primary_button.dart';
+import '../widgets/underline_field.dart';
 import 'login_screen.dart';
 
 /// UC403 Reset Password, Basic Flow steps 11–13. Reached only after the
@@ -69,7 +69,7 @@ class _ResetPasswordViewState extends State<_ResetPasswordView> {
     );
     if (ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(Uc403Messages.m3ResetSuccessfully)),
+        const SnackBar(content: Text(PasswordResetMessages.m3ResetSuccessfully)),
       );
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),

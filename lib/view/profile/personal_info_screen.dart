@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/phone_field.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../core/widgets/underline_field.dart';
-import '../../model/business_logic/uc402_messages.dart';
-import '../../viewmodel/auth/otp_vm.dart';
-import '../../viewmodel/profile/personal_info_vm.dart';
+import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../viewmodel/profile_viewmodel/otp_vm.dart';
+import '../../viewmodel/profile_viewmodel/personal_info_vm.dart';
 import '../auth/otp_screen.dart';
+import '../widgets/phone_field.dart';
+import '../widgets/primary_button.dart';
+import '../widgets/underline_field.dart';
 import 'change_password_screen.dart';
 
 /// UC402 A2 (Manage Personal Information). Full Name/Bio are the section's
@@ -60,7 +60,7 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
     final ok = await vm.save(fullName: _fullNameController.text, bio: _bioController.text);
     if (ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(Uc402Messages.m2UpdatedSuccessfully)));
+          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
     }
   }
 
@@ -136,7 +136,7 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
     final ok = await vm.linkGoogleAccount();
     if (ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(Uc402Messages.m12GoogleLinkedSuccessfully)));
+          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m12GoogleLinkedSuccessfully)));
     }
   }
 
@@ -146,7 +146,7 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Unlink Google Account'),
-        content: const Text(Uc402Messages.m19ConfirmUnlinkGoogle),
+        content: const Text(ProfileMessages.m19ConfirmUnlinkGoogle),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -166,7 +166,7 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
     final ok = await vm.unlinkGoogleAccount();
     if (ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(Uc402Messages.m20GoogleUnlinked)));
+          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m20GoogleUnlinked)));
     }
   }
 

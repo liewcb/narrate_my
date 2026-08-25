@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/errors/failures.dart';
-import '../../model/business_logic/uc400_messages.dart';
+import '../../model/business_logic/profile_business_logic/messages/register_messages.dart';
 import '../../model/entities/profile.dart';
 import '../../model/repositories/adapters/profile_adapter.dart';
 import '../../model/repositories/interfaces/profile_repository.dart';
@@ -26,17 +26,17 @@ class MandatoryDetailsVm extends ChangeNotifier {
   Future<bool> save({required String fullName, required DateTime? dateOfBirth}) async {
     final trimmedName = fullName.trim();
     if (trimmedName.isEmpty) {
-      errorMessage = Uc400Messages.m11NameRequired;
+      errorMessage = RegisterMessages.m11NameRequired;
       notifyListeners();
       return false;
     }
     if (dateOfBirth == null) {
-      errorMessage = Uc400Messages.m12DobRequired;
+      errorMessage = RegisterMessages.m12DobRequired;
       notifyListeners();
       return false;
     }
     if (dateOfBirth.isAfter(DateTime.now())) {
-      errorMessage = Uc400Messages.m13DobInFuture;
+      errorMessage = RegisterMessages.m13DobInFuture;
       notifyListeners();
       return false;
     }
@@ -58,7 +58,7 @@ class MandatoryDetailsVm extends ChangeNotifier {
       return false;
     } catch (_) {
       isSaving = false;
-      errorMessage = Uc400Messages.m14UnableToSaveDetails;
+      errorMessage = RegisterMessages.m14UnableToSaveDetails;
       notifyListeners();
       return false;
     }

@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/errors/failures.dart';
-import '../../model/business_logic/uc403_messages.dart';
-import '../../model/business_logic/validators.dart';
+import '../../model/business_logic/profile_business_logic/messages/password_reset_messages.dart';
+import '../../model/business_logic/profile_business_logic/validators.dart';
 import '../../model/repositories/adapters/profile_adapter.dart';
 import '../../model/repositories/interfaces/profile_repository.dart';
 
@@ -32,7 +32,7 @@ class ResetPasswordVm extends ChangeNotifier {
     _startSubmit();
     if (!Validators.isValidPhone(e164Phone)) {
       isLoading = false;
-      errorMessage = Uc403Messages.m4PhoneNotRegistered;
+      errorMessage = PasswordResetMessages.m4PhoneNotRegistered;
       notifyListeners();
       return false;
     }
@@ -59,13 +59,13 @@ class ResetPasswordVm extends ChangeNotifier {
     _startSubmit();
     if (!Validators.passwordsMatch(newPassword, confirmPassword)) {
       isLoading = false;
-      errorMessage = Uc403Messages.m7PasswordsDoNotMatch;
+      errorMessage = PasswordResetMessages.m7PasswordsDoNotMatch;
       notifyListeners();
       return false;
     }
     if (!Validators.isValidPassword(newPassword)) {
       isLoading = false;
-      errorMessage = Uc403Messages.m6InvalidPassword;
+      errorMessage = PasswordResetMessages.m6InvalidPassword;
       notifyListeners();
       return false;
     }

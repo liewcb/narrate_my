@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../theme/app_theme.dart';
+import '../../core/theme/app_theme.dart';
 
 /// The row of 6 individual digit boxes used on the OTP screen. Reports the
 /// full code back via [onCompleted] the instant all 6 digits are filled

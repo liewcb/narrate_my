@@ -3,13 +3,13 @@ import 'package:provider/provider.dart';
 
 import '../../core/accessibility/accessibility_vm.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/attraction_tile.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../core/widgets/toggle_preference_tile.dart';
-import '../../model/business_logic/preference_options.dart';
-import '../../model/business_logic/uc402_messages.dart';
+import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../model/business_logic/profile_business_logic/preference_options.dart';
 import '../../model/entities/preferences.dart';
-import '../../viewmodel/profile/preferences_vm.dart';
+import '../../viewmodel/profile_viewmodel/preferences_vm.dart';
+import '../widgets/attraction_tile.dart';
+import '../widgets/primary_button.dart';
+import '../widgets/toggle_preference_tile.dart';
 
 /// UC402 A3 (Manage Preferences). All categories are staged locally in
 /// this screen's own state and saved together, in one call, as the
@@ -70,7 +70,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
       await context.read<AccessibilityVm>().refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(Uc402Messages.m2UpdatedSuccessfully)));
+          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
     }
   }
 
@@ -85,7 +85,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
       _exclusions = saved.categoryExclusions.toSet();
     });
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text(Uc402Messages.m5ChangesDiscarded)));
+        .showSnackBar(const SnackBar(content: Text(ProfileMessages.m5ChangesDiscarded)));
   }
 
   @override

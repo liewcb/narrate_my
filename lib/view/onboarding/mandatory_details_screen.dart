@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../core/widgets/underline_field.dart';
-import '../../viewmodel/onboarding/mandatory_details_vm.dart';
+import '../../viewmodel/profile_viewmodel/mandatory_details_vm.dart';
+import '../widgets/primary_button.dart';
+import '../widgets/underline_field.dart';
 import 'initial_preferences_screen.dart';
 
 /// Added at Foo's request — NOT part of the written spec. Shown exactly

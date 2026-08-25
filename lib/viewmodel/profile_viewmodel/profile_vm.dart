@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/errors/failures.dart';
-import '../../model/business_logic/uc402_messages.dart';
+import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
 import '../../model/entities/profile.dart';
 import '../../model/repositories/adapters/profile_adapter.dart';
 import '../../model/repositories/interfaces/profile_repository.dart';
@@ -85,7 +85,7 @@ class ProfileVm extends ChangeNotifier {
       return false;
     } catch (_) {
       isUploadingAvatar = false;
-      avatarErrorMessage = Uc402Messages.m25UnableToUpdatePhoto;
+      avatarErrorMessage = ProfileMessages.m25UnableToUpdatePhoto;
       notifyListeners();
       return false;
     }

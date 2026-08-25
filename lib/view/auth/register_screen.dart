@@ -3,12 +3,12 @@ import 'package:provider/provider.dart';
 
 import '../../core/routes/app_routes.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/phone_field.dart';
-import '../../core/widgets/primary_button.dart';
-import '../../core/widgets/underline_field.dart';
-import '../../viewmodel/auth/otp_vm.dart';
-import '../../viewmodel/auth/register_vm.dart';
+import '../../viewmodel/profile_viewmodel/otp_vm.dart';
+import '../../viewmodel/profile_viewmodel/register_vm.dart';
 import '../onboarding/mandatory_details_screen.dart';
+import '../widgets/phone_field.dart';
+import '../widgets/primary_button.dart';
+import '../widgets/underline_field.dart';
 import 'login_screen.dart';
 import 'otp_screen.dart';
 
