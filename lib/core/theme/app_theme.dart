@@ -4,6 +4,20 @@
 /// Canvas: https://claude.ai/code/artifact/34afab66-1712-4337-847f-7bde85a754c3
 /// Palette: "Warm Heritage Editorial" — warm cream background, terracotta
 /// accent, teal/green secondary accents. Typeface: Nunito (Google Font).
+///
+/// MERGE NOTE (25 Aug): this file used to diverge from a teammate's simpler
+/// green-primary theme (used by `AppBottomNavBar`, shared across every
+/// module's tab). Merged rather than picking one side — every Module 5
+/// screen already depends on the tokens below (`ink`/`accent`/`error`/etc,
+/// confirmed by grepping the whole `lib/` tree), while `AppBottomNavBar` is
+/// the ONLY file outside Module 5 that touches `AppColors` at all, and it
+/// only needs `primary`/`unselected`/`surface`/`border`. Everything from
+/// both sides is kept; the one real collision (`border` meant a different
+/// color on each side) is resolved by leaving the teammate's `border`
+/// value and name exactly as they wrote it (so `AppBottomNavBar`, a shared
+/// component, needed zero edits) and renaming Module 5's own warm-tan
+/// divider color to `moduleBorder` instead — only Module 5's own files
+/// needed updating to the new name, never anyone else's code.
 library;
 
 import 'package:flutter/material.dart';
@@ -21,7 +35,12 @@ class AppColors {
   static const ink = Color(0xFF2B241D);
   static const inkSoft = Color(0xFF6B5D4F);
   static const inkFaint = Color(0xFF9C8A76);
-  static const border = Color(0xFFE6D7C3);
+  /// Module 5's own warm-tan divider/border color (dividers, outlined
+  /// buttons, input underlines, switch tracks). Named `moduleBorder`, not
+  /// `border`, so it never collides with the shared `border` token below
+  /// that `AppBottomNavBar` (a component shared across every module) was
+  /// already written against.
+  static const moduleBorder = Color(0xFFE6D7C3);
   static const accent = Color(0xFFC1622D);
   static const accentDark = Color(0xFF8F4620);
   static const accentSoft = Color(0xFFF1DCC3);
@@ -32,6 +51,24 @@ class AppColors {
   /// Standard error/failure red — not part of the original palette, chosen
   /// to sit comfortably alongside the warm tones (not a cold pure red).
   static const error = Color(0xFFC0392B);
+
+  // --- Shared app-wide tokens (from the teammate's theme, kept for
+  // AppBottomNavBar and any other module's screens) ---------------------
+
+  /// Primary brand green — selected/active states in the bottom nav bar
+  /// (active tab, etc.), used app-wide outside Module 5.
+  static const Color primary = Color(0xFF2D6A5E);
+
+  static const Color unselected = Color(0xFF9CA3AF);
+
+  /// Bottom nav bar's own border color — the teammate's original name and
+  /// value, unchanged. `AppBottomNavBar` already reads `AppColors.border`
+  /// directly, so this stays as `border` rather than being renamed; see
+  /// [moduleBorder] above for Module 5's own (differently-named) divider
+  /// color, which is what actually moved to avoid the collision.
+  static const Color border = Color(0xFFF3F4F6);
+
+  static const Color background = Colors.white;
 }
 
 class AppTheme {
@@ -87,7 +124,7 @@ class AppTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.ink,
           minimumSize: const Size.fromHeight(50),
-          side: const BorderSide(color: AppColors.border),
+          side: const BorderSide(color: AppColors.moduleBorder),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -115,7 +152,7 @@ class AppTheme {
           color: AppColors.inkFaint,
         ),
         enabledBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: AppColors.border, width: 1.5),
+          borderSide: BorderSide(color: AppColors.moduleBorder, width: 1.5),
         ),
         focusedBorder: const UnderlineInputBorder(
           borderSide: BorderSide(color: AppColors.accent, width: 1.5),
@@ -128,16 +165,27 @@ class AppTheme {
         ),
       ),
       dividerTheme: const DividerThemeData(
-        color: AppColors.border,
+        color: AppColors.moduleBorder,
         thickness: 1,
       ),
       switchTheme: SwitchThemeData(
         trackColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
               ? AppColors.accent
-              : AppColors.border,
+              : AppColors.moduleBorder,
         ),
         thumbColor: const WidgetStatePropertyAll(AppColors.surface),
+      ),
+      // --- From the teammate's theme — kept so AppBottomNavBar (and any
+      // other module relying on Theme-driven nav/filled-button styling)
+      // keeps working exactly as they built it.
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: AppColors.unselected,
+        backgroundColor: AppColors.surface,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
       ),
     );
   }

@@ -61,7 +61,7 @@ class _LanguageView extends StatelessWidget {
                         margin: const EdgeInsets.only(bottom: 10),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: selected ? AppColors.accent : AppColors.border),
+                          side: BorderSide(color: selected ? AppColors.accent : AppColors.moduleBorder),
                         ),
                         child: RadioListTile<String>(
                           value: lang.code,

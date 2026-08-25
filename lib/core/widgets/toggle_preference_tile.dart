@@ -31,7 +31,7 @@ class TogglePreferenceTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: value ? AppColors.accentSoft.withValues(alpha: 0.5) : AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: value ? AppColors.accent : AppColors.border),
+        border: Border.all(color: value ? AppColors.accent : AppColors.moduleBorder),
       ),
       child: Row(
         children: [

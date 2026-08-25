@@ -35,7 +35,7 @@ class PillChoiceRow extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isSelected ? AppColors.accent : AppColors.surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: isSelected ? AppColors.accent : AppColors.border),
+                  border: Border.all(color: isSelected ? AppColors.accent : AppColors.moduleBorder),
                 ),
                 child: Column(
                   children: [

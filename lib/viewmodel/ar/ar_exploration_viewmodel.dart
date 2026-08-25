@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../../core/services/permission_service.dart';
 import '../../model/business_logic/ar_exploration_service/ar_exploration_service.dart';
 import '../../model/business_logic/shared_services/location_service.dart';
 import '../../model/entities/ar_object.dart';
@@ -8,16 +9,16 @@ import '../../model/repositories/interfaces/ar_repository.dart';
 
 enum ARViewState { idle, checkingPermissions, permissionDenied, loading, ready, error }
 
-/// ViewModel for the AR Exploration screen (UC100 BF-1 through BF-7,
-/// notification banner intentionally omitted per current scope).
+/// ViewModel for the AR Exploration screen (UC100 BF-1 through BF-7).
 class ARExplorationViewModel extends ChangeNotifier {
-  final LocationService _locationService;
+  final PermissionService _permissionService;
   final ARExplorationService _explorationService;
 
   ARExplorationViewModel({
     ARRepository? repository,
+    PermissionService? permissionService,
     LocationService? locationService,
-  })  : _locationService = locationService ?? LocationService(),
+  })  : _permissionService = permissionService ?? PermissionService(),
         _explorationService = ARExplorationService(
           repository: repository ?? SupabaseARRepositoryAdapter(),
           locationService: locationService,
@@ -43,15 +44,19 @@ class ARExplorationViewModel extends ChangeNotifier {
     state = ARViewState.checkingPermissions;
     notifyListeners();
 
-    // [C1] [A1] Permission Denied
-    final permissionState = await _locationService.checkAndRequestPermissions();
-    if (permissionState != PermissionState.granted) {
+    // [C1] [A1] Permission Denied — AR specifically needs BOTH camera and
+    // location, unlike other modules which will only ever ask for location.
+    final permissionState = await _permissionService.requestCameraAndLocation();
+    if (permissionState != CameraAndLocationPermissionState.granted) {
       state = ARViewState.permissionDenied;
       errorMessage = switch (permissionState) {
-        PermissionState.cameraDenied => 'Camera access is required to use the AR feature.',
-        PermissionState.locationDenied => 'Location access is required to use the AR feature.',
-        PermissionState.bothDenied => 'Camera and Location access are required to use the AR feature.',
-        PermissionState.granted => null,
+        CameraAndLocationPermissionState.cameraDenied =>
+        'Camera access is required to use the AR feature.',
+        CameraAndLocationPermissionState.locationDenied =>
+        'Location access is required to use the AR feature.',
+        CameraAndLocationPermissionState.bothDenied =>
+        'Camera and Location access are required to use the AR feature.',
+        CameraAndLocationPermissionState.granted => null,
       };
       notifyListeners();
       return;

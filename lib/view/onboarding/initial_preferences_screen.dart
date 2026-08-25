@@ -213,7 +213,7 @@ class _ChipWrap extends StatelessWidget {
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
             fontSize: 13,
           ),
-          side: BorderSide(color: isSelected ? AppColors.accent : AppColors.border),
+          side: BorderSide(color: isSelected ? AppColors.accent : AppColors.moduleBorder),
         );
       }).toList(),
     );

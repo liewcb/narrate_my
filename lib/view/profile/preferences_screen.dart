@@ -228,7 +228,7 @@ class _ChipSection extends StatelessWidget {
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   fontSize: 13,
                 ),
-                side: BorderSide(color: isSelected ? color : AppColors.border),
+                side: BorderSide(color: isSelected ? color : AppColors.moduleBorder),
               );
             }).toList(),
           ),

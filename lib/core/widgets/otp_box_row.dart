@@ -82,25 +82,15 @@ class OtpBoxRowState extends State<OtpBoxRow> {
         return SizedBox(
           width: 44,
           height: 52,
-          // Was `KeyboardListener` sharing the SAME FocusNode as the
-          // TextField below it — that's invalid (two focus-owning widgets
-          // in a direct parent/child chain both claiming one FocusNode)
-          // and crashed every box with a build-time AssertionError, which
-          // is why the OTP screen showed a wall of red error text and
-          // nothing was tappable. `Focus` is the right primitive for
-          // "listen for key events over this subtree without owning the
-          // node the descendant TextField needs" — it lets its own
-          // implicit node bubble-listen without conflicting.
-          child: Focus(
-            onKeyEvent: (node, event) {
+          child: KeyboardListener(
+            focusNode: _focusNodes[i],
+            onKeyEvent: (event) {
               if (event is KeyDownEvent &&
                   event.logicalKey == LogicalKeyboardKey.backspace) {
                 _handleBackspace(i);
-                return KeyEventResult.handled;
               }
-              return KeyEventResult.ignored;
             },
-            child:TextField(
+            child: TextField(
               controller: _controllers[i],
               focusNode: _focusNodes[i],
               textAlign: TextAlign.center,
@@ -116,7 +106,7 @@ class OtpBoxRowState extends State<OtpBoxRow> {
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
-                    color: widget.hasError ? AppColors.error : AppColors.border,
+                    color: widget.hasError ? AppColors.error : AppColors.moduleBorder,
                     width: 1.5,
                   ),
                 ),
