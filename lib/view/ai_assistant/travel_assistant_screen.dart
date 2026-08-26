@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-/// UI layer for UC500: AI Travel Assistant.
-///
-/// The ViewModel will later replace the local message list with Gemini and
-/// Supabase-backed conversation data.
-class TravelAssistantScreen extends StatefulWidget {
+import '../../core/theme/app_theme.dart';
+import '../../model/entities/ai_attraction_context.dart';
+import '../../model/entities/ai_chat_message.dart';
+import '../../viewmodel/ai_assistant/ai_travel_assistant_view_model.dart';
+
+/// UC500 chat screen. Gemini is called securely through a Supabase Edge
+/// Function; no Gemini key exists in Flutter code.
+class TravelAssistantScreen extends StatelessWidget {
   const TravelAssistantScreen({
     super.key,
     this.attractionId,
@@ -17,25 +21,35 @@ class TravelAssistantScreen extends StatefulWidget {
   final String contextSource;
 
   @override
-  State<TravelAssistantScreen> createState() => _TravelAssistantScreenState();
+  Widget build(BuildContext context) {
+    final cleanName = attractionName?.trim();
+    final hasContext = attractionId != null || (cleanName?.isNotEmpty ?? false);
+
+    return ChangeNotifierProvider(
+      create: (_) => AiTravelAssistantViewModel(
+        initialContext: hasContext
+            ? AiAttractionContext(
+          attractionId: attractionId,
+          attractionName: cleanName,
+          source: contextSource,
+        )
+            : null,
+      ),
+      child: const _TravelAssistantView(),
+    );
+  }
 }
 
-class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
-  final _inputController = TextEditingController();
-  final _scrollController = ScrollController();
-
-  late List<_ChatMessage> _messages;
+class _TravelAssistantView extends StatefulWidget {
+  const _TravelAssistantView();
 
   @override
-  void initState() {
-    super.initState();
-    _messages = [
-      const _ChatMessage(
-        text: 'Here’s Manja, Your AI Travel Assistant!',
-        sender: _MessageSender.assistant,
-      ),
-    ];
-  }
+  State<_TravelAssistantView> createState() => _TravelAssistantViewState();
+}
+
+class _TravelAssistantViewState extends State<_TravelAssistantView> {
+  final _inputController = TextEditingController();
+  final _scrollController = ScrollController();
 
   @override
   void dispose() {
@@ -44,31 +58,13 @@ class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
     super.dispose();
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final question = _inputController.text.trim();
+    if (question.isNotEmpty) _inputController.clear();
 
-    if (question.isEmpty) {
-      setState(() {
-        _messages.add(
-          const _ChatMessage(
-            text: 'Please type a question before sending.',
-            sender: _MessageSender.system,
-          ),
-        );
-      });
-      _scrollToBottom();
-      return;
-    }
-
-    setState(() {
-      _messages.add(
-        _ChatMessage(text: question, sender: _MessageSender.tourist),
-      );
-    });
-    _inputController.clear();
+    await context.read<AiTravelAssistantViewModel>().sendQuestion(question);
+    if (!mounted) return;
     _scrollToBottom();
-
-    // TODO: AITravelAssistantViewModel.sendQuestion(...)
   }
 
   Future<void> _resetConversation() async {
@@ -92,29 +88,21 @@ class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
       ),
     );
 
-    if (shouldReset != true || !mounted) return;
-
-    setState(() {
-      _messages = [
-        const _ChatMessage(
-          text: 'Here’s Manja, Your AI Travel Assistant!',
-          sender: _MessageSender.assistant,
-        ),
-      ];
-    });
+    if (shouldReset == true && mounted) {
+      context.read<AiTravelAssistantViewModel>().resetConversation();
+    }
   }
 
-  void _searchConversation() {
+  void _searchConversation(List<AiChatMessage> messages) {
     showSearch<void>(
       context: context,
-      delegate: _ConversationSearchDelegate(messages: _messages),
+      delegate: _ConversationSearchDelegate(messages: messages),
     );
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
-
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 250),
@@ -125,84 +113,85 @@ class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final attractionName = widget.attractionName?.trim();
+    final vm = context.watch<AiTravelAssistantViewModel>();
+    final attractionName = vm.attractionContext?.attractionName?.trim();
 
     return Scaffold(
-      backgroundColor: _TravelAssistantColors.background,
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(),
+            _buildHeader(vm.messages),
             if (attractionName != null && attractionName.isNotEmpty)
               _buildAttractionContext(attractionName),
-            Expanded(child: _buildMessageList()),
-            _buildInputBar(),
+            Expanded(child: _buildMessageList(vm)),
+            _buildInputBar(vm.isSending),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(List<AiChatMessage> messages) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.black, width: 1)),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Back',
-            icon: const Icon(Icons.chevron_left, size: 28),
-            onPressed: () => Navigator.of(context).maybePop(),
-          ),
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: const BoxDecoration(
-                    color: _TravelAssistantColors.teal,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.chat_bubble_outline,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  'Travel Assistant',
-                  style: TextStyle(
-                    color: _TravelAssistantColors.teal,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Search conversation',
-            icon: const Icon(Icons.search),
-            onPressed: _searchConversation,
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: _TravelAssistantColors.teal,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: IconButton(
-              tooltip: 'Reset conversation',
-              icon: const Icon(Icons.refresh, color: Colors.white),
-              onPressed: _resetConversation,
-            ),
-          ),
-        ],
-      ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    decoration: const BoxDecoration(
+    border: Border(bottom: BorderSide(color: AppColors.moduleBorder)),
+    ),
+    child: Row(
+    children: [
+    IconButton(
+    tooltip: 'Back',
+    icon: const Icon(Icons.chevron_left, size: 28),
+    onPressed: () => Navigator.of(context).maybePop(),
+    ),
+    Expanded(
+    child: Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+    Container(
+    width: 36,
+    height: 36,
+    decoration: const BoxDecoration(
+    color: AppColors.primary,
+    shape: BoxShape.circle,
+    ),
+    child: const Icon(
+    Icons.chat_bubble_outline,
+    color: AppColors.surface,
+    size: 18,
+    ),
+    ),
+    const SizedBox(width: 10),
+    const Text(
+    'Travel Assistant',
+    style: TextStyle(
+    color: AppColors.primary,
+    fontSize: 22,
+    fontWeight: FontWeight.bold,
+    ),
+    ),
+    ],
+    ),
+    ),
+    IconButton(
+    tooltip: 'Search conversation',
+    icon: const Icon(Icons.search),
+    onPressed: () => _searchConversation(messages),
+    ),
+    Container(
+    decoration: BoxDecoration(
+    color: AppColors.primary,
+    borderRadius: BorderRadius.circular(10),
+    ),
+    child: IconButton(
+    tooltip: 'Reset conversation',
+    icon: const Icon(Icons.refresh, color: AppColors.surface),
+    onPressed: _resetConversation,
+    ),
+    ),
+    ],
+    ),
     );
   }
 
@@ -212,15 +201,15 @@ class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFE5EFED),
+        color: AppColors.surface2,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFB8D0CC)),
+        border: Border.all(color: AppColors.moduleBorder),
       ),
       child: Row(
         children: [
           const Icon(
             Icons.location_on_outlined,
-            color: _TravelAssistantColors.teal,
+            color: AppColors.primary,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -229,7 +218,7 @@ class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: _TravelAssistantColors.textDark,
+                color: AppColors.ink,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -239,32 +228,36 @@ class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
     );
   }
 
-  Widget _buildMessageList() {
+  Widget _buildMessageList(AiTravelAssistantViewModel vm) {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      itemCount: _messages.length,
-      itemBuilder: (context, index) => _ChatBubble(message: _messages[index]),
+      itemCount: vm.messages.length + (vm.isSending ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == vm.messages.length) return const _TypingBubble();
+        return _ChatBubble(message: vm.messages[index]);
+      },
     );
   }
 
-  Widget _buildInputBar() {
+  Widget _buildInputBar(bool isSending) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0x22000000))),
+        border: Border(top: BorderSide(color: AppColors.moduleBorder)),
       ),
       child: Row(
         children: [
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: _TravelAssistantColors.bubbleBorder),
+                border: Border.all(color: AppColors.moduleBorder),
               ),
               child: TextField(
                 controller: _inputController,
+                enabled: !isSending,
                 textCapitalization: TextCapitalization.sentences,
                 minLines: 1,
                 maxLines: 4,
@@ -272,7 +265,7 @@ class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
                 decoration: const InputDecoration(
                   hintText: 'Ask something... (e.g. History of A Famosa)',
                   hintStyle: TextStyle(
-                    color: _TravelAssistantColors.hintGray,
+                    color: AppColors.inkFaint,
                     fontSize: 15,
                   ),
                   border: InputBorder.none,
@@ -289,16 +282,26 @@ class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
             button: true,
             label: 'Send question',
             child: InkWell(
-              onTap: _sendMessage,
+              onTap: isSending ? null : _sendMessage,
               borderRadius: BorderRadius.circular(30),
               child: Ink(
                 width: 48,
                 height: 48,
-                decoration: const BoxDecoration(
-                  color: _TravelAssistantColors.orange,
+                decoration: BoxDecoration(
+                  color: isSending
+                      ? AppColors.inkFaint
+                      : AppColors.accent,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.arrow_upward, color: Colors.white),
+                child: isSending
+                    ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.surface,
+                  ),
+                )
+                    : const Icon(Icons.arrow_upward, color: AppColors.surface),
               ),
             ),
           ),
@@ -311,24 +314,22 @@ class _TravelAssistantScreenState extends State<TravelAssistantScreen> {
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({required this.message});
 
-  final _ChatMessage message;
+  final AiChatMessage message;
 
   @override
   Widget build(BuildContext context) {
-    final isTourist = message.sender == _MessageSender.tourist;
-    final isSystem = message.sender == _MessageSender.system;
-
+    final isTourist = message.sender == AiChatMessageSender.tourist;
+    final isSystem = message.sender == AiChatMessageSender.system;
     final bubbleColor = isTourist
-        ? _TravelAssistantColors.teal
+        ? AppColors.primary
         : isSystem
-        ? const Color(0xFFFFE9D7)
-        : Colors.white;
-
+        ? AppColors.accentSoft
+        : AppColors.surface;
     final textColor = isTourist
-        ? Colors.white
+        ? AppColors.surface
         : isSystem
-        ? const Color(0xFF8A4A23)
-        : _TravelAssistantColors.textDark;
+        ? AppColors.accentDark
+        : AppColors.ink;
 
     return Align(
       alignment: isTourist ? Alignment.centerRight : Alignment.centerLeft,
@@ -343,7 +344,7 @@ class _ChatBubble extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           border: isTourist
               ? null
-              : Border.all(color: _TravelAssistantColors.bubbleBorder),
+              : Border.all(color: AppColors.moduleBorder),
         ),
         child: Text(
           message.text,
@@ -354,48 +355,59 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-enum _MessageSender { tourist, assistant, system }
+class _TypingBubble extends StatelessWidget {
+  const _TypingBubble();
 
-class _ChatMessage {
-  const _ChatMessage({required this.text, required this.sender});
-
-  final String text;
-  final _MessageSender sender;
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.moduleBorder),
+        ),
+        child: const SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    );
+  }
 }
 
 class _ConversationSearchDelegate extends SearchDelegate<void> {
   _ConversationSearchDelegate({required this.messages});
 
-  final List<_ChatMessage> messages;
+  final List<AiChatMessage> messages;
 
-  List<_ChatMessage> get _matches {
+  List<AiChatMessage> get _matches {
     final keyword = query.trim().toLowerCase();
     if (keyword.isEmpty) return const [];
-
     return messages
         .where((message) => message.text.toLowerCase().contains(keyword))
         .toList();
   }
 
   @override
-  List<Widget>? buildActions(BuildContext context) {
-    return [
-      IconButton(
-        tooltip: 'Clear search',
-        icon: const Icon(Icons.clear),
-        onPressed: () => query = '',
-      ),
-    ];
-  }
+  List<Widget>? buildActions(BuildContext context) => [
+    IconButton(
+      tooltip: 'Clear search',
+      icon: const Icon(Icons.clear),
+      onPressed: () => query = '',
+    ),
+  ];
 
   @override
-  Widget? buildLeading(BuildContext context) {
-    return IconButton(
-      tooltip: 'Close search',
-      icon: const Icon(Icons.arrow_back),
-      onPressed: () => close(context, null),
-    );
-  }
+  Widget? buildLeading(BuildContext context) => IconButton(
+    tooltip: 'Close search',
+    icon: const Icon(Icons.arrow_back),
+    onPressed: () => close(context, null),
+  );
 
   @override
   Widget buildResults(BuildContext context) => _buildMatches();
@@ -405,19 +417,12 @@ class _ConversationSearchDelegate extends SearchDelegate<void> {
 
   Widget _buildMatches() {
     final matches = _matches;
-
     if (query.trim().isEmpty) {
-      return const Center(
-        child: Text('Search messages in this conversation.'),
-      );
+      return const Center(child: Text('Search messages in this conversation.'));
     }
-
     if (matches.isEmpty) {
-      return const Center(
-        child: Text('No matches found in this conversation.'),
-      );
+      return const Center(child: Text('No matches found in this conversation.'));
     }
-
     return ListView.separated(
       itemCount: matches.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
@@ -425,7 +430,7 @@ class _ConversationSearchDelegate extends SearchDelegate<void> {
         final message = matches[index];
         return ListTile(
           leading: Icon(
-            message.sender == _MessageSender.tourist
+            message.sender == AiChatMessageSender.tourist
                 ? Icons.person_outline
                 : Icons.smart_toy_outlined,
           ),
@@ -436,11 +441,3 @@ class _ConversationSearchDelegate extends SearchDelegate<void> {
   }
 }
 
-class _TravelAssistantColors {
-  static const background = Color(0xFFF6F1E7);
-  static const teal = Color(0xFF2E6B67);
-  static const orange = Color(0xFFE08A4B);
-  static const bubbleBorder = Color(0xFFE3DDCF);
-  static const textDark = Color(0xFF1F2E2C);
-  static const hintGray = Color(0xFF9B978C);
-}
