@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
-import '../../ar_heritage_interpretation/ar_heritage_interpretation_view.dart';
 import 'video_player_overlay.dart';
 
 /// Action Menu shown after Avatar is placed on plane
@@ -57,7 +56,7 @@ class ARActionMenu extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
 
-                  // Secondary action buttons (Watch Video, Heritage / Recommend)
+                  // Secondary action buttons (Watch Video, Recommend)
                   Row(
                     children: [
                       Expanded(
@@ -104,15 +103,7 @@ class ARActionMenu extends StatelessWidget {
                               ),
                             ),
                             onPressed: () {
-                              final marker = context.read<ARPlacementViewModel>().selectedMarker;
-                              if (marker != null) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ARHeritageInterpretationView(marker: marker),
-                                  ),
-                                );
-                              }
+                              // Recommendation
                             },
                             icon: const Icon(Icons.recommend_outlined, size: 18),
                             label: const Text("Recommend", style: TextStyle(fontSize: 13)),

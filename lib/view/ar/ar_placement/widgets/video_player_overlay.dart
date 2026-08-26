@@ -73,7 +73,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         showLiveFullscreenButton: true,
         forceHD: false,
         useHybridComposition: true,
-        controlsVisibleAtStart: true,
+        controlsVisibleAtStart: false,
+        hideThumbnail: true,
         loop: false,
       ),
     )..addListener(_listener);
@@ -174,6 +175,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       player: YoutubePlayer(
         controller: _controller!,
         showVideoProgressIndicator: true,
+        bufferIndicator: const SizedBox.shrink(),
         progressIndicatorColor: accentOrange,
         progressColors: const ProgressBarColors(
           playedColor: accentOrange,

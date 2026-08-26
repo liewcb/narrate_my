@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../entities/ar_placement.dart';
 import '../../repositories/interfaces/ar_heritage_repository.dart';
-import '../../repositories/adapters/ar_heritage_repository_adapter.dart';
+import '../ar_heritage_interpretation_service/get_attraction_content_service.dart';
 import '../../data_sources/remote/auth_remote_data_source.dart';
 
 /// Business logic service matching `PlayNarrationService` in architecture diagram.
@@ -17,7 +17,7 @@ import '../../data_sources/remote/auth_remote_data_source.dart';
 /// - If not logged in -> defaults strictly to 'en'
 class PlayNarrationService {
   final FlutterTts? _flutterTts;
-  final ARHeritageRepository _heritageRepo;
+  final GetAttractionContentService _contentService;
   final AuthRemoteDataSource _authDataSource;
 
   StoryScript? _currentScript;
@@ -33,10 +33,14 @@ class PlayNarrationService {
 
   PlayNarrationService({
     FlutterTts? flutterTts,
+    GetAttractionContentService? contentService,
     ARHeritageRepository? heritageRepo,
     AuthRemoteDataSource? authDataSource,
   })  : _flutterTts = flutterTts ?? FlutterTts(),
-        _heritageRepo = heritageRepo ?? SupabaseARHeritageRepositoryAdapter(),
+        _contentService = contentService ??
+            (heritageRepo != null
+                ? GetAttractionContentService(repository: heritageRepo)
+                : GetAttractionContentService()),
         _authDataSource = authDataSource ?? AuthRemoteDataSource() {
     _initTts();
   }
@@ -116,7 +120,10 @@ class PlayNarrationService {
       _currentScript = initialScript;
     } else {
       try {
-        _currentScript = await _heritageRepo.getHeritageStory(markerId, landmarkName);
+        _currentScript = await _contentService.fetchContent(
+          markerId: markerId,
+          landmarkName: landmarkName,
+        );
       } catch (e) {
         _currentScript = StoryScript.defaultForMarker(markerId, landmarkName);
       }

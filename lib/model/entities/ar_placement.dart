@@ -150,7 +150,7 @@ class ARAvatarConfig {
   factory ARAvatarConfig.defaultManja({
     String modelUri = 'assets/images/3dmodel/manja.glb',
     NodeType nodeType = NodeType.localGLB,
-    double yawDegrees = -15.0, // Calibrated so Manja faces directly forward towards user
+    double yawDegrees = 0.0,
   }) {
     return ARAvatarConfig(
       modelUri: modelUri,
@@ -158,7 +158,7 @@ class ARAvatarConfig {
       scale: vector.Vector3(0.01, 0.01, 0.01),
       position: vector.Vector3(0, 0, 0),
       eulerAngles: vector.Vector3(
-        vector.radians(-90),
+        0,
         vector.radians(yawDegrees),
         0,
       ),
@@ -172,7 +172,7 @@ class ARAvatarConfig {
       scale: scale,
       position: position,
       eulerAngles: vector.Vector3(
-        vector.radians(-90),
+        0,
         vector.radians(newYawDegrees),
         0,
       ),

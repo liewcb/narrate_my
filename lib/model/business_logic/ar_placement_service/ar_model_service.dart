@@ -5,7 +5,7 @@ import '../../entities/ar_placement.dart';
 
 /// High-performance Service managing 3D GLB model preparation and pre-caching
 class ARModelService {
-  static const String _originalAssetPath = 'assets/manja.glb';
+  static const String _originalAssetPath = 'assets/images/3dmodel/manja.glb';
 
   /// Prepares avatar config instantly using native AAssetManager memory-mapping (0ms latency).
   Future<ARAvatarConfig> prepareAvatarConfig() async {

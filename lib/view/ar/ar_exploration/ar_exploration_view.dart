@@ -73,6 +73,48 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
                 onPressed: () => setState(() => _showDebugHud = !_showDebugHud),
               ),
             ),
+            // Testing for Marker
+            /*
+            Positioned(
+              bottom: 25,
+              left: 20,
+              right: 20,
+              child: Center(
+                child: SizedBox(
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      elevation: 6,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                    ),
+                    icon: const Icon(Icons.science_outlined, size: 20),
+                    onPressed: () {
+                      const dummyMarker = ARMarker(
+                        markerId: 'MK003',
+                        latitude: 3.15750,
+                        longitude: 101.71160,
+                        name: 'The Skybridge',
+                        activationRadiusMeters: 80,
+                      );
+                      _navigateToPlacement(context, dummyMarker);
+                    },
+                    label: const Text(
+                      '🧪 Test AR Placement (Mock Marker)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            */
             if (_showDebugHud) _DebugHud(vm: vm),
           ],
         ),

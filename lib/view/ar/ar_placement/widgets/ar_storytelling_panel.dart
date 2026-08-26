@@ -30,8 +30,6 @@ class ARStorytellingPanel extends StatelessWidget {
         modelPath: vm.model3dPath,
       ),
       builder: (context, data, _) {
-        if (!data.hasStarted) return const SizedBox.shrink();
-
         final isPlaying = data.playbackState == StoryPlaybackState.playing;
         final isPaused = data.playbackState == StoryPlaybackState.paused;
 
@@ -41,34 +39,45 @@ class ARStorytellingPanel extends StatelessWidget {
         final IconData actionIcon = isPlaying ? Icons.pause : Icons.play_arrow;
 
         return Positioned.fill(
-          child: Padding(
-            padding: EdgeInsets.only(
-              top: topPadding,
-              bottom: 16,
-              left: 16,
-              right: 16,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 1. Top Subtitle Box (Auto-resizes based on text length, NEVER overlaps!)
-                _buildSubtitleCard(context, data, accentOrange, isPlaying, isPaused),
+          child: Visibility(
+            visible: data.hasStarted,
+            maintainState: true,
+            maintainAnimation: true,
+            maintainSize: false,
+            maintainSemantics: false,
+            maintainInteractivity: false,
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: topPadding,
+                bottom: 16,
+                left: 16,
+                right: 16,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. Top Subtitle Box (Auto-resizes based on text length, NEVER overlaps!)
+                  _buildSubtitleCard(context, data, accentOrange, isPlaying, isPaused),
 
-                // 2. 3D Model Viewport (Takes all remaining flexible vertical space!)
-                if (data.show3d) ...[
-                  const SizedBox(height: 10),
+                  // 2. 3D Model Viewport (Prewarmed with maintainState for 0ms instant display!)
                   Expanded(
-                    child: _build3DModelCard(data),
+                    child: Visibility(
+                      visible: data.show3d,
+                      maintainState: true,
+                      maintainAnimation: true,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: _build3DModelCard(data),
+                      ),
+                    ),
                   ),
-                ] else ...[
-                  const Spacer(),
+
+                  const SizedBox(height: 12),
+
+                  // 3. Bottom Play / Pause / Resume / Stop Controls
+                  _buildBottomControls(context, isPlaying, actionIcon, actionLabel),
                 ],
-
-                const SizedBox(height: 12),
-
-                // 3. Bottom Play / Pause / Resume / Stop Controls
-                _buildBottomControls(context, isPlaying, actionIcon, actionLabel),
-              ],
+              ),
             ),
           ),
         );
@@ -165,7 +174,7 @@ class ARStorytellingPanel extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          color: const Color(0xFF1B2A2B).withValues(alpha: 0.88),
+          color: const Color(0xFF1B2A2B),
           border: Border.all(
             color: Colors.white.withValues(alpha: 0.2),
           ),
@@ -177,7 +186,6 @@ class ARStorytellingPanel extends StatelessWidget {
             ),
           ],
         ),
-        clipBehavior: Clip.antiAlias,
         child: hasModel
             ? ModelViewer(
                 key: ValueKey('3d_viewer_$modelPath'),
@@ -186,8 +194,9 @@ class ARStorytellingPanel extends StatelessWidget {
                 ar: false,
                 autoRotate: false,
                 cameraControls: true,
-                backgroundColor: Colors.transparent,
+                disablePan: true,
                 disableZoom: false,
+                backgroundColor: const Color(0xFF1B2A2B),
                 loading: Loading.eager,
                 interactionPrompt: InteractionPrompt.auto,
                 shadowIntensity: 0.0,

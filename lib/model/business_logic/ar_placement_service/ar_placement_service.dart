@@ -22,7 +22,7 @@ class ARPlacementService {
   PlayNarrationService get narrationService => _narrationService;
 
   /// Selects the best hit test result, ensuring:
-  /// 1. Only verified horizontal plane surfaces are accepted (ignoring walls / floating points).
+  /// 1. Only verified horizontal plane surfaces are accepted (ignoring walls and steep diagonal bridging planes).
   /// 2. Enforces a comfortable minimum safe distance (>= minDistanceMeters, default 0.60m)
   ///    so the 3D avatar never spawns directly in the user's face.
   ARHitTestResult? selectBestHitTest(
@@ -31,7 +31,13 @@ class ARPlacementService {
   }) {
     if (results.isEmpty) return null;
 
-    final planeHits = results.where((hit) => hit.type == ARHitTestResultType.plane).toList();
+    // Filter for genuine horizontal plane surfaces (normal vector Y >= 0.70, rejecting steep accidental bridges)
+    final planeHits = results.where((hit) {
+      if (hit.type != ARHitTestResultType.plane) return false;
+      final normalY = hit.worldTransform.getColumn(1).y.abs();
+      return normalY >= 0.70; // Must be predominantly horizontal (<= 45° slope)
+    }).toList();
+
     if (planeHits.isEmpty) return null;
 
     // 1. Prioritize plane hit points within comfortable viewing distance (0.8m ~ 1.5m)
@@ -52,9 +58,34 @@ class ARPlacementService {
     return planeHits.first;
   }
 
-  /// Builds the ARPlaneAnchor from a verified plane hit test transform
+  /// Builds a strictly upright, gravity-aligned ARPlaneAnchor that directly faces the tourist.
+  /// 1. Locks pitch and roll to 0 (Up vector = [0, 1, 0]) so Manja ALWAYS stands straight upright.
+  /// 2. Calculates the horizontal look direction from the avatar's position directly towards
+  ///    the user's device camera so Manja ALWAYS faces the tourist.
   ARPlaneAnchor createAnchor(ARHitTestResult hitResult) {
-    return ARPlaneAnchor(transformation: hitResult.worldTransform);
+    final position = hitResult.worldTransform.getTranslation();
+
+    // Direction vector from avatar towards user camera on horizontal plane
+    final toCamera = vector.Vector3(-position.x, 0, -position.z);
+    final forward = toCamera.length2 > 0.0001
+        ? toCamera.normalized()
+        : vector.Vector3(0, 0, 1);
+
+    // Gravity-aligned vertical Up vector
+    final up = vector.Vector3(0, 1, 0);
+
+    // Right-handed coordinate basis (det = +1.0, eliminating shear and lateral slant)
+    final right = forward.cross(up)..normalize();
+    final actualUp = right.cross(forward)..normalize();
+
+    // Construct level 4x4 matrix facing the user
+    final levelTransform = vector.Matrix4.identity()
+      ..setColumn(0, vector.Vector4(right.x, right.y, right.z, 0))
+      ..setColumn(1, vector.Vector4(actualUp.x, actualUp.y, actualUp.z, 0))
+      ..setColumn(2, vector.Vector4(forward.x, forward.y, forward.z, 0))
+      ..setColumn(3, vector.Vector4(position.x, position.y, position.z, 1));
+
+    return ARPlaneAnchor(transformation: levelTransform);
   }
 
   /// Builds the ARNode using the prepared/cached avatar configuration
