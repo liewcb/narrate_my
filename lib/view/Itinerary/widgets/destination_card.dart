@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../model/entities/destination.dart';
+
 /// A tappable image card representing a single destination.
 /// Shows a check badge when [isSelected] is true and a primary-colour
 /// border via [Card.shape].
