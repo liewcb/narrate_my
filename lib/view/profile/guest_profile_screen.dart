@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
-import '../auth/login_screen.dart';
-import '../auth/register_screen.dart';
-import '../widgets/primary_button.dart';
+import 'auth/login_screen.dart';
+import 'auth/register_screen.dart';
+import 'widgets/primary_button.dart';
 
 /// Shown on the Profile tab when no one is logged in. Guests can still
 /// freely browse AR/Itinerary/Nearby (this gating only applies to the
@@ -13,8 +16,9 @@ class GuestProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.profile'))),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -23,28 +27,27 @@ class GuestProfileScreen extends StatelessWidget {
             children: [
               const Icon(Icons.account_circle_outlined, size: 88, color: AppColors.inkFaint),
               const SizedBox(height: 20),
-              const Text(
-                "You're browsing as a guest",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.ink),
+              Text(
+                AppLocalizations.t('ui.guestBrowsing'),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.ink),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Log in or create an account to save your preferences, bookmarks, '
-                'and preferred language.',
+              Text(
+                AppLocalizations.t('ui.guestSubtitle'),
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: AppColors.inkSoft, height: 1.4),
+                style: const TextStyle(fontSize: 14, color: AppColors.inkSoft, height: 1.4),
               ),
               const SizedBox(height: 28),
               PrimaryButton(
-                label: 'Log In',
+                label: AppLocalizations.t('ui.login'),
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const LoginScreen()),
                 ),
               ),
               const SizedBox(height: 12),
               SecondaryButton(
-                label: 'Create Account',
+                label: AppLocalizations.t('ui.createAccount'),
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const RegisterScreen()),
                 ),

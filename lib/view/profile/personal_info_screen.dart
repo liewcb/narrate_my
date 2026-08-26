@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
-import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../viewmodel/profile_viewmodel/otp_vm.dart';
 import '../../viewmodel/profile_viewmodel/personal_info_vm.dart';
-import '../auth/otp_screen.dart';
-import '../widgets/phone_field.dart';
-import '../widgets/primary_button.dart';
-import '../widgets/underline_field.dart';
+import 'auth/otp_screen.dart';
 import 'change_password_screen.dart';
+import 'widgets/phone_field.dart';
+import 'widgets/primary_button.dart';
+import 'widgets/underline_field.dart';
 
 /// UC402 A2 (Manage Personal Information). Full Name/Bio are the section's
 /// own atomic Save/Cancel (REQ_503_11); phone number change (A9) and
@@ -60,7 +62,7 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
     final ok = await vm.save(fullName: _fullNameController.text, bio: _bioController.text);
     if (ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
+          .showSnackBar(SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
     }
   }
 
@@ -93,8 +95,8 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Change Phone Number',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              Text(AppLocalizations.t('ui.changePhoneNumber'),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               const SizedBox(height: 16),
               PhoneField(
                 localNumberController: _newPhoneController,
@@ -106,7 +108,7 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
               ],
               const SizedBox(height: 20),
               PrimaryButton(
-                label: 'Send OTP',
+                label: AppLocalizations.t('ui.sendOtp'),
                 isLoading: vm.isSaving,
                 onPressed: () async {
                   final ok = await vm.sendPhoneChangeOtp(_newPhoneE164);
@@ -136,7 +138,7 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
     final ok = await vm.linkGoogleAccount();
     if (ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m12GoogleLinkedSuccessfully)));
+          .showSnackBar(SnackBar(content: Text(ProfileMessages.m12GoogleLinkedSuccessfully)));
     }
   }
 
@@ -145,16 +147,16 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Unlink Google Account'),
-        content: const Text(ProfileMessages.m19ConfirmUnlinkGoogle),
+        title: Text(AppLocalizations.t('ui.unlinkGoogleAccount')),
+        content: Text(ProfileMessages.m19ConfirmUnlinkGoogle),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.t('ui.cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Unlink', style: TextStyle(color: AppColors.error)),
+            child: Text(AppLocalizations.t('ui.unlink'), style: const TextStyle(color: AppColors.error)),
           ),
         ],
       ),
@@ -166,16 +168,17 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
     final ok = await vm.unlinkGoogleAccount();
     if (ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m20GoogleUnlinked)));
+          .showSnackBar(SnackBar(content: Text(ProfileMessages.m20GoogleUnlinked)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<PersonalInfoVm>();
+    context.watch<LocaleVm>();
     _syncControllers(vm);
     return Scaffold(
-      appBar: AppBar(title: const Text('Personal Info')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.personalInfo'))),
       body: SafeArea(
         child: vm.isLoading && vm.profile == null
             ? const Center(child: CircularProgressIndicator())
@@ -193,13 +196,13 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
                       const SizedBox(height: 20),
                     ],
                     UnderlineField(
-                      label: 'Full Name',
+                      label: AppLocalizations.t('ui.fullName'),
                       controller: _fullNameController,
                       errorText: vm.fieldError == 'fullName' ? vm.errorMessage : null,
                     ),
                     const SizedBox(height: 16),
                     UnderlineField(
-                      label: 'Bio',
+                      label: AppLocalizations.t('ui.bio'),
                       controller: _bioController,
                       textCapitalization: TextCapitalization.sentences,
                     ),
@@ -207,35 +210,41 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.phone_outlined, color: AppColors.ink),
-                      title: const Text('Phone Number'),
-                      subtitle: Text(vm.profile?.phone ?? 'Not set'),
+                      title: Text(AppLocalizations.t('ui.phoneNumber')),
+                      subtitle: Text(vm.profile?.phone ?? AppLocalizations.t('ui.notSet')),
                       trailing: TextButton(
                         onPressed: () => _changePhone(vm),
-                        child: Text(vm.profile?.phone == null ? 'Add' : 'Change'),
+                        child: Text(vm.profile?.phone == null
+                            ? AppLocalizations.t('ui.add')
+                            : AppLocalizations.t('ui.change')),
                       ),
                     ),
                     if (vm.profile?.hasPassword == true)
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.lock_outline, color: AppColors.ink),
-                        title: const Text('Password'),
+                        title: Text(AppLocalizations.t('ui.password')),
                         trailing: TextButton(
                           onPressed: () => Navigator.of(context).push(
                             MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
                           ),
-                          child: const Text('Change'),
+                          child: Text(AppLocalizations.t('ui.change')),
                         ),
                       ),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.account_circle_outlined, color: AppColors.ink),
-                      title: const Text('Google Account'),
-                      subtitle: Text(vm.profile?.hasGoogleLinked == true ? 'Linked' : 'Not linked'),
+                      title: Text(AppLocalizations.t('ui.googleAccount')),
+                      subtitle: Text(vm.profile?.hasGoogleLinked == true
+                          ? AppLocalizations.t('ui.linked')
+                          : AppLocalizations.t('ui.notLinked')),
                       trailing: TextButton(
                         onPressed: () => vm.profile?.hasGoogleLinked == true
                             ? _unlinkGoogle(vm)
                             : _linkGoogle(vm),
-                        child: Text(vm.profile?.hasGoogleLinked == true ? 'Unlink' : 'Link'),
+                        child: Text(vm.profile?.hasGoogleLinked == true
+                            ? AppLocalizations.t('ui.unlink')
+                            : AppLocalizations.t('ui.link')),
                       ),
                     ),
                     if (vm.errorMessage != null && vm.fieldError == null) ...[
@@ -244,12 +253,14 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
                     ],
                     const SizedBox(height: 28),
                     PrimaryButton(
-                      label: 'Save',
+                      label: AppLocalizations.t('ui.save'),
                       isLoading: vm.isSaving,
                       onPressed: () => _save(vm),
                     ),
                     const SizedBox(height: 10),
-                    OutlinedButton(onPressed: () => _cancel(vm), child: const Text('Cancel')),
+                    OutlinedButton(
+                        onPressed: () => _cancel(vm),
+                        child: Text(AppLocalizations.t('ui.cancel'))),
                   ],
                 ),
               ),

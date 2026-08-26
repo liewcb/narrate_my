@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/accessibility/accessibility_vm.dart';
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
-import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
-import '../../model/business_logic/profile_business_logic/preference_options.dart';
+import '../../model/business_logic/profile/messages/profile_messages.dart';
+import '../../model/business_logic/profile/preference_options.dart';
 import '../../model/entities/preferences.dart';
 import '../../viewmodel/profile_viewmodel/preferences_vm.dart';
-import '../widgets/attraction_tile.dart';
-import '../widgets/primary_button.dart';
-import '../widgets/toggle_preference_tile.dart';
+import 'widgets/attraction_tile.dart';
+import 'widgets/primary_button.dart';
+import 'widgets/toggle_preference_tile.dart';
 
 /// UC402 A3 (Manage Preferences). All categories are staged locally in
 /// this screen's own state and saved together, in one call, as the
@@ -70,7 +72,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
       await context.read<AccessibilityVm>().refresh();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
+          .showSnackBar(SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
     }
   }
 
@@ -85,15 +87,16 @@ class _PreferencesViewState extends State<_PreferencesView> {
       _exclusions = saved.categoryExclusions.toSet();
     });
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text(ProfileMessages.m5ChangesDiscarded)));
+        .showSnackBar(SnackBar(content: Text(ProfileMessages.m5ChangesDiscarded)));
   }
 
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<PreferencesVm>();
+    context.watch<LocaleVm>();
     if (vm.preferences != null) _syncFrom(vm.preferences!);
     return Scaffold(
-      appBar: AppBar(title: const Text('Preferences')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.preferences'))),
       body: SafeArea(
         child: vm.isLoading && vm.preferences == null
             ? const Center(child: CircularProgressIndicator())
@@ -102,7 +105,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _SectionLabel('Attraction & Activity Interests'),
+                    _SectionLabel(AppLocalizations.t('ui.attractionInterests')),
                     const SizedBox(height: 10),
                     AttractionTileGrid(
                       options: kAttractionCategories,
@@ -112,13 +115,13 @@ class _PreferencesViewState extends State<_PreferencesView> {
                     ),
                     const SizedBox(height: 22),
                     _ChipSection(
-                      title: 'Food & Cuisine Interests',
+                      title: AppLocalizations.t('ui.foodCuisine'),
                       options: kFoodCuisineOptions,
                       selected: _food,
                       onToggle: (v) => setState(() => _toggle(_food, v)),
                     ),
                     _ChipSection(
-                      title: 'Dietary Preferences',
+                      title: AppLocalizations.t('ui.dietaryPreferences'),
                       options: kDietaryOptions,
                       selected: _dietary,
                       onToggle: (v) => setState(() => _toggle(_dietary, v)),
@@ -129,7 +132,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
                       selected: _dietaryRestrictions,
                       onToggle: (v) => setState(() => _toggle(_dietaryRestrictions, v)),
                     ),
-                    _SectionLabel('Accessibility Preferences'),
+                    _SectionLabel(AppLocalizations.t('ui.accessibilityPreferences')),
                     const SizedBox(height: 10),
                     ...kAccessibilityOptions.map(
                       (option) => TogglePreferenceTile(
@@ -142,7 +145,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
                     ),
                     const SizedBox(height: 22),
                     _ChipSection(
-                      title: 'Attraction Categories to Exclude',
+                      title: AppLocalizations.t('ui.categoryExclusions'),
                       options: kAttractionCategories,
                       selected: _exclusions,
                       onToggle: (v) => setState(() => _toggle(_exclusions, v)),
@@ -153,11 +156,14 @@ class _PreferencesViewState extends State<_PreferencesView> {
                       Text(vm.errorMessage!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
                     ],
                     const SizedBox(height: 12),
-                    PrimaryButton(label: 'Save', isLoading: vm.isSaving, onPressed: () => _save(vm)),
+                    PrimaryButton(
+                        label: AppLocalizations.t('ui.save'),
+                        isLoading: vm.isSaving,
+                        onPressed: () => _save(vm)),
                     const SizedBox(height: 10),
                     OutlinedButton(
                       onPressed: () => _cancel(vm.preferences),
-                      child: const Text('Cancel'),
+                      child: Text(AppLocalizations.t('ui.cancel')),
                     ),
                   ],
                 ),

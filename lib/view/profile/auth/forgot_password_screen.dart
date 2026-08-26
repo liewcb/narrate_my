@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/theme/app_theme.dart';
-import '../../viewmodel/profile_viewmodel/otp_vm.dart';
-import '../../viewmodel/profile_viewmodel/reset_password_vm.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../model/business_logic/profile/messages/password_reset_messages.dart';
+import '../../../viewmodel/profile_viewmodel/otp_vm.dart';
+import '../../../viewmodel/profile_viewmodel/reset_password_vm.dart';
 import '../widgets/phone_field.dart';
 import '../widgets/primary_button.dart';
 import 'otp_screen.dart';
@@ -53,8 +56,9 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ResetPasswordVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Forgot Password')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.forgotPassword'))),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -62,9 +66,9 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 12),
-              const Text(
-                'Enter your registered phone number to reset your password.',
-                style: TextStyle(fontSize: 14.5, color: AppColors.inkSoft, height: 1.4),
+              Text(
+                PasswordResetMessages.m1EnterPhone,
+                style: const TextStyle(fontSize: 14.5, color: AppColors.inkSoft, height: 1.4),
               ),
               const SizedBox(height: 28),
               PhoneField(
@@ -74,7 +78,7 @@ class _ForgotPasswordViewState extends State<_ForgotPasswordView> {
               ),
               const SizedBox(height: 28),
               PrimaryButton(
-                label: 'Send OTP',
+                label: AppLocalizations.t('ui.sendOtp'),
                 isLoading: vm.isLoading,
                 onPressed: () => _submit(vm),
               ),

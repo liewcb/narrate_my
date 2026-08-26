@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/accessibility/accessibility_vm.dart';
 import 'core/config/app_config.dart';
+import 'core/localization/locale_vm.dart';
 import 'core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
 
@@ -20,8 +21,19 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AccessibilityVm(),
+    return MultiProvider(
+      // AccessibilityVm (REQ_503_6) and LocaleVm (UC402 A4 / REQ_201_2–5)
+      // are deliberately parallel: both are read once here at the
+      // `MaterialApp` root and applied app-wide — one via a MediaQuery
+      // text-scale override, the other via `AppLocalizations.currentCode` —
+      // so any screen (in Module 5 or, once a module adopts the same
+      // `AppLocalizations.t()` pattern, any other module) can watch either
+      // one directly and rebuild on change, without every ancestor between
+      // here and that screen needing to rebuild too.
+      providers: [
+        ChangeNotifierProvider(create: (_) => AccessibilityVm()),
+        ChangeNotifierProvider(create: (_) => LocaleVm()),
+      ],
       child: Builder(
         builder: (context) {
           // Kept OUTSIDE MaterialApp's own build so `context.watch` here
@@ -29,6 +41,12 @@ class MyApp extends StatelessWidget {
           // MediaQuery override below) on every AccessibilityVm change,
           // without needing a second Provider/Consumer layer.
           final accessibility = context.watch<AccessibilityVm>();
+          // Belt-and-suspenders: most screens watch LocaleVm themselves
+          // (Provider's InheritedNotifier lets them do that directly,
+          // regardless of whether this Builder or `AppRoutes` itself
+          // rebuilds), but watching it here too means a language change is
+          // never missed even by a screen that forgets to.
+          context.watch<LocaleVm>();
           return MaterialApp(
             title: 'narrate_my',
             theme: AppTheme.light,

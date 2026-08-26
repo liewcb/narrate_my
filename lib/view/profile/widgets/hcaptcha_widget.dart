@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import '../../core/config/app_config.dart';
-import '../../core/theme/app_theme.dart';
+import '../../../core/config/app_config.dart';
+import '../../../core/theme/app_theme.dart';
 
 /// Renders hCaptcha's own JS challenge inside a WebView and reports the
 /// solved token back via [onVerified]. There's no official Flutter SDK for

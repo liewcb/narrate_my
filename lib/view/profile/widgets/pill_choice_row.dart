@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../../core/theme/app_theme.dart';
 
 /// A row of mutually-exclusive "pill" options — used for Travel Preferences
 /// (Relaxed / Balanced / Adventure), the one single-select category in

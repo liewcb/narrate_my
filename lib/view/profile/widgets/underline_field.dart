@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../../core/theme/app_theme.dart';
 
 /// The uppercase-label, underline-only text field used across every auth
 /// form in the design canvas (Username, Password, Full Name, etc.) —

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/theme/app_theme.dart';
-import '../../viewmodel/profile_viewmodel/mandatory_details_vm.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../viewmodel/profile_viewmodel/mandatory_details_vm.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/underline_field.dart';
 import 'initial_preferences_screen.dart';
@@ -73,6 +75,7 @@ class _MandatoryDetailsViewState extends State<_MandatoryDetailsView> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<MandatoryDetailsVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tell Us About You'),
@@ -90,7 +93,7 @@ class _MandatoryDetailsViewState extends State<_MandatoryDetailsView> {
               ),
               const SizedBox(height: 28),
               UnderlineField(
-                label: 'Full Name',
+                label: AppLocalizations.t('ui.fullName'),
                 controller: _nameController,
                 textCapitalization: TextCapitalization.words,
               ),
@@ -98,9 +101,9 @@ class _MandatoryDetailsViewState extends State<_MandatoryDetailsView> {
               InkWell(
                 onTap: _pickDob,
                 child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Date of Birth',
-                    border: UnderlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: AppLocalizations.t('ui.dateOfBirth'),
+                    border: const UnderlineInputBorder(),
                   ),
                   child: Text(
                     _dob == null ? 'Select date' : _formatDob(_dob!),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../../core/theme/app_theme.dart';
 
 /// A single accessibility-preference row: an optional leading emoji, a
 /// title, a one-line description, and a trailing toggle switch — the

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/accessibility/accessibility_vm.dart';
-import '../../core/routes/app_routes.dart';
-import '../../core/theme/app_theme.dart';
-import '../../model/business_logic/profile_business_logic/preference_options.dart';
-import '../../model/entities/preferences.dart';
-import '../../viewmodel/profile_viewmodel/preferences_vm.dart';
+import '../../../core/accessibility/accessibility_vm.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
+import '../../../core/routes/app_routes.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../model/business_logic/profile/preference_options.dart';
+import '../../../model/entities/preferences.dart';
+import '../../../viewmodel/profile_viewmodel/preferences_vm.dart';
 import '../widgets/attraction_tile.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/toggle_preference_tile.dart';
@@ -86,6 +88,7 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<PreferencesVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -123,7 +126,7 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
                 onToggle: (v) => _toggle(_attraction, v),
               ),
               const SizedBox(height: 24),
-              const _SectionLabel('Food & Cuisine Interests'),
+              _SectionLabel(AppLocalizations.t('ui.foodCuisine')),
               const SizedBox(height: 10),
               _ChipWrap(
                 options: kFoodCuisineOptions,
@@ -131,7 +134,7 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
                 onToggle: (v) => _toggle(_food, v),
               ),
               const SizedBox(height: 22),
-              const _SectionLabel('Dietary Preferences'),
+              _SectionLabel(AppLocalizations.t('ui.dietaryPreferences')),
               const SizedBox(height: 10),
               _ChipWrap(
                 options: kDietaryOptions,
@@ -147,7 +150,7 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
                 onToggle: (v) => _toggle(_dietaryRestrictions, v),
               ),
               const SizedBox(height: 22),
-              const _SectionLabel('Accessibility Preferences'),
+              _SectionLabel(AppLocalizations.t('ui.accessibilityPreferences')),
               const SizedBox(height: 10),
               ...kAccessibilityOptions.map(
                 (option) => TogglePreferenceTile(

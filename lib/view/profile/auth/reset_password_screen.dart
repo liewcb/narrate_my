@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/theme/app_theme.dart';
-import '../../model/business_logic/profile_business_logic/messages/password_reset_messages.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../viewmodel/profile_viewmodel/reset_password_vm.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../model/business_logic/profile/messages/password_reset_messages.dart';
+import '../../../model/repositories/adapters/profile_adapter.dart';
+import '../../../viewmodel/profile_viewmodel/reset_password_vm.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/underline_field.dart';
 import 'login_screen.dart';
@@ -69,7 +71,7 @@ class _ResetPasswordViewState extends State<_ResetPasswordView> {
     );
     if (ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(PasswordResetMessages.m3ResetSuccessfully)),
+        SnackBar(content: Text(PasswordResetMessages.m3ResetSuccessfully)),
       );
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -81,8 +83,9 @@ class _ResetPasswordViewState extends State<_ResetPasswordView> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ResetPasswordVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Reset Password')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.resetPassword'))),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -96,13 +99,13 @@ class _ResetPasswordViewState extends State<_ResetPasswordView> {
               ),
               const SizedBox(height: 28),
               UnderlineField(
-                label: 'New Password',
+                label: AppLocalizations.t('ui.newPassword'),
                 controller: _passwordController,
                 obscureText: true,
               ),
               const SizedBox(height: 16),
               UnderlineField(
-                label: 'Confirm New Password',
+                label: AppLocalizations.t('ui.confirmNewPassword'),
                 controller: _confirmController,
                 obscureText: true,
               ),
@@ -115,7 +118,7 @@ class _ResetPasswordViewState extends State<_ResetPasswordView> {
               ],
               const SizedBox(height: 28),
               PrimaryButton(
-                label: 'Reset Password',
+                label: AppLocalizations.t('ui.resetPassword'),
                 isLoading: vm.isLoading,
                 onPressed: () => _submit(vm),
               ),

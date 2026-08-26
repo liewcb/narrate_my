@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
-import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../viewmodel/profile_viewmodel/language_vm.dart';
-import '../widgets/primary_button.dart';
+import 'widgets/primary_button.dart';
 
 /// UC402 A4 (Manage Preferred Language, C2). Selecting an option updates
 /// the on-screen radio state immediately (a "live preview" in the sense
@@ -30,22 +32,28 @@ class _LanguageView extends StatelessWidget {
   Future<void> _save(BuildContext context, LanguageVm vm) async {
     final ok = await vm.save();
     if (ok && context.mounted) {
+      // Applies the newly-saved language app-wide immediately (see
+      // `LocaleVm`) — same pattern as `PreferencesVm.save()` refreshing
+      // `AccessibilityVm` for REQ_503_6.
+      await context.read<LocaleVm>().refresh();
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
+          .showSnackBar(SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
     }
   }
 
   void _cancel(BuildContext context, LanguageVm vm) {
     vm.cancel();
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text(ProfileMessages.m5ChangesDiscarded)));
+        .showSnackBar(SnackBar(content: Text(ProfileMessages.m5ChangesDiscarded)));
   }
 
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<LanguageVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Language')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.language'))),
       body: SafeArea(
         child: vm.isLoading && vm.previewLanguageCode == null
             ? const Center(child: CircularProgressIndicator())
@@ -80,14 +88,14 @@ class _LanguageView extends StatelessWidget {
                     ],
                     const SizedBox(height: 16),
                     PrimaryButton(
-                      label: 'Save',
+                      label: AppLocalizations.t('ui.save'),
                       isLoading: vm.isSaving,
                       onPressed: () => _save(context, vm),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton(
                       onPressed: () => _cancel(context, vm),
-                      child: const Text('Cancel'),
+                      child: Text(AppLocalizations.t('ui.cancel')),
                     ),
                   ],
                 ),

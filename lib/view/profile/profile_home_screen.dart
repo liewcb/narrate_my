@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
-import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../viewmodel/profile_viewmodel/profile_vm.dart';
 import 'bookmarks_screen.dart';
 import 'language_screen.dart';
@@ -31,16 +33,16 @@ class _ProfileHomeView extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Log Out'),
+        title: Text(AppLocalizations.t('ui.logout')),
         content: const Text('Are you sure you want to log out?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.t('ui.cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Log Out', style: TextStyle(color: AppColors.error)),
+            child: Text(AppLocalizations.t('ui.logout'), style: const TextStyle(color: AppColors.error)),
           ),
         ],
       ),
@@ -83,12 +85,12 @@ class _ProfileHomeView extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Account'),
-        content: const Text(ProfileMessages.m22ConfirmDeleteAccount),
+        title: Text(AppLocalizations.t('ui.deleteAccount')),
+        content: Text(ProfileMessages.m22ConfirmDeleteAccount),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.t('ui.cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -102,7 +104,7 @@ class _ProfileHomeView extends StatelessWidget {
     if (!context.mounted) return;
     if (ok) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m23AccountDeleted)));
+          .showSnackBar(SnackBar(content: Text(ProfileMessages.m23AccountDeleted)));
       // Same auth-gate mechanism as logout: `ProfileScreen` listens for the
       // (now-invalidated) session to clear and swaps itself to
       // `GuestProfileScreen` on its own.
@@ -115,8 +117,9 @@ class _ProfileHomeView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ProfileVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.profile'))),
       body: SafeArea(
         child: vm.isLoading
             ? const Center(child: CircularProgressIndicator())
@@ -163,28 +166,28 @@ class _ProfileHomeView extends StatelessWidget {
                         const SizedBox(height: 28),
                         _SectionTile(
                           icon: Icons.badge_outlined,
-                          label: 'Personal Info',
+                          label: AppLocalizations.t('ui.personalInfo'),
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(builder: (_) => const PersonalInfoScreen()),
                           ),
                         ),
                         _SectionTile(
                           icon: Icons.tune,
-                          label: 'Preferences',
+                          label: AppLocalizations.t('ui.preferences'),
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(builder: (_) => const PreferencesScreen()),
                           ),
                         ),
                         _SectionTile(
                           icon: Icons.language,
-                          label: 'Language',
+                          label: AppLocalizations.t('ui.language'),
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(builder: (_) => const LanguageScreen()),
                           ),
                         ),
                         _SectionTile(
                           icon: Icons.bookmark_border,
-                          label: 'Bookmarks',
+                          label: AppLocalizations.t('ui.bookmarks'),
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute(builder: (_) => const BookmarksScreen()),
                           ),
@@ -194,13 +197,13 @@ class _ProfileHomeView extends StatelessWidget {
                         const SizedBox(height: 12),
                         _SectionTile(
                           icon: Icons.logout,
-                          label: 'Log Out',
+                          label: AppLocalizations.t('ui.logout'),
                           color: AppColors.error,
                           onTap: () => _logout(context, vm),
                         ),
                         _SectionTile(
                           icon: Icons.delete_outline,
-                          label: 'Delete Account',
+                          label: AppLocalizations.t('ui.deleteAccount'),
                           color: AppColors.error,
                           onTap: () => _deleteAccount(context, vm),
                         ),

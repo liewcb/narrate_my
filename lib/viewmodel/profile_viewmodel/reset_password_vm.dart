@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/errors/failures.dart';
-import '../../model/business_logic/profile_business_logic/messages/password_reset_messages.dart';
-import '../../model/business_logic/profile_business_logic/validators.dart';
+import '../../model/business_logic/profile/messages/password_reset_messages.dart';
+import '../../model/business_logic/profile/validators.dart';
 import '../../model/repositories/adapters/profile_adapter.dart';
 import '../../model/repositories/interfaces/profile_repository.dart';
 

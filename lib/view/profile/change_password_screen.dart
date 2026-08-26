@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
-import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
+import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../viewmodel/profile_viewmodel/change_password_vm.dart';
-import '../widgets/primary_button.dart';
-import '../widgets/underline_field.dart';
+import 'widgets/primary_button.dart';
+import 'widgets/underline_field.dart';
 
 /// UC402 A16–A18 (C6).
 class ChangePasswordScreen extends StatelessWidget {
@@ -48,7 +50,7 @@ class _ChangePasswordViewState extends State<_ChangePasswordView> {
     );
     if (ok && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text(ProfileMessages.m15PasswordChangedSuccessfully)));
+          .showSnackBar(SnackBar(content: Text(ProfileMessages.m15PasswordChangedSuccessfully)));
       Navigator.of(context).pop();
     }
   }
@@ -56,8 +58,9 @@ class _ChangePasswordViewState extends State<_ChangePasswordView> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ChangePasswordVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Change Password')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.changePassword'))),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -65,15 +68,18 @@ class _ChangePasswordViewState extends State<_ChangePasswordView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               UnderlineField(
-                label: 'Current Password',
+                label: AppLocalizations.t('ui.currentPassword'),
                 controller: _currentController,
                 obscureText: true,
               ),
               const SizedBox(height: 16),
-              UnderlineField(label: 'New Password', controller: _newController, obscureText: true),
+              UnderlineField(
+                  label: AppLocalizations.t('ui.newPassword'),
+                  controller: _newController,
+                  obscureText: true),
               const SizedBox(height: 16),
               UnderlineField(
-                label: 'Confirm New Password',
+                label: AppLocalizations.t('ui.confirmNewPassword'),
                 controller: _confirmController,
                 obscureText: true,
               ),
@@ -83,7 +89,7 @@ class _ChangePasswordViewState extends State<_ChangePasswordView> {
               ],
               const SizedBox(height: 24),
               PrimaryButton(
-                label: 'Change Password',
+                label: AppLocalizations.t('ui.changePassword'),
                 isLoading: vm.isLoading,
                 onPressed: () => _submit(vm),
               ),

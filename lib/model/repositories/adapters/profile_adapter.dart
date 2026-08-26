@@ -3,11 +3,11 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/errors/failures.dart';
-import '../../business_logic/profile_business_logic/messages/login_messages.dart';
-import '../../business_logic/profile_business_logic/messages/password_reset_messages.dart';
-import '../../business_logic/profile_business_logic/messages/profile_messages.dart';
-import '../../business_logic/profile_business_logic/messages/register_messages.dart';
-import '../../business_logic/profile_business_logic/validators.dart';
+import '../../business_logic/profile/messages/login_messages.dart';
+import '../../business_logic/profile/messages/password_reset_messages.dart';
+import '../../business_logic/profile/messages/profile_messages.dart';
+import '../../business_logic/profile/messages/register_messages.dart';
+import '../../business_logic/profile/validators.dart';
 import '../../data_sources/remote/auth_remote_data_source.dart';
 import '../../data_sources/remote/profile_remote_data_source.dart';
 import '../../dto/preferences_dto.dart';

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/routes/app_routes.dart';
-import '../../core/theme/app_theme.dart';
-import '../../model/business_logic/profile_business_logic/messages/login_messages.dart';
-import '../../model/business_logic/profile_business_logic/messages/password_reset_messages.dart';
-import '../../model/business_logic/profile_business_logic/messages/profile_messages.dart';
-import '../../model/business_logic/profile_business_logic/messages/register_messages.dart';
-import '../../viewmodel/profile_viewmodel/otp_vm.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
+import '../../../core/routes/app_routes.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../model/business_logic/profile/messages/login_messages.dart';
+import '../../../model/business_logic/profile/messages/password_reset_messages.dart';
+import '../../../model/business_logic/profile/messages/profile_messages.dart';
+import '../../../model/business_logic/profile/messages/register_messages.dart';
+import '../../../viewmodel/profile_viewmodel/otp_vm.dart';
 import '../onboarding/mandatory_details_screen.dart';
 import '../widgets/hcaptcha_widget.dart';
 import '../widgets/otp_box_row.dart';
@@ -38,6 +40,10 @@ class OtpScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Watched here (not just inside `_OtpView`) so `_sentMessage` — read
+    // once, above, from the message-catalog getters — recomputes if the
+    // language changes while this screen is still being built.
+    context.watch<LocaleVm>();
     return ChangeNotifierProvider(
       create: (_) => OtpVm(
         flow: flow,
@@ -104,8 +110,9 @@ class _OtpViewState extends State<_OtpView> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<OtpVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Verify OTP')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.enterOtp'))),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -141,7 +148,7 @@ class _OtpViewState extends State<_OtpView> {
               ],
               const SizedBox(height: 28),
               PrimaryButton(
-                label: 'Verify OTP',
+                label: AppLocalizations.t('ui.verify'),
                 isLoading: vm.isVerifying,
                 onPressed: _code.length == 6 ? () => _submit(vm) : null,
               ),

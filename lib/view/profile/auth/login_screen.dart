@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/routes/app_routes.dart';
-import '../../core/theme/app_theme.dart';
-import '../../viewmodel/profile_viewmodel/login_vm.dart';
-import '../../viewmodel/profile_viewmodel/otp_vm.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
+import '../../../core/routes/app_routes.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../viewmodel/profile_viewmodel/login_vm.dart';
+import '../../../viewmodel/profile_viewmodel/otp_vm.dart';
 import '../widgets/phone_field.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/underline_field.dart';
@@ -85,9 +87,10 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<LoginVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Log In'),
+        title: Text(AppLocalizations.t('ui.login')),
         actions: [
           if (Navigator.canPop(context))
             TextButton(
@@ -146,7 +149,7 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
                         ),
                         const Spacer(),
                         PrimaryButton(
-                          label: 'Send OTP',
+                          label: AppLocalizations.t('ui.sendOtp'),
                           isLoading: vm.isLoading,
                           onPressed: () => _handlePhoneSubmit(vm),
                         ),
@@ -156,10 +159,12 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          UnderlineField(label: 'Username', controller: _usernameController),
+                          UnderlineField(
+                              label: AppLocalizations.t('ui.username'),
+                              controller: _usernameController),
                           const SizedBox(height: 16),
                           UnderlineField(
-                            label: 'Password',
+                            label: AppLocalizations.t('ui.password'),
                             controller: _passwordController,
                             obscureText: true,
                           ),
@@ -171,7 +176,7 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
                                   builder: (_) => const ForgotPasswordScreen(),
                                 ),
                               ),
-                              child: const Text('Forgot password?'),
+                              child: Text(AppLocalizations.t('ui.forgotPassword')),
                             ),
                           ),
                           if (vm.errorMessage != null) ...[
@@ -183,7 +188,7 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
                           ],
                           const SizedBox(height: 12),
                           PrimaryButton(
-                            label: 'Log In',
+                            label: AppLocalizations.t('ui.login'),
                             isLoading: vm.isLoading,
                             onPressed: () => _handleUsernameSubmit(vm),
                           ),
@@ -197,12 +202,12 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Don't have an account?"),
+                  Text(AppLocalizations.t('ui.dontHaveAccount')),
                   TextButton(
                     onPressed: () => Navigator.of(context).pushReplacement(
                       MaterialPageRoute(builder: (_) => const RegisterScreen()),
                     ),
-                    child: const Text('Register'),
+                    child: Text(AppLocalizations.t('ui.createAccount')),
                   ),
                 ],
               ),

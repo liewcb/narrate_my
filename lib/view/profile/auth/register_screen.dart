@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/routes/app_routes.dart';
-import '../../core/theme/app_theme.dart';
-import '../../viewmodel/profile_viewmodel/otp_vm.dart';
-import '../../viewmodel/profile_viewmodel/register_vm.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
+import '../../../core/routes/app_routes.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../viewmodel/profile_viewmodel/otp_vm.dart';
+import '../../../viewmodel/profile_viewmodel/register_vm.dart';
 import '../onboarding/mandatory_details_screen.dart';
 import '../widgets/phone_field.dart';
 import '../widgets/primary_button.dart';
@@ -113,9 +115,10 @@ class _RegisterViewState extends State<_RegisterView>
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<RegisterVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Account'),
+        title: Text(AppLocalizations.t('ui.createAccount')),
         actions: [
           if (Navigator.canPop(context))
             TextButton(
@@ -188,12 +191,12 @@ class _RegisterViewState extends State<_RegisterView>
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text('Already have an account?'),
+                  Text(AppLocalizations.t('ui.alreadyHaveAccount')),
                   TextButton(
                     onPressed: () => Navigator.of(context).pushReplacement(
                       MaterialPageRoute(builder: (_) => const LoginScreen()),
                     ),
-                    child: const Text('Log In'),
+                    child: Text(AppLocalizations.t('ui.login')),
                   ),
                 ],
               ),
@@ -231,7 +234,8 @@ class _PhoneTab extends StatelessWidget {
           onChanged: onChanged,
         ),
         const Spacer(),
-        PrimaryButton(label: 'Send OTP', isLoading: isLoading, onPressed: onSubmit),
+        PrimaryButton(
+            label: AppLocalizations.t('ui.sendOtp'), isLoading: isLoading, onPressed: onSubmit),
       ],
     );
   }
@@ -264,10 +268,10 @@ class _UsernameTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          UnderlineField(label: 'Username', controller: usernameController),
+          UnderlineField(label: AppLocalizations.t('ui.username'), controller: usernameController),
           const SizedBox(height: 16),
           UnderlineField(
-            label: 'Password',
+            label: AppLocalizations.t('ui.password'),
             controller: passwordController,
             obscureText: true,
           ),
@@ -284,7 +288,8 @@ class _UsernameTab extends StatelessWidget {
             Text(errorMessage!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
           ],
           const SizedBox(height: 20),
-          PrimaryButton(label: 'Register', isLoading: isLoading, onPressed: onSubmit),
+          PrimaryButton(
+              label: AppLocalizations.t('ui.createAccount'), isLoading: isLoading, onPressed: onSubmit),
         ],
       ),
     );

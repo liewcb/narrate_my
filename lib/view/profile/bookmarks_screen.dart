@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/entities/bookmark.dart';
 import '../../viewmodel/profile_viewmodel/bookmarks_vm.dart';
@@ -27,15 +29,16 @@ class _BookmarksView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<BookmarksVm>();
+    context.watch<LocaleVm>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Bookmarks')),
+      appBar: AppBar(title: Text(AppLocalizations.t('ui.bookmarks'))),
       body: SafeArea(
         child: vm.isLoading
             ? const Center(child: CircularProgressIndicator())
             : vm.bookmarks.isEmpty
                 ? Center(
                     child: Text(
-                      vm.errorMessage ?? 'No bookmarks yet.',
+                      vm.errorMessage ?? AppLocalizations.t('ui.noBookmarksYet'),
                       style: const TextStyle(color: AppColors.inkFaint),
                     ),
                   )
