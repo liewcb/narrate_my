@@ -30,18 +30,25 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  equatable: ^2.0.5
+  mocktail: ^1.0.2
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  intl: ^0.20.3
+  http: ^1.6.0
+  sqflite: ^2.4.0
+  path: ^1.9.0
 
   # --- AR Exploration (UC100) ---
-  supabase_flutter: ^2.8.0     # Marker/Attraction data source
-  geolocator: ^13.0.2          # GPS position (lat/lng/altitude), permissions
+  supabase_flutter: ^2.17.2     # Marker/Attraction data source
+  geolocator: ^14.0.3          # GPS position (lat/lng/altitude), permissions
   permission_handler: ^11.3.1  # Camera + location permission requests
   flutter_compass: ^0.8.1      # Device compass heading
   camera: ^0.11.0+2            # Live camera feed background
   provider: ^6.1.2             # ChangeNotifier binding for MVVM viewmodels
+  google_fonts: ^8.2.1
 
 dev_dependencies:
   flutter_test:

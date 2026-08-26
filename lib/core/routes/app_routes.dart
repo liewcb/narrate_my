@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../View/ar_screen.dart';
-import '../../View/itinerary_screen.dart';
-import '../../View/nearby_recommendation_screen.dart';
-import '../../View/profile_screen.dart';
+import '../../view/ar_screen.dart';
+import '../../view/nearby_recommendation_screen.dart';
+import '../../view/profile_screen.dart';
+import '../../view/Itinerary/my_itineraries_screen.dart';
 import '../widgets/app_bottom_navigation.dart';
 
 /// The main routing shell of the application that manages the bottom navigation
@@ -19,7 +19,7 @@ class _AppRoutesState extends State<AppRoutes> {
 
   static const _screens = [
     ARScreen(),
-    ItineraryScreen(),
+    MyItinerariesScreen(),
     NearbyRecommendationScreen(),
     ProfileScreen(),
   ];
@@ -58,4 +58,6 @@ class _AppRoutesState extends State<AppRoutes> {
       ),
     );
   }
+
+  
 }
