@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../../../viewmodel/ar/ar_exploration_viewmodel.dart';
+import '../../../model/entities/ar_object.dart';
+import '../ar_placement/ar_placement_view.dart';
 import 'widgets/ar_camera_view.dart';
 import 'widgets/ar_marker_overlay.dart';
 import 'widgets/ar_notification_banner.dart';
@@ -51,14 +53,7 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
               nearbyMarkers: vm.nearbyMarkers,
               primaryMarker: vm.primaryMarker,
               deviceHeadingDegrees: vm.deviceHeadingDegrees,
-              onTapMarker: (marker) {
-                // BF-8 onward (heritage interpretation) is a separate
-                // use case/screen — hook the navigation here once that
-                // flow exists.
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Selected: ${marker.name}')),
-                );
-              },
+              onTapMarker: (marker) => _navigateToPlacement(context, marker),
             ),
             Positioned(
               top: 0,
@@ -66,11 +61,7 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
               right: 0,
               child: ARNotificationBanner(
                 markers: vm.nearbyMarkers,
-                onTapMarker: (marker) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Selected: ${marker.name}')),
-                  );
-                },
+                onTapMarker: (marker) => _navigateToPlacement(context, marker),
               ),
             ),
             Positioned(
@@ -88,11 +79,17 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
       },
     );
   }
+
+  void _navigateToPlacement(BuildContext context, ARMarker marker) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ARPlacementScreen(selectedMarker: marker),
+      ),
+    );
+  }
 }
 
-/// TEMPORARY diagnostic overlay — remove once marker detection is
-/// confirmed working end-to-end. Shows exactly what the service layer
-/// sees so "why isn't my marker showing" is visible instead of guessed.
 class _DebugHud extends StatelessWidget {
   const _DebugHud({required this.vm});
   final ARExplorationViewModel vm;

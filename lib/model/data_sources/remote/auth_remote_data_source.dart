@@ -1,7 +1,6 @@
 import 'dart:async';
-
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 import '../../dto/profile_dto.dart';
 
 /// Thin wrapper around the Supabase Auth SDK + the `profiles` table's auth-
@@ -284,5 +283,29 @@ class AuthRemoteDataSource {
         .eq('id', userId)
         .single();
     return ProfileDto.fromJson(row);
+  }
+
+  /// Retrieves preferred_language from `profiles` table for current logged-in user.
+  /// If user is not logged in or lookup fails, defaults to 'en'.
+  Future<String> fetchCurrentPreferredLanguage() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return 'en';
+    }
+    try {
+      final data = await _client
+          .from('profiles')
+          .select('preferred_language')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      final lang = data?['preferred_language']?.toString().toLowerCase().trim();
+      if (lang != null && lang.isNotEmpty) {
+        return lang;
+      }
+    } catch (e) {
+      debugPrint('Error fetching preferred language from profiles: $e');
+    }
+    return 'en';
   }
 }

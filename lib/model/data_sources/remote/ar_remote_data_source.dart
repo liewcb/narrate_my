@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../dto/heritage_site_dto.dart';
 
-/// Talks to Supabase for AR Exploration data (UC100, BF-4).
+/// Talks to Supabase for AR Exploration & Heritage data (UC100, BF-4).
 ///
 /// [C2] Geofence & Scan Radius Boundary: the query is bounded by a
 /// lat/lng bounding box derived from [radiusMeters] so we never pull the
@@ -11,7 +11,8 @@ import '../../dto/heritage_site_dto.dart';
 class ARRemoteDataSource {
   final SupabaseClient _client;
 
-  ARRemoteDataSource({SupabaseClient? client}) : _client = client ?? Supabase.instance.client;
+  ARRemoteDataSource({SupabaseClient? client})
+      : _client = client ?? Supabase.instance.client;
 
   Future<List<HeritageSiteDto>> fetchNearbyMarkers({
     required double latitude,
@@ -32,6 +33,65 @@ class ARRemoteDataSource {
         .cast<Map<String, dynamic>>()
         .map(HeritageSiteDto.fromJson)
         .toList();
+  }
+
+  /// Fetch attraction and marker data by [markerId] (e.g. 'MK001')
+  Future<HeritageSiteDto?> fetchAttractionByMarkerId(String markerId) async {
+    // 1. Try querying Marker joined with Attraction
+    final markerRow = await _client
+        .from('Marker')
+        .select('*, Attraction(*)')
+        .eq('marker_id', markerId)
+        .maybeSingle();
+
+    if (markerRow != null) {
+      return HeritageSiteDto.fromJson(Map<String, dynamic>.from(markerRow));
+    }
+
+    // 2. Fallback: Query Attraction table directly by marker_id
+    final attractionRow = await _client
+        .from('Attraction')
+        .select('*')
+        .eq('marker_id', markerId)
+        .maybeSingle();
+
+    if (attractionRow != null) {
+      return HeritageSiteDto.fromAttractionJson(
+        Map<String, dynamic>.from(attractionRow),
+      );
+    }
+
+    return null;
+  }
+
+  /// Fetch attraction by attraction_id (e.g. 'AD001')
+  Future<HeritageSiteDto?> fetchAttractionById(String attractionId) async {
+    final row = await _client
+        .from('Attraction')
+        .select('*, Marker(*)')
+        .eq('attraction_id', attractionId)
+        .maybeSingle();
+
+    if (row != null) {
+      return HeritageSiteDto.fromAttractionJson(
+        Map<String, dynamic>.from(row),
+      );
+    }
+    return null;
+  }
+
+  /// Fetch single marker by [markerId]
+  Future<HeritageSiteDto?> fetchMarkerById(String markerId) async {
+    final row = await _client
+        .from('Marker')
+        .select('*, Attraction(*)')
+        .eq('marker_id', markerId)
+        .maybeSingle();
+
+    if (row != null) {
+      return HeritageSiteDto.fromJson(Map<String, dynamic>.from(row));
+    }
+    return null;
   }
 
   _BoundingBox _boundingBox(double lat, double lng, double radiusMeters) {

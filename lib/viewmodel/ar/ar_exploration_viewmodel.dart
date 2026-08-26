@@ -76,7 +76,7 @@ class ARExplorationViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Re-run the permission check after the tourist returns from Settings
+/// Re-run the permission check after the tourist returns from Settings
   /// (A1: "If the tourist grants permission, return to BF-3").
   Future<void> retryAfterPermissionGranted() => init();
 

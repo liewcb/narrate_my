@@ -81,6 +81,36 @@ class ARMarker {
     );
   }
 
+  ARMarker copyWith({
+    String? markerId,
+    double? latitude,
+    double? longitude,
+    double? altitude,
+    double? targetBearing,
+    double? activationRadiusMeters,
+    String? name,
+    String? description,
+    List<String>? labels,
+    double? distanceMeters,
+    double? bearingFromUser,
+    bool? isFacing,
+  }) {
+    return ARMarker(
+      markerId: markerId ?? this.markerId,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      altitude: altitude ?? this.altitude,
+      targetBearing: targetBearing ?? this.targetBearing,
+      activationRadiusMeters: activationRadiusMeters ?? this.activationRadiusMeters,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      labels: labels ?? this.labels,
+      distanceMeters: distanceMeters ?? this.distanceMeters,
+      bearingFromUser: bearingFromUser ?? this.bearingFromUser,
+      isFacing: isFacing ?? this.isFacing,
+    );
+  }
+
   /// Whether the tourist is currently within this marker's own activation
   /// radius (falls back to "unknown" -> false if distance hasn't been
   /// computed yet).
