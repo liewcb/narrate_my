@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import '../../Model/entities/recommendation.dart';
-import '../../Model/repositories/interfaces/recommendation_repository.dart';
+import '../../model/entities/recommendation.dart';
+import '../../model/repositories/interfaces/recommendation_repository.dart';
 
 class NearbyRecommendationViewModel extends ChangeNotifier {
   final RecommendationRepository _repository;
