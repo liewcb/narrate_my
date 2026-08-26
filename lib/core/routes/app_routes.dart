@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../view/Itinerary/my_itineraries_screen.dart';
 import '../../view/ai_assistant/travel_assistant_screen.dart';
 import '../../view/ar_screen.dart';
 import '../../view/itinerary_screen.dart';
@@ -25,7 +26,7 @@ class _AppRoutesState extends State<AppRoutes> {
 
   static const _screens = [
     ARScreen(),
-    ItineraryScreen(),
+    MyItinerariesScreen(),
     NearbyRecommendationScreen(),
     ProfileScreen(),
   ];

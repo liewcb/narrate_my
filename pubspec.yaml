@@ -47,6 +47,8 @@ dependencies:
   google_fonts: ^6.2.1         # Nunito typeface, matches the design canvas
   webview_flutter: ^4.10.0     # Hosts the hCaptcha JS challenge widget (OTP screen, 5-fail gate)
   image_picker: ^1.1.2         # Profile picture upload (gallery picker) — added feature, not in spec
+  intl: ^0.20.3
+  sqflite: ^2.4.3
 
 dev_dependencies:
   flutter_test:
