@@ -4,4 +4,16 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!--
+      Google Maps is a native Android platform view. On the Android 16
+      emulator, Impeller can block the initial focus hand-off long enough to
+      trigger an ANR. Keep the production renderer unchanged and use Skia only
+      for debug/emulator builds.
+    -->
+    <application>
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
+    </application>
 </manifest>

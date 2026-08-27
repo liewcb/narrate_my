@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.11.5
+  sdk: '>=3.12.0 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -37,7 +37,7 @@ dependencies:
 
   # --- AR Exploration (UC100) ---
   supabase_flutter: ^2.8.0     # Marker/Attraction data source
-  geolocator: ^14.0.2          # GPS position (lat/lng/altitude), permissions
+  geolocator: ^14.0.3          # GPS position (lat/lng/altitude), permissions
   permission_handler: ^12.0.1  # Camera + location permission requests
   flutter_compass: ^0.8.1      # Device compass heading
   sensors_plus: ^6.1.1         # Device pitch (accelerometer), for face-up/down gating
@@ -49,6 +49,9 @@ dependencies:
   model_viewer_plus: ^1.10.0
   flutter_tts: ^4.2.2
   youtube_player_flutter: ^9.1.1
+
+  # --- Nearby Recommendations ---
+  google_maps_flutter: ^2.18.0 # Google map displayed on the Nearby screen
 
   # --- Module 5: User Profile & Language Management (UC400-403) ---
   google_fonts: ^6.2.1         # Nunito typeface, matches the design canvas

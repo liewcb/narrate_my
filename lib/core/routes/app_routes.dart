@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import '../../view/Itinerary/my_itineraries_screen.dart';
 import '../../view/ai_assistant/travel_assistant_screen.dart';
 import '../../view/ar_screen.dart';
-import '../../view/itinerary_screen.dart';
-import '../../view/nearby_recommendation_screen.dart';
+import '../../view/recommendation/nearby_recommendation_screen.dart';
 import '../../view/profile_screen.dart';
 import '../widgets/app_bottom_navigation.dart';
 
