@@ -5,6 +5,7 @@ import '../../../core/config/app_config.dart';
 import '../../entities/ar_object.dart';
 import '../../repositories/interfaces/ar_repository.dart';
 import '../shared_services/location_service.dart';
+import '../../../core/services/orientation_service.dart';
 
 /// Immutable snapshot of the AR scene at a point in time — what the View
 /// actually renders.
@@ -18,6 +19,11 @@ class ARSceneState {
   final ARMarker? primaryMarker;
 
   final double deviceHeadingDegrees;
+
+  /// Live device pitch in degrees (0 = held level at the horizon, see
+  /// [OrientationService]). Used by the overlay to hide markers when the
+  /// tourist points the camera at the ground or the sky.
+  final double devicePitchDegrees;
 
   // --- Diagnostics (not used for rendering logic, only for the debug HUD) ---
   final double? userLat;
@@ -38,6 +44,7 @@ class ARSceneState {
     required this.nearbyMarkers,
     required this.primaryMarker,
     required this.deviceHeadingDegrees,
+    this.devicePitchDegrees = 0,
     this.userLat,
     this.userLng,
     this.rawFetchedCount = 0,
@@ -61,12 +68,15 @@ class ARSceneState {
 class ARExplorationService {
   final ARRepository _repository;
   final LocationService _locationService;
+  final OrientationService _orientationService;
 
   StreamSubscription<Position>? _positionSub;
   StreamSubscription<CompassEvent>? _compassSub;
+  StreamSubscription<double>? _pitchSub;
 
   Position? _lastPosition;
   double _lastHeading = 0;
+  double _lastPitch = 0;
   List<ARMarker> _lastFetchedMarkers = [];
 
   final _controller = StreamController<ARSceneState>.broadcast();
@@ -75,8 +85,10 @@ class ARExplorationService {
   ARExplorationService({
     required ARRepository repository,
     LocationService? locationService,
+    OrientationService? orientationService,
   })  : _repository = repository,
-        _locationService = locationService ?? LocationService();
+        _locationService = locationService ?? LocationService(),
+        _orientationService = orientationService ?? OrientationService();
 
   Stream<ARSceneState> get sceneStream => _controller.stream;
 
@@ -97,6 +109,11 @@ class ARExplorationService {
       final heading = event.heading;
       if (heading == null) return;
       _lastHeading = heading;
+      _throttledEmit();
+    });
+
+    _pitchSub = _orientationService.pitchStream.listen((pitch) {
+      _lastPitch = pitch;
       _throttledEmit();
     });
 
@@ -146,15 +163,20 @@ class ARExplorationService {
 
     // Primary = smallest angular difference to device heading among the
     // markers currently facing (BF-7: "the building the tourist is
-    // directly facing").
+    // directly facing"). Skipped entirely while the phone is pitched
+    // beyond tolerance (pointing at the sky/ground) — there's nothing
+    // to "directly face" in that pose.
+    final isLookingForward = _lastPitch.abs() <= AppConfig.pitchToleranceDegrees;
     ARMarker? primary;
-    double bestDiff = double.infinity;
-    for (final m in computed) {
-      if (!m.isFacing || m.bearingFromUser == null) continue;
-      final diff = _angularDiff(_lastHeading, m.bearingFromUser!);
-      if (diff < bestDiff) {
-        bestDiff = diff;
-        primary = m;
+    if (isLookingForward) {
+      double bestDiff = double.infinity;
+      for (final m in computed) {
+        if (!m.isFacing || m.bearingFromUser == null) continue;
+        final diff = _angularDiff(_lastHeading, m.bearingFromUser!);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          primary = m;
+        }
       }
     }
 
@@ -162,6 +184,7 @@ class ARExplorationService {
       nearbyMarkers: computed,
       primaryMarker: primary,
       deviceHeadingDegrees: _lastHeading,
+      devicePitchDegrees: _lastPitch,
       userLat: pos.latitude,
       userLng: pos.longitude,
       rawFetchedCount: _lastFetchedMarkers.length,
@@ -177,11 +200,13 @@ class ARExplorationService {
   Future<void> stop() async {
     await _positionSub?.cancel();
     await _compassSub?.cancel();
+    await _pitchSub?.cancel();
   }
 
   void dispose() {
     _positionSub?.cancel();
     _compassSub?.cancel();
+    _pitchSub?.cancel();
     _controller.close();
   }
 }

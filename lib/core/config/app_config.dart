@@ -39,4 +39,15 @@ class AppConfig {
   /// hCaptcha site key (https://dashboard.hcaptcha.com → your site →
   /// "Sitekey"). Free tier is enough for this.
   static const String hcaptchaSiteKey = 'YOUR_HCAPTCHA_SITE_KEY_HERE';
+
+  /// Max device pitch (degrees, 0 = held level/upright pointing at the
+  /// horizon) before markers are hidden. Beyond this the tourist is
+  /// pointing the camera at the ground or the sky, not at a building, so
+  /// there's nothing valid to anchor a marker to.
+  static const double pitchToleranceDegrees = 35;
+
+  /// Width (in degrees) of the soft zone at the edge of the FOV / pitch
+  /// tolerance over which a marker fades and slides out, instead of
+  /// snapping away the instant it crosses the boundary.
+  static const double edgeFadeDegrees = 10;
 }

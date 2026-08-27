@@ -37,9 +37,10 @@ dependencies:
 
   # --- AR Exploration (UC100) ---
   supabase_flutter: ^2.8.0     # Marker/Attraction data source
-  geolocator: ^13.0.2          # GPS position (lat/lng/altitude), permissions
-  permission_handler: ^11.3.1  # Camera + location permission requests
+  geolocator: ^14.0.2          # GPS position (lat/lng/altitude), permissions
+  permission_handler: ^12.0.1  # Camera + location permission requests
   flutter_compass: ^0.8.1      # Device compass heading
+  sensors_plus: ^6.1.1         # Device pitch (accelerometer), for face-up/down gating
   camera: ^0.11.0+2            # Live camera feed background
   provider: ^6.1.2             # ChangeNotifier binding for MVVM viewmodels
   ar_flutter_plugin_plus: ^1.1.3

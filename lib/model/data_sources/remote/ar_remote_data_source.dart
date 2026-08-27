@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/remote_database_service.dart';
 import '../../dto/heritage_site_dto.dart';
 
 /// Talks to Supabase for AR Exploration & Heritage data (UC100, BF-4).
@@ -11,8 +12,12 @@ import '../../dto/heritage_site_dto.dart';
 class ARRemoteDataSource {
   final SupabaseClient _client;
 
+  /// Depends on the app's single central RemoteDatabaseService instance
+  /// (initialized once via DatabaseManager at startup) rather than
+  /// reaching for Supabase.instance.client independently — keeps client
+  /// lifecycle owned in exactly one place.
   ARRemoteDataSource({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? RemoteDatabaseService().client;
 
   Future<List<HeritageSiteDto>> fetchNearbyMarkers({
     required double latitude,

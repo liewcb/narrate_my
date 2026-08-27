@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/services/permission_service.dart';
 import '../../model/business_logic/ar_exploration_service/ar_exploration_service.dart';
 import '../../model/business_logic/shared_services/location_service.dart';
+import '../../core/services/orientation_service.dart';
 import '../../model/entities/ar_object.dart';
 import '../../model/repositories/adapters/ar_repository_adapter.dart';
 import '../../model/repositories/interfaces/ar_repository.dart';
@@ -18,10 +19,12 @@ class ARExplorationViewModel extends ChangeNotifier {
     ARRepository? repository,
     PermissionService? permissionService,
     LocationService? locationService,
+    OrientationService? orientationService,
   })  : _permissionService = permissionService ?? PermissionService(),
         _explorationService = ARExplorationService(
           repository: repository ?? SupabaseARRepositoryAdapter(),
           locationService: locationService,
+          orientationService: orientationService,
         );
 
   ARViewState state = ARViewState.idle;
@@ -30,6 +33,7 @@ class ARExplorationViewModel extends ChangeNotifier {
   List<ARMarker> nearbyMarkers = [];
   ARMarker? primaryMarker;
   double deviceHeadingDegrees = 0;
+  double devicePitchDegrees = 0;
 
   // --- Diagnostics for the debug HUD ---
   double? userLat;
@@ -84,6 +88,7 @@ class ARExplorationViewModel extends ChangeNotifier {
     nearbyMarkers = scene.nearbyMarkers;
     primaryMarker = scene.primaryMarker;
     deviceHeadingDegrees = scene.deviceHeadingDegrees;
+    devicePitchDegrees = scene.devicePitchDegrees;
     userLat = scene.userLat;
     userLng = scene.userLng;
     rawFetchedCount = scene.rawFetchedCount;

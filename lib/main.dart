@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/accessibility/accessibility_vm.dart';
-import 'core/config/app_config.dart';
 import 'core/localization/locale_vm.dart';
 import 'core/routes/app_routes.dart';
+import 'core/services/database_manager.dart';
 import 'core/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Supabase.initialize(
-    url: AppConfig.supabaseUrl,
-    anonKey: AppConfig.supabaseAnonKey,
-  );
+  // Initializes both Supabase (remote) and the local SQLite connection —
+  // see DatabaseManager. Previously this called Supabase.initialize()
+  // directly, which meant RemoteDatabaseService (used by the
+  // Itinerary/Place/Destination adapters) never actually got initialized
+  // and would throw the moment anything touched RemoteDatabaseService().client.
+  await DatabaseManager().init();
   runApp(const MyApp());
 }
 
