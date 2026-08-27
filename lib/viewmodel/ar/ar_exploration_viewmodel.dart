@@ -80,9 +80,28 @@ class ARExplorationViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-/// Re-run the permission check after the tourist returns from Settings
+  /// Re-run the permission check after the tourist returns from Settings
   /// (A1: "If the tourist grants permission, return to BF-3").
   Future<void> retryAfterPermissionGranted() => init();
+
+  /// Stops the GPS/compass/accelerometer streams without disposing this
+  /// ViewModel. Call this before pushing into AR Placement — that screen
+  /// starts its own ARCore/ARKit session, which needs exclusive,
+  /// uncontended access to the device's accelerometer/gyroscope for its
+  /// own real-time IMU fusion. Leaving this screen's streams running
+  /// underneath (which `Navigator.push` does, since it doesn't dispose
+  /// the widget it's pushed from) registers a second accelerometer
+  /// listener alongside ARCore's own — on some devices that's enough to
+  /// cause ARCore's internal IMU buffer to fall behind and stutter
+  /// (visible in logcat as "IMU buffer beyond maximum size... Removing
+  /// the first 1 element(s)" / "Callback list for SENSOR_TYPE_
+  /// ACCELEROMETER ... not found").
+  void pause() {
+    _explorationService.stop();
+  }
+
+  /// Restarts the streams after returning from AR Placement.
+  Future<void> resume() => _explorationService.start();
 
   void _onScene(ARSceneState scene) {
     nearbyMarkers = scene.nearbyMarkers;

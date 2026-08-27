@@ -34,6 +34,12 @@ class _ARExplorationScaffold extends StatefulWidget {
 class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
   bool _showDebugHud = true; // default ON while you're diagnosing; flip to false later
 
+  /// Whether ARCameraView is allowed to hold the physical camera open.
+  /// Flipped off right before navigating into AR Placement — see
+  /// ARCameraView's doc comment for why two camera clients on the same
+  /// hardware at once causes the freeze loop.
+  bool _cameraActive = true;
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ARExplorationViewModel>();
@@ -48,7 +54,7 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
         ARViewState.ready => Stack(
           fit: StackFit.expand,
           children: [
-            const ARCameraView(),
+            ARCameraView(active: _cameraActive),
             ARMarkerOverlay(
               nearbyMarkers: vm.nearbyMarkers,
               primaryMarker: vm.primaryMarker,
@@ -122,13 +128,33 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
     );
   }
 
-  void _navigateToPlacement(BuildContext context, ARMarker marker) {
-    Navigator.push(
+  void _navigateToPlacement(BuildContext context, ARMarker marker) async {
+    final vm = context.read<ARExplorationViewModel>();
+
+    // Stop this screen's GPS/compass/accelerometer streams AND release
+    // the physical camera before ARCore starts its own session on the
+    // Placement screen — running both at once is what caused the
+    // freeze/stutter loop (confirmed in logcat: IMU buffer overflow +
+    // CameraCaptureSession CAMERA_ERROR from two clients on one camera).
+    vm.pause();
+    setState(() => _cameraActive = false);
+
+    // Give the `camera` plugin's async teardown a brief moment to
+    // actually close the Camera2 session before ARCore tries to open
+    // its own on the same physical camera.
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ARPlacementScreen(selectedMarker: marker),
       ),
     );
+
+    if (context.mounted) {
+      setState(() => _cameraActive = true);
+      vm.resume();
+    }
   }
 }
 

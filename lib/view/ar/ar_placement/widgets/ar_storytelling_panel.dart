@@ -14,22 +14,38 @@ class ARStorytellingPanel extends StatelessWidget {
     final topPadding = MediaQuery.of(context).padding.top + 70;
 
     return Selector<ARPlacementViewModel, ({
-      bool hasStarted,
-      String subtitle,
-      StoryPlaybackState playbackState,
-      bool show3d,
-      String landmarkName,
-      String? modelPath,
+    bool isPlaced,
+    bool hasStarted,
+    String subtitle,
+    StoryPlaybackState playbackState,
+    bool show3d,
+    String landmarkName,
+    String? modelPath,
     })>(
       selector: (_, vm) => (
-        hasStarted: vm.hasStartedStorytelling,
-        subtitle: vm.currentSubtitle,
-        playbackState: vm.playbackState,
-        show3d: vm.show3DLandmarkModel,
-        landmarkName: vm.landmarkName,
-        modelPath: vm.model3dPath,
+      isPlaced: vm.isAvatarPlaced,
+      hasStarted: vm.hasStartedStorytelling,
+      subtitle: vm.currentSubtitle,
+      playbackState: vm.playbackState,
+      show3d: vm.show3DLandmarkModel,
+      landmarkName: vm.landmarkName,
+      modelPath: vm.model3dPath,
       ),
       builder: (context, data, _) {
+        // Don't even construct this subtree — and therefore never spin up
+        // the ModelViewer's WKWebView/3D render loop — until the avatar
+        // is actually placed. Previously this was gated only on
+        // `hasStarted`, but the outer Visibility's `maintainState: true`
+        // means "invisible" still means "built and running" — so the 3D
+        // viewer for the landmark model was live and rendering in the
+        // background from the moment the AR screen opened, fighting the
+        // native ARKit/ARCore session for the GPU during the whole
+        // "scanning for a surface" phase. That's what caused the
+        // freeze-resume-freeze loop on iOS once a real (heavier) model
+        // was attached — with model3dPath null it had nothing to render,
+        // so the bug was invisible until now.
+        if (!data.isPlaced) return const SizedBox.shrink();
+
         final isPlaying = data.playbackState == StoryPlaybackState.playing;
         final isPaused = data.playbackState == StoryPlaybackState.paused;
 
@@ -86,12 +102,12 @@ class ARStorytellingPanel extends StatelessWidget {
   }
 
   Widget _buildSubtitleCard(
-    BuildContext context,
-    dynamic data,
-    Color accentOrange,
-    bool isPlaying,
-    bool isPaused,
-  ) {
+      BuildContext context,
+      dynamic data,
+      Color accentOrange,
+      bool isPlaying,
+      bool isPaused,
+      ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -127,7 +143,7 @@ class ARStorytellingPanel extends StatelessWidget {
                 Row(
                   children: List.generate(
                     5,
-                    (index) => Container(
+                        (index) => Container(
                       margin: const EdgeInsets.only(right: 4),
                       width: 4,
                       height: index % 2 == 0 ? 14 : 8,
@@ -188,71 +204,71 @@ class ARStorytellingPanel extends StatelessWidget {
         ),
         child: hasModel
             ? ModelViewer(
-                key: ValueKey('3d_viewer_$modelPath'),
-                src: modelPath,
-                alt: '$landmarkName 3D Model',
-                ar: false,
-                autoRotate: false,
-                cameraControls: true,
-                disablePan: true,
-                disableZoom: false,
-                backgroundColor: const Color(0xFF1B2A2B),
-                loading: Loading.eager,
-                interactionPrompt: InteractionPrompt.auto,
-                shadowIntensity: 0.0,
-              )
+          key: ValueKey('3d_viewer_$modelPath'),
+          src: modelPath,
+          alt: '$landmarkName 3D Model',
+          ar: false,
+          autoRotate: false,
+          cameraControls: true,
+          disablePan: true,
+          disableZoom: false,
+          backgroundColor: const Color(0xFF1B2A2B),
+          loading: Loading.eager,
+          interactionPrompt: InteractionPrompt.auto,
+          shadowIntensity: 0.0,
+        )
             : Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.redAccent.withValues(alpha: 0.18),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.view_in_ar_outlined,
-                          color: Colors.redAccent,
-                          size: 26,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        "3D Model Unavailable",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        "The representative 3D model could not be loaded. Storytelling can continue without the 3D model.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.view_in_ar_outlined,
+                    color: Colors.redAccent,
+                    size: 26,
                   ),
                 ),
-              ),
+                const SizedBox(height: 12),
+                const Text(
+                  "3D Model Unavailable",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  "The representative 3D model could not be loaded. Storytelling can continue without the 3D model.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildBottomControls(
-    BuildContext context,
-    bool isPlaying,
-    IconData actionIcon,
-    String actionLabel,
-  ) {
+      BuildContext context,
+      bool isPlaying,
+      IconData actionIcon,
+      String actionLabel,
+      ) {
     return Row(
       children: [
         Expanded(

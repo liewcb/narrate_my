@@ -51,8 +51,8 @@ class ARPlacementViewModel extends ChangeNotifier {
   ARMarker? get selectedMarker => _selectedMarker;
   String get landmarkName =>
       _placementService.narrationService.currentScript?.landmarkName ??
-      _selectedMarker?.name ??
-      "Landmark";
+          _selectedMarker?.name ??
+          "Landmark";
   String? get model3dPath =>
       _placementService.narrationService.currentScript?.model3dPath;
   String? get videoUrl =>
@@ -101,19 +101,26 @@ class ARPlacementViewModel extends ChangeNotifier {
     _placementState = PlacementState.scanning;
     notifyListeners();
 
-    // REQ_204_5: Preload representative 3D landmark model into memory cache early
-    if (model3dPath != null) {
-      _placementService.modelService.preloadLandmarkModel(model3dPath);
-    }
+    // NOTE: no longer eagerly preloading the landmark 3D model here.
+    // ModelViewer (model_viewer_plus) doesn't read through Flutter's
+    // asset bundle at all — it copies the asset out and serves it to its
+    // own WebView via a local server, so `rootBundle.load()` gave zero
+    // benefit to that path. Meanwhile, for a model the size of klcc.glb
+    // (~25MB vs. manja.glb's ~7MB), reading the whole thing into memory
+    // on the same isolate that's driving ARKit's live camera/plane
+    // detection was a real cost with no payoff — the likely cause of the
+    // "freeze a couple seconds, resume, repeat" stutter seen while
+    // scanning for a placement surface on iOS. The model now only loads
+    // when the tourist actually taps Play, via ModelViewer itself.
   }
 
   /// Called when ARView native surface is created
   void onARViewCreated(
-    ARSessionManager sessionManager,
-    ARObjectManager objectManager,
-    ARAnchorManager anchorManager,
-    ARLocationManager locationManager,
-  ) {
+      ARSessionManager sessionManager,
+      ARObjectManager objectManager,
+      ARAnchorManager anchorManager,
+      ARLocationManager locationManager,
+      ) {
     arSessionManager = sessionManager;
     arObjectManager = objectManager;
     arAnchorManager = anchorManager;
@@ -168,11 +175,6 @@ class ARPlacementViewModel extends ChangeNotifier {
 
           _isAvatarPlaced = true;
           _placementState = PlacementState.placed;
-
-          // REQ_204_5: Preload representative 3D model before storytelling interaction becomes available
-          if (model3dPath != null) {
-            _placementService.modelService.preloadLandmarkModel(model3dPath);
-          }
         }
       }
     } catch (e) {
