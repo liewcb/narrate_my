@@ -5,7 +5,6 @@ class ItineraryStop {
   final int stopId;
   final String itineraryId;
   final String placeId;          // references places.id
-  final String? destinationId;   // references destinations.destinationId (nullable)
   final int dayIndex;
   final int stopOrder;
   final DateTime startTime;      // stored as TIME but we use DateTime for convenience
@@ -25,7 +24,6 @@ class ItineraryStop {
     required this.stopId,
     required this.itineraryId,
     required this.placeId,
-    this.destinationId,
     required this.dayIndex,
     required this.stopOrder,
     required this.startTime,
@@ -44,8 +42,6 @@ class ItineraryStop {
     int? stopId,
     String? itineraryId,
     String? placeId,
-    String? destinationId,
-    bool clearDestinationId = false,
     int? dayIndex,
     int? stopOrder,
     DateTime? startTime,
@@ -64,8 +60,6 @@ class ItineraryStop {
       stopId: stopId ?? this.stopId,
       itineraryId: itineraryId ?? this.itineraryId,
       placeId: placeId ?? this.placeId,
-      destinationId:
-          clearDestinationId ? null : (destinationId ?? this.destinationId),
       dayIndex: dayIndex ?? this.dayIndex,
       stopOrder: stopOrder ?? this.stopOrder,
       startTime: startTime ?? this.startTime,
@@ -87,7 +81,6 @@ class ItineraryStop {
       'stop_id': stopId,
       'itinerary_id': itineraryId,
       'place_id': placeId,
-      'destination_id': destinationId,
       'day_index': dayIndex,
       'stop_order': stopOrder,
       'start_time': startTime.toIso8601String(),
@@ -107,7 +100,6 @@ class ItineraryStop {
       stopId: map['stop_id'] as int,
       itineraryId: map['itinerary_id'] as String,
       placeId: map['place_id'] as String,
-      destinationId: map['destination_id'] as String?,
       dayIndex: map['day_index'] as int,
       stopOrder: map['stop_order'] as int,
       startTime: DateTime.parse(map['start_time'] as String),

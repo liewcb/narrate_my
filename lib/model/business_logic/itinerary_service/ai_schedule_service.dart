@@ -21,6 +21,7 @@ class AiScheduleService {
     required List<String> interests,
     required String destinationName,
     required List<String> dietaryPreferences,
+    required List<String> categoryExclusions,
     required DateTime startDate,
   }) async {
     // 1. Calculate the exploration window based on user intensity
@@ -104,6 +105,7 @@ class AiScheduleService {
           interests: interests,
           destinationName: destinationName,
           dietaryPreferences: dietaryPreferences,
+          categoryExclusions: categoryExclusions,
           weatherCondition: weatherConditionString,
         );
 

@@ -1,4 +1,7 @@
+// lib/models/opening_hours.dart
+import 'dart:convert';
 
+/// Represents the opening hours of a place.
 class OpeningHours {
   final bool isOpenNow;
   final List<Period> periods;
@@ -10,13 +13,10 @@ class OpeningHours {
     this.weekdayText = const [],
   });
 
-  /// Alias getter to support code using `.openNow` without breaking existing references to `.isOpenNow`
-  bool get openNow => isOpenNow;
-
   /// Create from JSON (Google Places API format).
   factory OpeningHours.fromJson(Map<String, dynamic> json) {
     return OpeningHours(
-      isOpenNow: json['open_now'] ?? json['isOpenNow'] ?? false,
+      isOpenNow: json['open_now'] ?? false,
       periods: (json['periods'] as List?)
           ?.map((p) => Period.fromJson(p as Map<String, dynamic>))
           .toList() ??

@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_theme.dart';
 import '../../viewmodel/ItineraryModel/my_itineraries_vm.dart';
 import 'manage_itinerary/manage_display_plan_screen.dart';
-import 'destination_choice_screen.dart';  // for the FAB
+import 'step1_where_to_screen.dart';  // for the FAB
 import 'widgets/itinerary_card.dart';
 
 class MyItinerariesScreen extends StatefulWidget {
@@ -51,10 +51,11 @@ class _ItinerariesView extends StatelessWidget {
       backgroundColor: AppColors.bg,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
+          // ✅ FIX: Use MaterialPageRoute (no route registration needed)
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const DestinationChoiceScreen(),
+              builder: (_) => const Step1WhereToScreen(),
             ),
           );
         },
@@ -225,6 +226,7 @@ class _ItinerariesView extends StatelessWidget {
                       return ItineraryCard(
                         itinerary: trip,
                         onTap: () {
+                          // ✅ FIX: Navigate to detail screen with the itinerary ID
                           Navigator.push(
                             context,
                             MaterialPageRoute(

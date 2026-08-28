@@ -22,9 +22,6 @@ class PlaceRegistry {
   /// All places, insertion order preserved.
   List<Place> get all => List.unmodifiable(_byId.values);
 
-  /// All registered Google place IDs.
-  Set<String> get placeIds => Set.unmodifiable(_byId.keys);
-
   /// True when [placeId] is already registered.
   bool contains(String placeId) => _byId.containsKey(placeId);
 

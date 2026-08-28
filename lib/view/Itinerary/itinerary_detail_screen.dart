@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'add_place_screen.dart';
 import '../../core/theme/colors.dart';
 
+// â”€â”€â”€ Data Models (reused from final screen) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class StopData {
   final String time;
   final String duration;

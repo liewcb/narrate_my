@@ -4,18 +4,14 @@
 /// FK reference, not resolved/joined here.
 class Bookmark {
   final String id;
-  final String userId;
   final String itemId;
-  final String itemType;
-  final String? placeId;
+  final String itemType; // e.g. 'attraction' | 'restaurant'
   final DateTime? createdAt;
 
   const Bookmark({
     required this.id,
-    required this.userId,
     required this.itemId,
     required this.itemType,
-    this.placeId,
     this.createdAt,
   });
 }

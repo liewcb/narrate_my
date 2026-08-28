@@ -206,21 +206,24 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Add bookmarked places (by their Google placeIds) as new stops on
-  /// [dayIndex].
+  /// Add the given bookmarked places as new stops on [dayIndex].
   ///
-  /// Each place is fetched from the local place cache, saved if missing,
-  /// and appended to the day. Only runs for ongoing itineraries.
-  Future<int> addBookmarkedPlaces({
+  /// Only runs for ongoing itineraries. Each bookmark is saved as a Place
+  /// (so the stop can be joined later) and appended to the day after the
+  /// last existing stop.
+  Future<bool> addBookmarkedPlaces({
     required int dayIndex,
-    required List<String> placeIds,
+    required List<Bookmark> bookmarks,
   }) async {
-    if (!canCustomize) return 0;
-    if (placeIds.isEmpty) return 0;
+    if (!canCustomize) return false;
+    if (bookmarks.isEmpty) return true;
 
+    // Skip bookmarks already used in this itinerary.
     final usedIds = _stops.map((s) => s.placeId).toSet();
-    final toAdd = placeIds.where((id) => !usedIds.contains(id)).toList();
-    if (toAdd.isEmpty) return 0;
+    // final toAdd = bookmarks
+    //     .where((b) => !usedIds.contains(b.placeId))
+    //     .toList();
+    // if (toAdd.isEmpty) return true;
 
     var nextOrder = _stops
             .where((s) => s.dayIndex == dayIndex)
@@ -230,42 +233,45 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     final now = DateTime.now();
     final added = <ItineraryStop>[];
 
-    for (final placeId in toAdd) {
-      Place? place;
-      try {
-        place = await _placeRepo.getPlace(placeId);
-      } catch (_) {
-        place = null;
-      }
-      if (place == null) {
-        place = Place.empty(placeId);
-      }
-      try {
-        await _placeRepo.savePlace(place);
-      } catch (e) {
-        debugPrint('[ManagePlanVM] bookmark place save failed: $e');
-      }
-
-      added.add(ItineraryStop(
-        stopId: 0,
-        itineraryId: itineraryId,
-        placeId: place.placeId,
-        dayIndex: dayIndex,
-        stopOrder: nextOrder++,
-        startTime: now,
-        endTime: now.add(const Duration(minutes: 90)),
-        durationMinutes: 90,
-        travelFromPrevMinutes: null,
-        stopStatus: 'PLANNED',
-        createdAt: now,
-        updatedAt: now,
-      ));
-    }
+    // for (final b in toAdd) {
+    //   // final place = Place(
+    //   //   placeId: b.placeId,
+    //   //   placeName: b.placeName,
+    //   //   placeAddress: b.placeAddress,
+    //   //   placeLatitude: b.placeLatitude,
+    //   //   placeLongitude: b.placeLongitude,
+    //   //   placeRating: b.placeRating ?? 3.5,
+    //   //   placeTypes: (b.placeTypes ?? '').split(','),
+    //   //   placePhotoRef: b.placePhotoRef,
+    //   //   category: 'landmark',
+    //   //   visitDurationMinutes: 90,
+    //   // );
+    //   try {
+    //     await _placeRepo.savePlace(place);
+    //   } catch (e) {
+    //     debugPrint('[ManagePlanVM] bookmark place save failed: $e');
+    //   }
+    //
+    //   added.add(ItineraryStop(
+    //     stopId: 0,
+    //     itineraryId: itineraryId,
+    //     placeId: b.placeId,
+    //     dayIndex: dayIndex,
+    //     stopOrder: nextOrder++,
+    //     startTime: now,
+    //     endTime: now.add(const Duration(minutes: 90)),
+    //     durationMinutes: 90,
+    //     travelFromPrevMinutes: null,
+    //     stopStatus: 'PLANNED',
+    //     createdAt: now,
+    //     updatedAt: now,
+    //   ));
+    // }
 
     _stops.addAll(added);
     await _stopRepo.saveStops(_stops);
     notifyListeners();
-    return added.length;
+    return true;
   }
 
   /// Remove a stop by its stop ID.

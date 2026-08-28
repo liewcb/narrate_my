@@ -1,19 +1,18 @@
-﻿// lib/view/Itinerary/manage_itinerary/edit_stop_screen.dart
+// lib/view/Itinerary/manage_itinerary/edit_stop_screen.dart
 import 'dart:ui'; // For BackdropFilter
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../../core/config/api_keys.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/app_confirmation_dialog.dart';
+import 'package:narrate_my/view/Itinerary/itinerary_theme_tokens.dart';
 import '../../../model/entities/itinerary_stop.dart';
 import '../../../viewmodel/ItineraryModel/edit_stop_vm.dart';
 
 /// Edits the traveler's progress for a single stop.
 ///
-/// The traveler may edit the scheduled START time (end time auto-derived
-/// from the existing duration) and the progress status (Planned /
-/// Completed / Skipped). Place, order, route and duration are never
-/// modified.
+/// Changing status (Planned / Completed / Skipped) only records the
+/// traveler's progress � the itinerary schedule, times, route and order
+/// are never modified.
 class EditStopScreen extends StatefulWidget {
   final ItineraryStop stop;
   final DateTime itineraryStartDate;
@@ -45,28 +44,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
   // Track whether any progress change was persisted, so the parent
   // screen can reload on return.
   bool _hasChanges = false;
-
-  /// Back-button handler: if there are unsaved edits, ask whether to
-  /// discard them before leaving; otherwise pop normally.
-  Future<void> _handleBack() async {
-    if (!_hasChanges && !_viewModel.hasUnsavedChanges) {
-      Navigator.maybePop(context, false);
-      return;
-    }
-    final discard = await showConfirmationDialog(
-      context: context,
-      title: 'Discard changes?',
-      message: 'You have unsaved changes. Discard them and leave?',
-      confirmLabel: 'Discard',
-      icon: Icons.warning_amber_rounded,
-      iconBgColor: const Color(0xFFFDE8E8),
-      iconColor: AppColors.error,
-      confirmColor: AppColors.error,
-    );
-    if (discard == true && mounted) {
-      Navigator.maybePop(context, false);
-    }
-  }
 
   @override
   void initState() {
@@ -153,7 +130,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
                   ),
                   child: Icon(Icons.arrow_back, color: _onSurface),
                 ),
-                onPressed: _handleBack,
+                onPressed: () => Navigator.maybePop(context, _hasChanges),
               ),
             ),
             title: Text(
@@ -331,9 +308,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
             ? '${hours}h'
             : '${minutes}m';
 
-    final editedStart = _viewModel.editedStartTime;
-    final editedEnd = _viewModel.editedEndTime;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -372,47 +346,31 @@ class _EditStopScreenState extends State<EditStopScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Editable Start Time
-                      GestureDetector(
-                        onTap: _viewModel.isReadOnly
-                            ? null
-                            : () => _pickStartTime(context),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.schedule,
-                              color: Colors.grey.shade400,
-                              size: 18,
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.schedule,
+                            color: Colors.grey.shade400,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            timeFormat.format(stop.startTime),
+                            style: TextStyle(
+                              color: _terracotta,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              timeFormat.format(editedStart),
-                              style: TextStyle(
-                                color: _terracotta,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (!_viewModel.isReadOnly) ...[
-                              const SizedBox(width: 4),
-                              Icon(
-                                Icons.edit,
-                                color: Colors.grey.shade400,
-                                size: 14,
-                              ),
-                            ],
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                       Icon(
                         Icons.arrow_forward,
                         color: Colors.grey.shade300,
                         size: 16,
                       ),
-                      // Read-only End Time (derived from start + duration)
                       Text(
-                        timeFormat.format(editedEnd),
+                        timeFormat.format(stop.endTime),
                         style: TextStyle(
                           color: _terracotta,
                           fontSize: 14,
@@ -432,7 +390,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
                   ),
                 ),
 
-                // Duration (unchanged)
+                // Duration
                 Expanded(
                   flex: 2,
                   child: Row(
@@ -465,27 +423,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
         ),
       ],
     );
-  }
-
-  /// Opens the standard time picker and applies the selection to the
-  /// ViewModel's temporary state (end time auto-derived from duration).
-  Future<void> _pickStartTime(BuildContext context) async {
-    final current = _viewModel.editedStartTime;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: current.hour, minute: current.minute),
-    );
-    if (picked == null) return;
-    final applied = _viewModel.setStartTime(DateTime(
-      current.year,
-      current.month,
-      current.day,
-      picked.hour,
-      picked.minute,
-    ));
-    if (!applied) {
-      _showMessage(context, _viewModel.error ?? 'Invalid start time.');
-    }
   }
 
   Widget _buildStopStatus() {
@@ -606,18 +543,11 @@ class _EditStopScreenState extends State<EditStopScreen> {
       return;
     }
 
-    // 4. No-op if already the current status.
-    if (_viewModel.status == target) {
-      return;
+    // 4. Planned -> Skipped needs confirmation.
+    if (target == 'SKIPPED' && !_viewModel.isSkipped) {
+      final confirmed = await _confirmSkip(context);
+      if (confirmed != true) return; // Status remains unchanged.
     }
-
-    // 5. Confirm the status change BEFORE persisting.
-    debugPrint('[EDIT STOP] Status change requested');
-    debugPrint('[EDIT STOP] From: ${_viewModel.status}');
-    debugPrint('[EDIT STOP] To: $target');
-
-    final confirmed = await _confirmStatusChange(context, target);
-    if (confirmed != true) return; // Status remains unchanged.
 
     final success = await _viewModel.updateStatus(
       target,
@@ -629,64 +559,31 @@ class _EditStopScreenState extends State<EditStopScreen> {
     if (success) {
       _hasChanges = true;
       setState(() {});
-      _showMessage(context, _statusSuccessMessage(target));
     } else {
       _showMessage(context, _viewModel.error ?? 'Unable to update status.');
     }
   }
 
-  String _statusSuccessMessage(String target) {
-    switch (target) {
-      case 'COMPLETED':
-        return 'Stop marked as completed.';
-      case 'SKIPPED':
-        return 'Stop marked as skipped.';
-      case 'PLANNED':
-        return 'Stop changed back to planned.';
-      default:
-        return 'Stop status updated successfully.';
-    }
-  }
-
-  Future<bool?> _confirmStatusChange(BuildContext context, String target) {
-    String title;
-    String message;
-    String confirmLabel;
-    IconData icon;
-    switch (target) {
-      case 'COMPLETED':
-        title = 'Mark this stop as completed?';
-        message = 'This will mark the stop as completed.';
-        confirmLabel = 'Complete';
-        icon = Icons.check_circle_outline_rounded;
-        break;
-      case 'SKIPPED':
-        title = 'Skip this stop?';
-        message = 'This will mark the stop as skipped.';
-        confirmLabel = 'Skip';
-        icon = Icons.fast_forward_rounded;
-        break;
-      case 'PLANNED':
-        title = 'Change this stop back to Planned?';
-        message = 'This will reset the current progress status.';
-        confirmLabel = 'Reset';
-        icon = Icons.schedule_rounded;
-        break;
-      default:
-        title = 'Change stop status?';
-        message = 'This will update the stop status.';
-        confirmLabel = 'Confirm';
-        icon = Icons.flag_rounded;
-    }
-    return showConfirmationDialog(
+  Future<bool?> _confirmSkip(BuildContext context) {
+    return showDialog<bool>(
       context: context,
-      title: title,
-      message: message,
-      confirmLabel: confirmLabel,
-      icon: icon,
-      iconBgColor: AppColors.surface2,
-      iconColor: AppColors.accent,
-      confirmColor: AppColors.accent,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Skip this stop?'),
+        content: const Text(
+          'You can change this status later. '
+          'Skipping does not change the schedule.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Skip'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -874,7 +771,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
   }
 
   Future<void> _save(BuildContext context) async {
-    // 1. Persist the skip reason when the stop is skipped.
+    // If Skipped, persist the optional note as well.
     if (_viewModel.isSkipped) {
       final reasonSaved = await _viewModel.saveSkipReason(
         _skipReasonController.text.trim(),
@@ -885,46 +782,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
       }
       _hasChanges = true;
     }
-
-    // 2. Persist pending time change (with confirmation).
-    if (_viewModel.hasTimeChanges) {
-      debugPrint('[EDIT STOP] Time change requires confirmation');
-      final confirmed = await _confirmTimeChange(context);
-      if (confirmed != true) {
-        // Time change cancelled — do not persist it.
-        return;
-      }
-      debugPrint('[EDIT STOP] Time change confirmed');
-      final timeSaved = await _viewModel.saveTimeChanges();
-      if (!timeSaved) {
-        _showMessage(context, _viewModel.error ?? 'Unable to update time.');
-        return;
-      }
-      _hasChanges = true;
-      _showMessage(context, 'Stop time updated successfully.');
-    }
-
     Navigator.maybePop(context, _hasChanges);
-  }
-
-  Future<bool?> _confirmTimeChange(BuildContext context) {
-    final timeFormat = DateFormat('HH:mm');
-    final from = '${timeFormat.format(_viewModel.stop.startTime)} – '
-        '${timeFormat.format(_viewModel.stop.endTime)}';
-    final to = '${timeFormat.format(_viewModel.editedStartTime)} – '
-        '${timeFormat.format(_viewModel.editedEndTime)}';
-
-    return showConfirmationDialog(
-      context: context,
-      title: 'Confirm Time Change?',
-      message: 'Change this stop from\n$from\n\nto\n$to?\n\n'
-          'This will update the scheduled time for this stop.',
-      confirmLabel: 'Confirm',
-      icon: Icons.schedule_rounded,
-      iconBgColor: AppColors.surface2,
-      iconColor: AppColors.accent,
-      confirmColor: AppColors.accent,
-    );
   }
 
   void _showMessage(BuildContext context, String message) {
