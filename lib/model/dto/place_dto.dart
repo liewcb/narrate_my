@@ -1,7 +1,7 @@
-// lib/data/dto/place_dto.dart
+import 'dart:convert';
+
 import '../entities/openning_hours.dart';
 import '../entities/place.dart';
-import '../entities/coordinates.dart';
 
 class PlaceDto {
   final String id;
@@ -40,6 +40,8 @@ class PlaceDto {
     this.bestTimeSuggestion,
   });
 
+  // ─── From Domain Entity ──────────────────────────────────────────
+
   factory PlaceDto.fromEntity(Place entity) {
     return PlaceDto(
       id: entity.id,
@@ -60,6 +62,8 @@ class PlaceDto {
       bestTimeSuggestion: entity.bestTimeSuggestion,
     );
   }
+
+  // ─── To Domain Entity ────────────────────────────────────────────
 
   Place toEntity() {
     return Place(
@@ -82,6 +86,8 @@ class PlaceDto {
     );
   }
 
+  // ─── To Local Database Map (SQLite) ─────────────────────────────
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -91,8 +97,8 @@ class PlaceDto {
       'latitude': latitude,
       'longitude': longitude,
       'rating': rating,
-      'types': types,
-      'opening_hours': openingHours?.toJson(),
+      'types': types.join(','),
+      'opening_hours': openingHours != null ? jsonEncode(openingHours!.toJson()) : null,
       'price_level': priceLevel,
       'phone_number': phoneNumber,
       'website': website,
@@ -103,6 +109,8 @@ class PlaceDto {
     };
   }
 
+  // ─── From Local Database Map ─────────────────────────────────────
+
   factory PlaceDto.fromMap(Map<String, dynamic> map) {
     return PlaceDto(
       id: map['id'] as String,
@@ -112,9 +120,11 @@ class PlaceDto {
       latitude: (map['latitude'] as num).toDouble(),
       longitude: (map['longitude'] as num).toDouble(),
       rating: (map['rating'] as num).toDouble(),
-      types: List<String>.from(map['types'] ?? []),
+      types: map['types'] != null
+          ? (map['types'] as String).split(',').map((e) => e.trim()).toList()
+          : [],
       openingHours: map['opening_hours'] != null
-          ? OpeningHours.fromJson(map['opening_hours'] as Map<String, dynamic>)
+          ? OpeningHours.fromJson(jsonDecode(map['opening_hours'] as String) as Map<String, dynamic>)
           : null,
       priceLevel: map['price_level'] as int?,
       phoneNumber: map['phone_number'] as String?,
@@ -124,5 +134,58 @@ class PlaceDto {
       category: map['category'] as String?,
       bestTimeSuggestion: map['best_time_suggestion'] as String?,
     );
+  }
+
+  // ─── From Supabase (Remote) ──────────────────────────────────────
+
+  factory PlaceDto.fromJson(Map<String, dynamic> json) {
+    return PlaceDto(
+      id: json['id']?.toString() ?? '',
+      placeId: json['place_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      address: json['address']?.toString() ?? '',
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
+      types: json['types'] != null
+          ? (json['types'] as List).map((e) => e.toString()).toList()
+          : [],
+      openingHours: json['opening_hours'] != null
+          ? OpeningHours.fromJson(json['opening_hours'] as Map<String, dynamic>)
+          : null,
+      priceLevel: json['price_level'] as int?,
+      phoneNumber: json['phone_number'] as String?,
+      website: json['website'] as String?,
+      photoReference: json['photo_reference'] as String?,
+      visitDurationMinutes: json['visit_duration_minutes'] as int?,
+      category: json['category'] as String?,
+      bestTimeSuggestion: json['best_time_suggestion'] as String?,
+    );
+  }
+
+  // ─── To Supabase (Remote) ─────────────────────────────────────────
+  // Leave opening_hours as a Map – Supabase jsonb accepts it.
+
+  Map<String, dynamic> toJsonForRemote() {
+    // Ensure we have an id – if empty, fallback to placeId.
+    final effectiveId = id.isNotEmpty ? id : placeId;
+    return {
+      'id': effectiveId,
+      'place_id': placeId,
+      'name': name,
+      'address': address,
+      'latitude': latitude,
+      'longitude': longitude,
+      'rating': rating,
+      'types': types,           // Supabase ARRAY
+      'category': category,
+      'visit_duration_minutes': visitDurationMinutes,
+      'best_time_suggestion': bestTimeSuggestion,
+      'price_level': priceLevel,
+      'phone_number': phoneNumber,
+      'website': website,
+      'photo_reference': photoReference,
+      'opening_hours': openingHours?.toJson(),
+    };
   }
 }

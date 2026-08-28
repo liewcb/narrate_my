@@ -1,155 +1,244 @@
 ﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'add_place_screen.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme/colors.dart';
+import '../../core/widgets/app_confirmation_dialog.dart';
+import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/entities/place.dart';
+import '../../viewmodel/ItineraryModel/edit_itinerary_vm.dart';
 
-class ItineraryStop {
-  final String id;
-  final String name;
-  final String time;
-  final String address;
-  final String suggestedDuration;
-  final String travelFromPrev;
-  final String travelToNext;
-
-  ItineraryStop({
-    required this.id,
-    required this.name,
-    required this.time,
-    required this.address,
-    required this.suggestedDuration,
-    this.travelFromPrev = '',
-    this.travelToNext = '',
-  });
-}
-
+/// Edits a single day of the generated itinerary during preview/review.
+///
+/// Uses temporary editable state — nothing is written to Supabase here.
+/// Changes are validated and the updated [ItineraryResult] is returned to
+/// the final screen via `Navigator.pop`.
 class EditItineraryScreen extends StatefulWidget {
-  const EditItineraryScreen({super.key});
+  final ItineraryResult result;
+  final String title;
+  final int dayNumber; // 1-based
+  final DateTime tripStartDate;
+  final String explorationTime;
+  final List<String> mustVisitPlaceIds;
+
+  const EditItineraryScreen({
+    super.key,
+    required this.result,
+    required this.title,
+    required this.dayNumber,
+    required this.tripStartDate,
+    required this.explorationTime,
+    required this.mustVisitPlaceIds,
+  });
 
   @override
   State<EditItineraryScreen> createState() => _EditItineraryScreenState();
 }
 
 class _EditItineraryScreenState extends State<EditItineraryScreen> {
-  List<ItineraryStop> _stops = [
-    ItineraryStop(
-      id: '1',
-      name: 'Batu Caves',
-      time: '08:30 – 10:30',
-      address: 'Gombak, 68100 Batu Caves',
-      suggestedDuration: '2 hours',
-      travelFromPrev: '',
-      travelToNext: '30 min',
-    ),
-    ItineraryStop(
-      id: '2',
-      name: 'Precious Old China',
-      time: '12:00 – 13:15',
-      address: 'Central Market, Kuala Lumpur',
-      suggestedDuration: '1.5 hours',
-      travelFromPrev: '25 min',
-      travelToNext: '15 min',
-    ),
-    ItineraryStop(
-      id: '3',
-      name: 'Petronas Towers',
-      time: '15:00 – 17:00',
-      address: 'Kuala Lumpur City Centre',
-      suggestedDuration: '2 hours',
-      travelFromPrev: '30 min',
-      travelToNext: '',
-    ),
-  ];
+  late EditItineraryViewModel _vm;
+  bool _changesApplied = false;
 
-  void _addStop() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const AddPlaceScreen(
-          itineraryId: 'draft',
-          dayIndex: 0,
-        ),
-      ),
+  @override
+  void initState() {
+    super.initState();
+    _vm = EditItineraryViewModel(
+      result: widget.result,
+      dayIndex: widget.dayNumber - 1,
+      tripStartDate: widget.tripStartDate,
+      explorationTime: widget.explorationTime,
+      mustVisitPlaceIds: widget.mustVisitPlaceIds,
+      title: widget.title,
     );
+    debugPrint('════════════════════════════════════');
+    debugPrint('[EDIT ITINERARY]');
+    debugPrint('Day: ${widget.dayNumber}');
+    debugPrint('Original stops: ${_vm.stops.length}');
+    debugPrint('════════════════════════════════════');
   }
 
-  void _editStop(String id) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const AddPlaceScreen(
-          itineraryId: 'draft',
-          dayIndex: 0,
-        ),
-      ),
+  @override
+  void dispose() {
+    _vm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleBack() async {
+    if (!_vm.hasChanges || _changesApplied) {
+      Navigator.pop(context, null);
+      return;
+    }
+    final discard = await showConfirmationDialog(
+      context: context,
+      title: 'Discard changes?',
+      message: 'Your itinerary edits have not been applied.',
+      confirmLabel: 'Discard',
+      icon: Icons.warning_amber_rounded,
+      iconBgColor: const Color(0xFFFDE8E8),
+      iconColor: AppColors.dangerText,
+      confirmColor: AppColors.dangerText,
     );
-  }
-
-  void _deleteStop(String id) {
-    setState(() {
-      _stops.removeWhere((stop) => stop.id == id);
-    });
-  }
-
-  void _onDone() {
-    Navigator.pop(context);
+    if (discard == true && mounted) {
+      Navigator.pop(context, null);
+    }
   }
 
   void _reviewChanges() {
-    if (_stops.isEmpty) {
+    final errors = _vm.validate();
+    if (errors.isNotEmpty) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Add at least one stop before reviewing.')),
-        );
+        ..showSnackBar(SnackBar(content: Text(errors.first)));
       return;
     }
-    final names = _stops.map((s) => s.name.toLowerCase()).toList();
-    if (names.length != names.toSet().length) {
+    _vm.applyChanges();
+    if (_vm.appliedResult != null) {
+      _changesApplied = true;
+      Navigator.pop(context, _vm.appliedResult);
+    }
+  }
+
+  Future<void> _pickStartTime(int index) async {
+    final stop = _vm.stops[index];
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: stop.startTime.hour, minute: stop.startTime.minute),
+    );
+    if (picked == null) return;
+    debugPrint('[EDIT] Time changed');
+    debugPrint('[EDIT] Place: ${stop.name}');
+    debugPrint('[EDIT] Original: ${_fmt(stop.startTime)}–${_fmt(stop.endTime)}');
+    _vm.setStartTime(index, picked);
+    final updated = _vm.stops[index];
+    debugPrint('[EDIT] New: ${_fmt(updated.startTime)}–${_fmt(updated.endTime)}');
+  }
+
+  Future<void> _showAddPicker() async {
+    final candidates = _vm.availableCandidates;
+    if (candidates.isEmpty) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('You have duplicate stops in this day.')),
-        );
+        ..showSnackBar(const SnackBar(content: Text('No additional candidates available.')));
       return;
+    }
+    final selected = await showModalBottomSheet<Place>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Add a place from existing candidates',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            ...candidates.map((p) => ListTile(
+                  leading: const Icon(Icons.place),
+                  title: Text(p.placeName),
+                  subtitle: Text(p.category ?? ''),
+                  onTap: () => Navigator.pop(ctx, p),
+                )),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) {
+      _vm.addCandidate(selected);
+    }
+  }
+
+  Future<void> _showReplacePicker(int index) async {
+    final candidates = _vm.availableCandidates
+        .where((p) => p.placeId != _vm.stops[index].placeId)
+        .toList();
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('No replacement candidates available.')));
+      return;
+    }
+    final selected = await showModalBottomSheet<Place>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Replace with an existing candidate',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            ...candidates.map((p) => ListTile(
+                  leading: const Icon(Icons.swap_horiz),
+                  title: Text(p.placeName),
+                  subtitle: Text(p.category ?? ''),
+                  onTap: () => Navigator.pop(ctx, p),
+                )),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) {
+      _vm.replaceStop(index, selected);
+    }
+  }
+
+  void _removeStop(int index) {
+    final stop = _vm.stops[index];
+    debugPrint('[EDIT] Remove requested');
+    debugPrint('[EDIT] Place: ${stop.name}');
+    debugPrint('[EDIT] Must visit: ${stop.isMustVisit}');
+    final ok = _vm.removeStop(index);
+    if (!ok) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(_vm.error ?? 'Cannot remove this stop.')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.warmBg,
-      appBar: _buildAppBar(),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 24),
-                _buildMapPreview(),
-                const SizedBox(height: 24),
-                _buildStopsList(),
-                const SizedBox(height: 120),
-              ],
-            ),
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: AppColors.warmBg,
+          appBar: _buildAppBar(),
+          body: Stack(
+            children: [
+              SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 24),
+                    _buildMapPreview(),
+                    const SizedBox(height: 24),
+                    _buildStopsList(),
+                    const SizedBox(height: 120),
+                  ],
+                ),
+              ),
+              Positioned(
+                bottom: 100,
+                right: 20,
+                child: _buildFloatingAddButton(),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: _buildBottomButton(),
+              ),
+            ],
           ),
-          Positioned(
-            bottom: 100,
-            right: 20,
-            child: _buildFloatingAddButton(),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _buildBottomButton(),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -159,20 +248,22 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: AppColors.charcoal),
-        onPressed: () => Navigator.pop(context),
+        onPressed: _handleBack,
       ),
-      title: const Text(
-        'Serene Traveler',
-        style: TextStyle(
+      title: Text(
+        widget.title.isEmpty ? 'Edit Itinerary' : widget.title,
+        style: const TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
           color: AppColors.charcoal,
           letterSpacing: -0.02,
         ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       actions: [
         TextButton(
-          onPressed: _onDone,
+          onPressed: () => Navigator.pop(context, null),
           child: const Text(
             'Done',
             style: TextStyle(
@@ -187,11 +278,12 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 
   Widget _buildHeader() {
+    final dateFmt = DateFormat('d MMM');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Day 1 · 12 Aug · Kuala Lumpur Getaway',
+          'Day ${_vm.dayNumber} · ${dateFmt.format(_vm.dayDate)} · ${_vm.title}',
           style: GoogleFonts.inter(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -229,13 +321,9 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
-            Image.network(
-              'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=600&q=80',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: AppColors.grayWarm,
-                child: const Icon(Icons.map, color: AppColors.taupe),
-              ),
+            Container(
+              color: AppColors.grayWarm,
+              child: const Icon(Icons.map, color: AppColors.taupe),
             ),
             Container(
               decoration: BoxDecoration(
@@ -259,9 +347,9 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                   color: AppColors.pineDark.withOpacity(0.9),
                   borderRadius: BorderRadius.circular(30),
                 ),
-                child: const Text(
-                  'Day 1 route',
-                  style: TextStyle(
+                child: Text(
+                  'Day ${_vm.dayNumber} · ${_vm.stops.length} stops',
+                  style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w400,
                     color: Colors.white,
@@ -305,24 +393,23 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             ReorderableListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: _stops.length,
+              itemCount: _vm.stops.length,
               onReorder: (oldIndex, newIndex) {
-                setState(() {
-                  if (newIndex > oldIndex) newIndex -= 1;
-                  final item = _stops.removeAt(oldIndex);
-                  _stops.insert(newIndex, item);
-                });
+                debugPrint('[EDIT] Stop reordered: '
+                    '${oldIndex + 1} → $newIndex');
+                _vm.reorder(oldIndex, newIndex);
               },
               itemBuilder: (context, index) {
-                final stop = _stops[index];
+                final stop = _vm.stops[index];
                 return _StopItem(
-                  key: ValueKey(stop.id),
+                  key: ValueKey(stop.placeId),
                   stop: stop,
                   number: index + 1,
                   isFirst: index == 0,
-                  isLast: index == _stops.length - 1,
-                  onEdit: () => _editStop(stop.id),
-                  onDelete: () => _deleteStop(stop.id),
+                  isLast: index == _vm.stops.length - 1,
+                  onEditTime: () => _pickStartTime(index),
+                  onReplace: () => _showReplacePicker(index),
+                  onDelete: () => _removeStop(index),
                 );
               },
             ),
@@ -330,7 +417,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ),
         const SizedBox(height: 12),
         GestureDetector(
-          onTap: _addStop,
+          onTap: _showAddPicker,
           child: Padding(
             padding: const EdgeInsets.only(left: 2),
             child: Row(
@@ -364,7 +451,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
 
   Widget _buildFloatingAddButton() {
     return FloatingActionButton(
-      onPressed: _addStop,
+      onPressed: _showAddPicker,
       backgroundColor: AppColors.tealGreen,
       child: const Icon(Icons.add, color: Colors.white, size: 28),
     );
@@ -409,14 +496,21 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       ),
     );
   }
+
+  String _fmt(DateTime t) {
+    final h = t.hour.toString().padLeft(2, '0');
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
 }
 
 class _StopItem extends StatelessWidget {
-  final ItineraryStop stop;
+  final EditableStop stop;
   final int number;
   final bool isFirst;
   final bool isLast;
-  final VoidCallback onEdit;
+  final VoidCallback onEditTime;
+  final VoidCallback onReplace;
   final VoidCallback onDelete;
 
   const _StopItem({
@@ -425,12 +519,22 @@ class _StopItem extends StatelessWidget {
     required this.number,
     required this.isFirst,
     required this.isLast,
-    required this.onEdit,
+    required this.onEditTime,
+    required this.onReplace,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
+    final h = stop.durationMinutes ~/ 60;
+    final m = stop.durationMinutes % 60;
+    final durationLabel = h > 0 && m > 0
+        ? '${h}h ${m}m'
+        : h > 0
+            ? '${h}h'
+            : '${m}m';
+    final timeLabel = '${_fmt(stop.startTime)} – ${_fmt(stop.endTime)}';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -441,8 +545,12 @@ class _StopItem extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isFirst ? AppColors.tealGreen : AppColors.surfaceInactive,
-              border: isFirst ? null : Border.all(color: AppColors.taupe.withOpacity(0.3)),
+              color: stop.isMustVisit
+                  ? AppColors.terracottaDark
+                  : (isFirst ? AppColors.tealGreen : AppColors.surfaceInactive),
+              border: isFirst || stop.isMustVisit
+                  ? null
+                  : Border.all(color: AppColors.taupe.withOpacity(0.3)),
             ),
             child: Center(
               child: Text(
@@ -450,7 +558,7 @@ class _StopItem extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: isFirst ? Colors.white : AppColors.charcoal,
+                  color: (isFirst || stop.isMustVisit) ? Colors.white : AppColors.charcoal,
                 ),
               ),
             ),
@@ -488,9 +596,23 @@ class _StopItem extends StatelessWidget {
                                 color: AppColors.charcoal,
                               ),
                             ),
+                            if (stop.isMustVisit) ...[
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.dangerBg,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'Must-visit',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.dangerText),
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 4),
                             Text(
-                              stop.time,
+                              timeLabel,
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w400,
@@ -503,7 +625,7 @@ class _StopItem extends StatelessWidget {
                       Row(
                         children: [
                           GestureDetector(
-                            onTap: onEdit,
+                            onTap: onEditTime,
                             child: Container(
                               width: 40,
                               height: 40,
@@ -511,7 +633,20 @@ class _StopItem extends StatelessWidget {
                                 color: AppColors.surfaceInactive,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.edit, size: 20, color: AppColors.warmBrown),
+                              child: const Icon(Icons.schedule, size: 20, color: AppColors.warmBrown),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: onReplace,
+                            child: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: const BoxDecoration(
+                                color: AppColors.surfaceInactive,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.swap_horiz, size: 20, color: AppColors.warmBrown),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -557,7 +692,7 @@ class _StopItem extends StatelessWidget {
                       const Icon(Icons.schedule, size: 20, color: AppColors.terracottaDark),
                       const SizedBox(width: 8),
                       Text(
-                        'Suggested visit: ${stop.suggestedDuration}',
+                        'Visit: $durationLabel',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w400,
@@ -566,52 +701,6 @@ class _StopItem extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (stop.travelFromPrev.isNotEmpty || stop.travelToNext.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.warmGrayLight,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.taupe.withOpacity(0.5)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          if (stop.travelFromPrev.isNotEmpty)
-                            Row(
-                              children: [
-                                const Icon(Icons.directions_car, size: 16, color: AppColors.taupe),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'From prev: ${stop.travelFromPrev}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w400,
-                                    color: AppColors.taupe,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          if (stop.travelToNext.isNotEmpty)
-                            Row(
-                              children: [
-                                const Icon(Icons.arrow_downward, size: 16, color: AppColors.taupe),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'To next: ${stop.travelToNext}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w400,
-                                    color: AppColors.taupe,
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -619,6 +708,12 @@ class _StopItem extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _fmt(DateTime t) {
+    final h = t.hour.toString().padLeft(2, '0');
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 }
 

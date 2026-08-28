@@ -1,106 +1,62 @@
 import 'package:flutter/foundation.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../core/services/local_database_service.dart';
-import '../../dto/itinerary_stop_dto.dart';
+import '../../data_sources/local/itinerary_stop_local_data_source.dart';
+import '../../data_sources/remote/itinerary_stop_remote_data_source.dart';
 import '../../entities/itinerary_stop.dart';
 import '../interfaces/itinerary_stop_repository.dart';
 
-
 class ItineraryStopRepositoryImpl implements ItineraryStopRepository {
-  final SupabaseClient _remoteClient;
-  final LocalDatabaseService _localDbService;
+  final ItineraryStopLocalSource _local;
+  final ItineraryStopRemoteSource _remote;
 
   ItineraryStopRepositoryImpl({
-    SupabaseClient? remoteClient,
-    LocalDatabaseService? localDbService,
-  })  : _remoteClient = remoteClient ?? Supabase.instance.client,
-        _localDbService = localDbService ?? LocalDatabaseService();
+    ItineraryStopLocalSource? local,
+    ItineraryStopRemoteSource? remote,
+  })  : _local = local ?? ItineraryStopLocalSource(),
+        _remote = remote ?? ItineraryStopRemoteSource();
 
   @override
   Future<List<ItineraryStop>> getStopsForItinerary(String itineraryId) async {
-    List<Map<String, Object?>>? maps;
+    // Local-first
     try {
-      final db = await _localDbService.database;
-      maps = await db.query(
-        'itinerary_stops',
-        where: 'itinerary_id = ?',
-        whereArgs: [itineraryId],
-        orderBy: 'day_index ASC, stop_order ASC',
-      );
+      final localStops = await _local.getForItinerary(itineraryId);
+      if (localStops.isNotEmpty) {
+        return localStops;
+      }
     } catch (e) {
       debugPrint('[StopRepo] Local read failed: $e');
     }
 
-    if (maps != null && maps.isNotEmpty) {
-      return maps.map((map) => ItineraryStopDTO.fromMap(map).toEntity()).toList();
-    }
-
-    // Fetch from Remote if cache missed
-    final response = await _remoteClient
-        .from('itinerary_stops')
-        .select('*, places(*)')
-        .eq('itinerary_id', itineraryId)
-        .order('day_index', ascending: true)
-        .order('stop_order', ascending: true);
-
-    final stops = (response as List)
-        .map((json) => ItineraryStopDTO.fromMap(json).toEntity())
-        .toList();
-
-    // Populate local cache (best-effort)
+    // Remote fallback
     try {
-      final db = await _localDbService.database;
-      final batch = db.batch();
-      for (final stop in stops) {
-        batch.insert(
-          'itinerary_stops',
-          ItineraryStopDTO.fromEntity(stop).toMap(),
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+      final remoteStops = await _remote.fetchForItinerary(itineraryId);
+      if (remoteStops.isNotEmpty) {
+        // Cache them locally
+        try {
+          await _local.clearForItinerary(itineraryId);
+          await _local.insertAll(remoteStops);
+        } catch (cacheErr) {
+          debugPrint('[StopRepo] Local cache write failed: $cacheErr');
+        }
       }
-      await batch.commit(noResult: true);
+      return remoteStops;
     } catch (e) {
-      debugPrint('[StopRepo] Local cache write failed: $e');
+      debugPrint('[StopRepo] Remote read failed: $e');
+      return [];
     }
-
-    return stops;
   }
 
   @override
   Future<ItineraryStop> addStop(ItineraryStop stop) async {
-    final dto = ItineraryStopDTO.fromEntity(stop);
-
-    // 1. Insert locally first so the stop always exists (offline-first)
-    final db = await _localDbService.database;
-    final localMap = dto.toMap()..remove('stop_id');
-    final localId = await db.insert(
-      'itinerary_stops',
-      localMap,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    // Insert locally first
+    final localId = await _local.insert(stop);
     final localStop = stop.copyWith(stopId: localId);
 
-    // 2. Remote insert to generate Postgres auto-increment identity ID (best-effort)
+    // Sync to remote
     try {
-      final payload = ItineraryStopDTO.fromEntity(localStop).toMap()
-        ..remove('stop_id');
-      final response = await _remoteClient
-          .from('itinerary_stops')
-          .insert(payload)
-          .select()
-          .single();
-
-      final createdStop = ItineraryStopDTO.fromMap(response).toEntity();
-
-      // 3. Update local with final server-generated stop_id
-      await db.insert(
-        'itinerary_stops',
-        ItineraryStopDTO.fromEntity(createdStop).toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-
-      return createdStop;
+      final created = await _remote.insert(stop);
+      // Update local with server-generated ID
+      await _local.update(created);
+      return created;
     } catch (e) {
       debugPrint('[StopRepo] Remote add failed: $e');
       return localStop;
@@ -109,25 +65,15 @@ class ItineraryStopRepositoryImpl implements ItineraryStopRepository {
 
   @override
   Future<ItineraryStop> updateStop(ItineraryStop stop) async {
-    // 1. Update local DB
-    final db = await _localDbService.database;
-    await db.update(
-      'itinerary_stops',
-      ItineraryStopDTO.fromEntity(stop).toMap(),
-      where: 'stop_id = ?',
-      whereArgs: [stop.stopId],
-    );
+    // Update locally
+    await _local.update(stop);
 
-    // 2. Update Remote DB (best-effort)
+    // Sync to remote
     try {
-      final response = await _remoteClient
-          .from('itinerary_stops')
-          .update(ItineraryStopDTO.fromEntity(stop).toMap())
-          .eq('stop_id', stop.stopId)
-          .select()
-          .single();
-
-      return ItineraryStopDTO.fromMap(response).toEntity();
+      final updated = await _remote.update(stop);
+      // Ensure local matches remote
+      await _local.update(updated);
+      return updated;
     } catch (e) {
       debugPrint('[StopRepo] Remote update failed: $e');
       return stop;
@@ -136,20 +82,16 @@ class ItineraryStopRepositoryImpl implements ItineraryStopRepository {
 
   @override
   Future<void> deleteStop(int stopId) async {
-    // 1. Delete locally
-    final db = await _localDbService.database;
-    await db.delete(
-      'itinerary_stops',
-      where: 'stop_id = ?',
-      whereArgs: [stopId],
-    );
-
-    // 2. Delete remotely (best-effort)
+    // Delete locally
     try {
-      await _remoteClient
-          .from('itinerary_stops')
-          .delete()
-          .eq('stop_id', stopId);
+      await _local.delete(stopId);
+    } catch (e) {
+      debugPrint('[StopRepo] Local delete failed: $e');
+    }
+
+    // Delete remotely
+    try {
+      await _remote.delete(stopId);
     } catch (e) {
       debugPrint('[StopRepo] Remote delete failed: $e');
     }
@@ -157,12 +99,26 @@ class ItineraryStopRepositoryImpl implements ItineraryStopRepository {
 
   @override
   Future<void> saveStops(List<ItineraryStop> stops) async {
+    // Clear and re-insert all stops for the itinerary.
+    if (stops.isEmpty) return;
+    final itineraryId = stops.first.itineraryId;
+
+    // Clear local
+    await _local.clearForItinerary(itineraryId);
+
+    // Insert all locally
     for (final stop in stops) {
-      if (stop.stopId == 0) {
-        await addStop(stop);
-      } else {
-        await updateStop(stop);
+      await _local.insert(stop);
+    }
+
+    // Sync to remote (best-effort)
+    try {
+      await _remote.deleteForItinerary(itineraryId);
+      for (final stop in stops) {
+        await _remote.insert(stop);
       }
+    } catch (e) {
+      debugPrint('[StopRepo] Remote batch save failed: $e');
     }
   }
 }

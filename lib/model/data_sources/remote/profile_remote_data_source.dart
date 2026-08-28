@@ -86,14 +86,14 @@ class ProfileRemoteDataSource {
         .single();
   }
 
-  Future<List<BookmarkDto>> fetchBookmarkRows(String userId) async {
+  Future<List<BookmarkDTO>> fetchBookmarkRows(String userId) async {
     final rows = await _client
         .from('bookmarks')
         .select()
         .eq('user_id', userId)
         .order('created_at', ascending: false);
     return (rows as List<dynamic>)
-        .map((r) => BookmarkDto.fromJson(r as Map<String, dynamic>))
+        .map((r) => BookmarkDTO.fromJson(r as Map<String, dynamic>))
         .toList();
   }
 

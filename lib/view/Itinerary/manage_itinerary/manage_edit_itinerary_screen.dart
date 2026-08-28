@@ -1,462 +1,1180 @@
-import 'package:flutter/material.dart';
-import 'package:narrate_my/view/Itinerary/itinerary_theme_tokens.dart';
+// lib/view/Itinerary/manage_itinerary/manage_edit_itinerary_screen.dart
+//
+// Day-editor screen: reached after tapping a specific plan day in
+// ManageDisplayPlanScreen. Lets the traveler reorder, edit or add places
+// to that day (only for ongoing itineraries; past ones are read-only).
 
-class EditItineraryScreen extends StatelessWidget {
-  const EditItineraryScreen({Key? key}) : super(key: key);
+import 'package:flutter/material.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../viewmodel/ItineraryModel/manage_edit_itinerary_vm.dart';
+import 'add_from_bookmark.dart';
+import 'edit_stop_screen.dart';
+
+class ManageEditItineraryScreen extends StatefulWidget {
+  final String itineraryId;
+  final int dayNumber;
+
+  const ManageEditItineraryScreen({
+    super.key,
+    required this.itineraryId,
+    required this.dayNumber,
+  });
+
+  @override
+  State<ManageEditItineraryScreen> createState() =>
+      _ManageEditItineraryScreenState();
+}
+
+class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
+  late ManageEditItineraryViewModel _viewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewModel = ManageEditItineraryViewModel(
+      itineraryId: widget.itineraryId,
+      dayIndex: widget.dayNumber,
+    );
+    _viewModel.load();
+  }
+
+  @override
+  void dispose() {
+    _viewModel.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        backgroundColor: AppColors.bg,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.ink),
-          onPressed: () => Navigator.pop(context),
+    return ListenableBuilder(
+      listenable: _viewModel,
+      builder: (context, _) {
+        if (_viewModel.isLoading) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        return Scaffold(
+          backgroundColor: AppColors.bg,
+          // ── Header ──
+          appBar: AppBar(
+            backgroundColor: AppColors.bg,
+            surfaceTintColor: Colors.transparent,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: AppColors.ink),
+              onPressed: () => _onBackPressed(context),
+              padding: EdgeInsets.zero,
+            ),
+            title: Text(
+              'Serene Traveler',
+              style: AppTextStyles.pageTitle.copyWith(fontSize: 20),
+            ),
+            centerTitle: false,
+            actions: [
+              TextButton(
+                onPressed: _viewModel.isSaving
+                    ? null
+                    : () => _onDonePressed(context),
+                child: Text(
+                  _viewModel.isSaving ? 'Saving…' : 'Done',
+                  style: AppTextStyles.button.copyWith(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // ── Body ──
+          body: Stack(
+            children: [
+              SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 24),
+
+                    // ── Day Header ──
+                    _DayHeader(viewModel: _viewModel),
+                    const SizedBox(height: 24),
+
+                    // ── Map Preview ──
+                    _MapPreview(dayNumber: widget.dayNumber),
+                    const SizedBox(height: 24),
+
+                    // ── Stops Section ──
+                    _StopsSection(
+                      items: _viewModel.displayStops,
+                      expandedIndex: _viewModel.expandedIndex,
+                      isReadOnly: _viewModel.isReadOnly,
+                      onToggleExpand: (index) => _viewModel.toggleExpand(index),
+                      onEditPlace: (index) => _onEditPlace(index),
+                      onDeletePlace: (index) => _onDeletePlace(context, index),
+                      onMorePlace: (index) => _onMoreOptions(index),
+                      onAddPlace: _viewModel.canCustomize
+                          ? () => _onAddPlace(context)
+                          : null,
+                    ),
+
+                    const SizedBox(height: 120),
+                  ],
+                ),
+              ),
+
+              // ── FAB ──
+              if (_viewModel.canCustomize)
+                Positioned(
+                  bottom: 100,
+                  right: 20,
+                  child: FloatingActionButton(
+                    onPressed: () => _onAddPlace(context),
+                    backgroundColor: AppColors.accent,
+                    elevation: 4,
+                    shape: const CircleBorder(),
+                    child: const Icon(Icons.add, color: Colors.white, size: 28),
+                  ),
+                ),
+
+              // ── Bottom Bar ──
+              _BottomBar(
+                isReadOnly: _viewModel.isReadOnly,
+                onPressed: () => _onReviewChanges(context),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ─── Handlers ──────────────────────────────────────────────────────
+
+  Future<void> _onBackPressed(BuildContext context) async {
+    if (!_viewModel.hasChanges) {
+      Navigator.maybePop(context);
+      return;
+    }
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text(
+          'Unsaved changes to this day will be lost.',
         ),
-        title: Text(
-          'Serene Traveler',
-          style: AppTextStyles.pageTitle.copyWith(fontSize: 20), //[cite: 1]
-        ),
-        centerTitle: true,
         actions: [
           TextButton(
-            onPressed: () {},
-            child: Text(
-              'Done',
-              style: AppTextStyles.button.copyWith(
-                color: AppColors.accentSoft, //[cite: 1]
-                fontSize: 14,
-              ),
-            ),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
           ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          // Main Scrollable Content
-          ListView(
-            padding: const EdgeInsets.only(
-              left: AppSpacing.screenMargin, //[cite: 1]
-              right: AppSpacing.screenMargin,
-              top: 16.0,
-              bottom: 140.0, // Space for FAB and sticky bottom bar
-            ),
-            children: [
-              _buildHeaderSection(),
-              const SizedBox(height: AppSpacing.sectionGap), //[cite: 1]
-              _buildMapSection(),
-              const SizedBox(height: AppSpacing.sectionGap),
-              _buildStopsTimeline(),
-            ],
-          ),
-
-          // Floating Action Button (FAB)
-          Positioned(
-            bottom: 100, // Above the sticky bottom bar
-            right: AppSpacing.screenMargin, //[cite: 1]
-            child: FloatingActionButton(
-              onPressed: () {},
-              backgroundColor: AppColors.green, //[cite: 1]
-              foregroundColor: AppColors.surface, //[cite: 1]
-              elevation: 4,
-              child: const Icon(Icons.add, size: 28),
-            ),
-          ),
-
-          // Sticky Bottom Actions
-          _buildStickyBottomBar(context),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeaderSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Day 1 · 12 Aug · Kuala Lumpur Getaway',
-          style: AppTextStyles.button.copyWith(color: AppColors.ink), //[cite: 1]
-        ),
-        const SizedBox(height: 4.0),
-        Text(
-          'Reorder, edit or add places to your day.',
-          style: AppTextStyles.labelSm, // Inherits muted color from theme[cite: 1]
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMapSection() {
-    return Container(
-      height: 180,
-      decoration: BoxDecoration(
-        color: AppColors.surface, //[cite: 1]
-        borderRadius: BorderRadius.circular(AppRadius.card), //[cite: 1]
-        boxShadow: const [
-          BoxShadow(
-            color: AppShadows.card, //[cite: 1]
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-        image: const DecorationImage(
-          image: NetworkImage(
-            'https://lh3.googleusercontent.com/aida-public/AB6AXuD2HSadleC5k6pUPBPqzKVm7Uf16oGREsz1gdk72l0niwFPoMS4iOINY_KjgmrD5Dyzgk3fCJVycPuAZ89Ww9J7cJGMK8pSiHL8foPInbRuSX_b58A-esnnQL3sjBEmbQw3c6tNbN0-eDeiARxFYmjsbibDNj0Gc6UV3Z2hrHYA1sywsOvBHJC0rWhbjB64Rt4GyJSwO8l2cimG4WC3xnMVt95zCA_vzemCCZ1dC6htZkfUJBllrabu',
-          ),
-          fit: BoxFit.cover,
-        ),
-      ),
-      alignment: Alignment.topLeft,
-      child: Container(
-        margin: const EdgeInsets.all(16.0),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.pillPaddingX, //[cite: 1]
-          vertical: AppSpacing.pillPaddingY, //[cite: 1]
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.green.withOpacity(0.9), //[cite: 1]
-          borderRadius: BorderRadius.circular(AppRadius.pill), //[cite: 1]
-        ),
-        child: Text(
-          'Day 1 route',
-          style: AppTextStyles.labelSm.copyWith(color: AppColors.surface), //[cite: 1]
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStopsTimeline() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'STOPS',
-          style: AppTextStyles.sectionLabel.copyWith(letterSpacing: 1.5), //[cite: 1]
-        ),
-        const SizedBox(height: 16.0),
-
-        // Stop 1: Expanded
-        _buildTimelineRow(
-          number: '1',
-          isActive: true,
-          isLast: false,
-          card: _buildExpandedStopCard(),
-        ),
-
-        // Stop 2: Collapsed
-        _buildTimelineRow(
-          number: '2',
-          isActive: false,
-          isLast: false,
-          card: _buildCollapsedStopCard('Precious Old China', '12:00 – 13:15'),
-        ),
-
-        // Stop 3: Collapsed
-        _buildTimelineRow(
-          number: '3',
-          isActive: false,
-          isLast: true, // End of the line before "Add place"
-          card: _buildCollapsedStopCard('Petronas Towers', '15:00 – 17:00'),
-        ),
-
-        // Add another place button
-        Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.accentSoft, //[cite: 1]
-                  width: 2,
-                  style: BorderStyle.none, // Handled by a dash package normally, using solid fallback or simple style
-                ),
-              ),
-              child: const Icon(
-                Icons.add,
-                size: 20,
-                color: AppColors.accentSoft, //[cite: 1]
-              ),
-            ),
-            const SizedBox(width: 16),
-            Text(
-              'Add another place',
-              style: AppTextStyles.button.copyWith(
-                color: AppColors.accentSoft, //[cite: 1]
-              ),
-            ),
-          ],
-        )
-      ],
-    );
-  }
-
-  Widget _buildTimelineRow({
-    required String number,
-    required bool isActive,
-    required bool isLast,
-    required Widget card,
-  }) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch, // Stretch line to content height
-        children: [
-          // Timeline Indicator Column
-          SizedBox(
-            width: 36, // Fixed width for alignment
-            child: Column(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isActive
-                        ? AppColors.green //[cite: 1]
-                        : AppColors.surface2, //[cite: 1]
-                    border: isActive
-                        ? null
-                        : Border.all(color: AppColors.moduleBorder.withOpacity(0.3)), //[cite: 1]
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    number,
-                    style: AppTextStyles.button.copyWith(
-                      color: isActive ? AppColors.surface : AppColors.inkSoft, //[cite: 1]
-                    ),
-                  ),
-                ),
-                if (!isLast)
-                  Expanded(
-                    child: CustomPaint(
-                      painter: _DashedLinePainter(
-                        color: AppColors.moduleBorder, //[cite: 1]
-                      ),
-                    ),
-                  ),
-                // Give some spacing if it is the last item so the gap remains
-                if (isLast) const SizedBox(height: 24),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16), // Gap between timeline and card
-          // The Content Card
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sectionGap), //[cite: 1]
-              child: card,
-            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Discard'),
           ),
         ],
       ),
     );
+    if (discard == true && mounted) {
+      Navigator.maybePop(context);
+    }
   }
 
-  Widget _buildExpandedStopCard() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.cardPadding), //[cite: 1]
-      decoration: BoxDecoration(
-        color: AppColors.surface, //[cite: 1]
-        borderRadius: BorderRadius.circular(AppRadius.card), //[cite: 1]
-        boxShadow: const [
-          BoxShadow(
-            color: AppShadows.card, //[cite: 1]
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Batu Caves', style: AppTextStyles.button.copyWith(color: AppColors.ink)), //[cite: 1]
-                  const SizedBox(height: 4),
-                  Text('08:30 – 10:30', style: AppTextStyles.labelSm), //[cite: 1]
-                ],
-              ),
-              Row(
-                children: [
-                  _buildIconBtn(Icons.edit, AppColors.surface2, AppColors.inkSoft), //[cite: 1]
-                  const SizedBox(width: 8),
-                  _buildIconBtn(Icons.delete, AppColors.surface2, AppColors.error), //[cite: 1]
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Details
-          _buildDetailRow(Icons.location_on, 'Gombak, 68100 Batu Caves'),
-          const SizedBox(height: 12),
-          _buildDetailRow(Icons.schedule, 'Suggested visit: 2 hours'),
-          const SizedBox(height: 20),
-          // Travel Context Box
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.bg, //[cite: 1]
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.moduleBorder), //[cite: 1]
-            ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _TravelContextText(icon: Icons.directions_car, text: 'From prev: 25 min'),
-                _TravelContextText(icon: Icons.arrow_downward, text: 'To next: 30 min'),
-              ],
-            ),
-          )
-        ],
+  Future<void> _onDonePressed(BuildContext context) async {
+    final saved = await _viewModel.saveChanges();
+    if (!mounted) return;
+    if (saved) {
+      Navigator.maybePop(context, true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_viewModel.error ?? 'Failed to save changes.')),
+      );
+    }
+  }
+
+  Future<void> _onEditPlace(int index) async {
+    final item = _viewModel.displayStops[index];
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditStopScreen(
+          stop: item.stop,
+          itineraryStartDate:
+              _viewModel.itinerary?.startDate ?? DateTime.now(),
+          isReadOnly: _viewModel.isReadOnly,
+        ),
       ),
     );
+    if (changed == true && mounted) {
+      await _viewModel.refresh();
+    }
   }
 
-  Widget _buildCollapsedStopCard(String title, String time) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.cardPadding), //[cite: 1]
-      decoration: BoxDecoration(
-        color: AppColors.surface, //[cite: 1]
-        borderRadius: BorderRadius.circular(AppRadius.card), //[cite: 1]
-        boxShadow: const [
-          BoxShadow(
-            color: AppShadows.card, //[cite: 1]
-            blurRadius: 8,
-            offset: Offset(0, 2),
+  Future<void> _onDeletePlace(BuildContext context, int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove place?'),
+        content: const Text(
+          'This place will be removed from the day. The schedule and '
+          'route will not be recalculated.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: AppTextStyles.button.copyWith(color: AppColors.ink)), //[cite: 1]
-              const SizedBox(height: 4),
-              Text(time, style: AppTextStyles.labelSm), //[cite: 1]
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            color: AppColors.inkSoft, //[cite: 1]
-            style: IconButton.styleFrom(backgroundColor: AppColors.bg), //[cite: 1]
-            onPressed: () {},
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
           ),
         ],
       ),
     );
+    if (confirmed == true && mounted) {
+      await _viewModel.deleteStop(index);
+    }
   }
 
-  Widget _buildDetailRow(IconData icon, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 20, color: AppColors.accentSoft), //[cite: 1]
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(text, style: AppTextStyles.bodySm.copyWith(color: AppColors.inkSoft)), //[cite: 1]
-        ),
-      ],
-    );
-  }
-
-  Widget _buildIconBtn(IconData icon, Color bgColor, Color iconColor) {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
-      child: IconButton(
-        icon: Icon(icon, size: 20, color: iconColor),
-        onPressed: () {},
+  void _onMoreOptions(int index) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => _PlaceOptionsSheet(
+        placeName: _viewModel.displayStops[index].place.name,
+        isReadOnly: _viewModel.isReadOnly,
+        onEdit: () {
+          Navigator.pop(context);
+          _onEditPlace(index);
+        },
+        onDelete: () {
+          Navigator.pop(context);
+          _onDeletePlace(context, index);
+        },
       ),
     );
   }
 
-  Widget _buildStickyBottomBar(BuildContext context) {
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: EdgeInsets.only(
-          left: AppSpacing.screenMargin, //[cite: 1]
-          right: AppSpacing.screenMargin,
-          top: 16.0,
-          bottom: MediaQuery.of(context).padding.bottom + 16.0,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.bg.withOpacity(0.9), //[cite: 1]
-          boxShadow: const [
-            BoxShadow(
-              color: AppShadows.card, //[cite: 1]
-              blurRadius: 20,
-              offset: Offset(0, -4),
-            )
-          ],
-        ),
-        child: SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accentSoft, //[cite: 1]
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: const Text('Review Changes'),
-          ),
+  Future<void> _onAddPlace(BuildContext context) async {
+    final selectedIds = await Navigator.push<List<String>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddFromBookmarksScreen(
+          userId: _viewModel.itinerary?.userId ?? '',
         ),
       ),
     );
+
+    if (selectedIds != null && selectedIds.isNotEmpty && mounted) {
+      final added = await _viewModel.addBookmarkedPlaces(selectedIds);
+      if (added > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Added $added place(s).')),
+        );
+      }
+    }
+  }
+
+  Future<void> _onReviewChanges(BuildContext context) async {
+    final saved = await _viewModel.saveChanges();
+    if (!mounted) return;
+    if (saved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Day changes saved.')),
+      );
+      Navigator.maybePop(context, true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_viewModel.error ?? 'Failed to save changes.')),
+      );
+    }
   }
 }
 
-class _TravelContextText extends StatelessWidget {
-  final IconData icon;
-  final String text;
+// ═══════════════════════════════════════════════════════════════════════
+//  DAY HEADER
+// ═══════════════════════════════════════════════════════════════════════
 
-  const _TravelContextText({required this.icon, required this.text});
+class _DayHeader extends StatelessWidget {
+  final ManageEditItineraryViewModel viewModel;
+
+  const _DayHeader({required this.viewModel});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: AppColors.inkFaint), //[cite: 1]
-        const SizedBox(width: 6),
-        Text(text, style: AppTextStyles.labelSm), //[cite: 1]
+        Text(
+          viewModel.formattedDayHeader,
+          style: AppTextStyles.pageTitle.copyWith(fontSize: 16),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Reorder, edit or add places to your day.',
+          style: AppTextStyles.bodySm.copyWith(color: AppColors.inkFaint),
+        ),
       ],
     );
   }
 }
 
-// Custom Painter for the Dashed Timeline Line
-class _DashedLinePainter extends CustomPainter {
-  final Color color;
+// ═══════════════════════════════════════════════════════════════════════
+//  MAP PREVIEW
+// ═══════════════════════════════════════════════════════════════════════
 
-  _DashedLinePainter({required this.color});
+class _MapPreview extends StatelessWidget {
+  final int dayNumber;
+
+  const _MapPreview({required this.dayNumber});
 
   @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 180,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            offset: Offset(0, 2),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // ── Map Background (placeholder) ──
+            Container(
+              color: AppColors.surface2,
+              child: CustomPaint(
+                painter: _RoutePainter(),
+              ),
+            ),
+
+            // ── Gradient overlay ──
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Color(0x33000000)],
+                ),
+              ),
+            ),
+
+            // ── Route label badge ──
+            Positioned(
+              top: 16,
+              left: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Text(
+                  'Day $dayNumber route',
+                  style: AppTextStyles.labelSm.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Placeholder painter for route visualization.
+/// Replace with actual Google Map widget.
+class _RoutePainter extends CustomPainter {
+  @override
   void paint(Canvas canvas, Size size) {
-    double dashHeight = 5, dashSpace = 3, startY = 0;
     final paint = Paint()
-      ..color = color
+      ..color = AppColors.accent
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final dotPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    final dotBorder = Paint()
+      ..color = AppColors.accent
+      ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
-    while (startY < size.height) {
-      canvas.drawLine(Offset(0, startY), Offset(0, startY + dashHeight), paint);
-      startY += dashHeight + dashSpace;
+
+    // Route line
+    final path = Path()
+      ..moveTo(size.width * 0.15, size.height * 0.4)
+      ..lineTo(size.width * 0.45, size.height * 0.6)
+      ..lineTo(size.width * 0.55, size.height * 0.3)
+      ..lineTo(size.width * 0.85, size.height * 0.7);
+
+    canvas.drawPath(path, paint);
+
+    // Markers
+    final markers = [
+      Offset(size.width * 0.15, size.height * 0.4),
+      Offset(size.width * 0.55, size.height * 0.3),
+      Offset(size.width * 0.85, size.height * 0.7),
+    ];
+
+    for (final center in markers) {
+      canvas.drawCircle(center, 8, dotBorder);
+      canvas.drawCircle(center, 6, dotPaint);
     }
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  STOPS SECTION
+// ═══════════════════════════════════════════════════════════════════════
+
+class _StopsSection extends StatelessWidget {
+  final List<DayStopItem> items;
+  final int? expandedIndex;
+  final bool isReadOnly;
+  final ValueChanged<int> onToggleExpand;
+  final ValueChanged<int> onEditPlace;
+  final ValueChanged<int> onDeletePlace;
+  final ValueChanged<int> onMorePlace;
+  final VoidCallback? onAddPlace;
+
+  const _StopsSection({
+    required this.items,
+    required this.expandedIndex,
+    required this.isReadOnly,
+    required this.onToggleExpand,
+    required this.onEditPlace,
+    required this.onDeletePlace,
+    required this.onMorePlace,
+    this.onAddPlace,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Section Label ──
+        Text(
+          'STOPS',
+          style: AppTextStyles.sectionLabel,
+        ),
+        const SizedBox(height: 20),
+
+        if (items.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            child: Center(
+              child: Text(
+                'No places on this day yet.',
+                style: AppTextStyles.bodySm.copyWith(
+                  color: AppColors.inkFaint,
+                ),
+              ),
+            ),
+          ),
+
+        // ── Timeline + Stop Cards ──
+        Stack(
+          children: [
+            // ── Dashed vertical line ──
+            Positioned(
+              left: 16,
+              top: 0,
+              bottom: 0,
+              child: SizedBox(
+                width: 2,
+                child: CustomPaint(
+                  painter: _DashedLinePainter(
+                    color: AppColors.moduleBorder,
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Stop items ──
+            Column(
+              children: [
+                for (int i = 0; i < items.length; i++) ...[
+                  _StopItem(
+                    index: i,
+                    item: items[i],
+                    isExpanded: expandedIndex == i,
+                    onTap: () => onToggleExpand(i),
+                    onEdit: () => onEditPlace(i),
+                    onDelete: () => onDeletePlace(i),
+                    onMore: () => onMorePlace(i),
+                  ),
+                  if (i < items.length - 1) const SizedBox(height: 16),
+                ],
+
+                // ── Add Place Button ──
+                if (onAddPlace != null) ...[
+                  const SizedBox(height: 24),
+                  _AddPlaceButton(onTap: onAddPlace!),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SINGLE STOP ITEM
+// ═══════════════════════════════════════════════════════════════════════
+
+class _StopItem extends StatelessWidget {
+  final int index;
+  final DayStopItem item;
+  final bool isExpanded;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onMore;
+
+  const _StopItem({
+    required this.index,
+    required this.item,
+    required this.isExpanded,
+    required this.onTap,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onMore,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final number = index + 1;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Number Circle ──
+        _StopCircle(number: number, isExpanded: isExpanded),
+
+        const SizedBox(width: 16),
+
+        // ── Content Card ──
+        Expanded(
+          child: GestureDetector(
+            onTap: isExpanded ? null : onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x0A000000),
+                    offset: Offset(0, 2),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: isExpanded
+                  ? _ExpandedCard(
+                item: item,
+                onEdit: onEdit,
+                onDelete: onDelete,
+              )
+                  : _CollapsedCard(
+                item: item,
+                onMore: onMore,
+                onTap: onTap,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Timeline Circle ─────────────────────────────────────────────────
+
+class _StopCircle extends StatelessWidget {
+  final int number;
+  final bool isExpanded;
+
+  const _StopCircle({required this.number, required this.isExpanded});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isExpanded ? AppColors.accent : AppColors.surface2,
+        border: isExpanded
+            ? null
+            : Border.all(color: AppColors.moduleBorder),
+        boxShadow: [
+          BoxShadow(
+            color: isExpanded
+                ? AppColors.accent.withOpacity(0.2)
+                : Colors.transparent,
+            offset: const Offset(0, 2),
+            blurRadius: 4,
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          '$number',
+          style: AppTextStyles.labelSm.copyWith(
+            fontWeight: FontWeight.w700,
+            color: isExpanded ? Colors.white : AppColors.inkSoft,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Expanded Card ───────────────────────────────────────────────────
+
+class _ExpandedCard extends StatelessWidget {
+  final DayStopItem item;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _ExpandedCard({
+    required this.item,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Title + Action Buttons ──
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.place.name,
+                      style: AppTextStyles.bodyLg.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.formattedTime,
+                      style: AppTextStyles.bodySm.copyWith(
+                        color: AppColors.inkFaint,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  // Edit button
+                  _ActionButton(
+                    icon: Icons.edit_rounded,
+                    backgroundColor: AppColors.surface2,
+                    iconColor: AppColors.inkSoft,
+                    onTap: onEdit,
+                  ),
+                  const SizedBox(width: 8),
+                  // Delete button
+                  _ActionButton(
+                    icon: Icons.delete_rounded,
+                    backgroundColor: AppColors.accentSoft,
+                    iconColor: AppColors.accent,
+                    onTap: onDelete,
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Address ──
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.location_on_rounded,
+                size: 20,
+                color: AppColors.accent,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item.place.address,
+                  style: AppTextStyles.bodySm.copyWith(
+                    color: AppColors.inkSoft,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // ── Visit Duration ──
+          Row(
+            children: [
+              const Icon(
+                Icons.schedule_rounded,
+                size: 20,
+                color: AppColors.accent,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Suggested visit: ${item.visitDurationText}',
+                style: AppTextStyles.bodySm.copyWith(
+                  color: AppColors.inkSoft,
+                ),
+              ),
+            ],
+          ),
+
+          // ── Travel Info Bar ──
+          if (item.travelFromPrevText != null ||
+              item.travelToNextText != null) ...[
+            const SizedBox(height: 20),
+            _TravelInfoBar(item: item),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Collapsed Card ──────────────────────────────────────────────────
+
+class _CollapsedCard extends StatelessWidget {
+  final DayStopItem item;
+  final VoidCallback onMore;
+  final VoidCallback onTap;
+
+  const _CollapsedCard({
+    required this.item,
+    required this.onMore,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.place.name,
+                    style: AppTextStyles.bodyLg.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.formattedTime,
+                    style: AppTextStyles.bodySm.copyWith(
+                      color: AppColors.inkFaint,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            GestureDetector(
+              onTap: onMore,
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  color: AppColors.surface2,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.more_vert_rounded,
+                  size: 20,
+                  color: AppColors.inkSoft,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Action Button (Edit/Delete) ────────────────────────────────────
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final Color backgroundColor;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  const _ActionButton({
+    required this.icon,
+    required this.backgroundColor,
+    required this.iconColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, size: 20, color: iconColor),
+      ),
+    );
+  }
+}
+
+// ── Travel Info Bar ────────────────────────────────────────────────
+
+class _TravelInfoBar extends StatelessWidget {
+  final DayStopItem item;
+  const _TravelInfoBar({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.moduleBorder),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // From previous
+          Flexible(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.directions_car_rounded,
+                  size: 16,
+                  color: AppColors.inkSoft,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    item.travelFromPrevText != null
+                        ? 'From prev: ${item.travelFromPrevText}'
+                        : 'Starting point',
+                    style: AppTextStyles.labelSm.copyWith(
+                      color: AppColors.inkSoft,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // To next
+          if (item.travelToNextText != null)
+            Flexible(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.arrow_downward_rounded,
+                    size: 16,
+                    color: AppColors.inkSoft,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'To next: ${item.travelToNextText}',
+                      style: AppTextStyles.labelSm.copyWith(
+                        color: AppColors.inkSoft,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  ADD PLACE BUTTON
+// ═══════════════════════════════════════════════════════════════════════
+
+class _AddPlaceButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AddPlaceButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        children: [
+          // Dashed circle with +
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.accent,
+                width: 2,
+              ),
+            ),
+            child: const Icon(
+              Icons.add,
+              size: 20,
+              color: AppColors.accent,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Add another place',
+            style: AppTextStyles.button.copyWith(
+              fontWeight: FontWeight.w700,
+              color: AppColors.accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  DASHED LINE PAINTER
+// ═══════════════════════════════════════════════════════════════════════
+
+class _DashedLinePainter extends CustomPainter {
+  final Color color;
+  _DashedLinePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    const dashHeight = 6.0;
+    const gapHeight = 4.0;
+    double startY = 0;
+
+    while (startY < size.height) {
+      canvas.drawLine(
+        Offset(size.width / 2, startY),
+        Offset(size.width / 2, startY + dashHeight),
+        paint,
+      );
+      startY += dashHeight + gapHeight;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  BOTTOM BAR
+// ═══════════════════════════════════════════════════════════════════════
+
+class _BottomBar extends StatelessWidget {
+  final bool isReadOnly;
+  final VoidCallback onPressed;
+
+  const _BottomBar({required this.isReadOnly, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.bg.withOpacity(0.9),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A004D40),
+                offset: Offset(0, -4),
+                blurRadius: 20,
+              ),
+            ],
+          ),
+          child: isReadOnly
+              ? Text(
+            'This itinerary is in the past and is read-only.',
+            style: AppTextStyles.bodySm.copyWith(
+              color: AppColors.inkFaint,
+            ),
+            textAlign: TextAlign.center,
+          )
+              : ElevatedButton(
+            onPressed: onPressed,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 56),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+              elevation: 4,
+              shadowColor: AppColors.accent.withOpacity(0.3),
+            ),
+            child: Text(
+              'Review Changes',
+              style: AppTextStyles.button.copyWith(
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  PLACE OPTIONS BOTTOM SHEET
+// ═══════════════════════════════════════════════════════════════════════
+
+class _PlaceOptionsSheet extends StatelessWidget {
+  final String placeName;
+  final bool isReadOnly;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _PlaceOptionsSheet({
+    required this.placeName,
+    required this.isReadOnly,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Handle bar ──
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.moduleBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            Text(
+              placeName,
+              style: AppTextStyles.bodyLg.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Edit option ──
+            ListTile(
+              leading: const Icon(Icons.edit_rounded, color: AppColors.ink),
+              title: Text(
+                'Edit place',
+                style: AppTextStyles.bodySm.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.ink,
+                ),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              onTap: onEdit,
+            ),
+
+            // ── Delete option ──
+            if (!isReadOnly)
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_rounded,
+                  color: AppColors.accent,
+                ),
+                title: Text(
+                  'Remove from itinerary',
+                  style: AppTextStyles.bodySm.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.accent,
+                  ),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                onTap: onDelete,
+              ),
+
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
 }

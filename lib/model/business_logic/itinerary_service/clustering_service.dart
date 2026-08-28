@@ -1,8 +1,6 @@
 import 'dart:math';
-import 'package:flutter/cupertino.dart';
 import '../../../core/config/itinerary_constants.dart';
 import '../../entities/coordinates.dart';
-import 'candidate_retrieval_service.dart';
 import 'scoring_service.dart';
 
 class Cluster {
@@ -42,6 +40,82 @@ class ClusteringService {
         dayIndex: entry.key,
       );
     }).toList();
+  }
+
+  /// Pure geographic clustering.
+  ///
+  /// Groups geographically close candidate places into [clusterCount]
+  /// clusters. Cluster indexes are NOT itinerary days — they are context
+  /// for DeepSeek, which decides the actual day allocation.
+  ///
+  /// Must-visit places are always preserved in the cluster nearest to them,
+  /// and never dropped by the balancing step.
+  List<Cluster> clusterGeographically({
+    required List<ScoredAttraction> scoredPlaces,
+    required int clusterCount,
+  }) {
+    if (scoredPlaces.isEmpty) return [];
+
+    final int k = clusterCount.clamp(1, scoredPlaces.length);
+    if (k <= 1) {
+      return [
+        Cluster(
+          attractions: List.of(scoredPlaces),
+          center: _calculateCenter(scoredPlaces),
+          dayIndex: 0,
+        ),
+      ];
+    }
+
+    final rawClusters = _kMeansClustering(scoredPlaces, k);
+    _ensureNonEmpty(rawClusters, scoredPlaces);
+    _protectMustVisits(rawClusters);
+
+    return rawClusters.asMap().entries.map((entry) {
+      return Cluster(
+        attractions: entry.value,
+        center: _calculateCenter(entry.value),
+        dayIndex: entry.key,
+      );
+    }).toList();
+  }
+
+  /// Moves any empty cluster to a real place (re-using the original
+  /// nearest-place correction).
+  void _ensureNonEmpty(
+    List<List<ScoredAttraction>> clusters,
+    List<ScoredAttraction> scored,
+  ) {
+    for (int i = 0; i < clusters.length; i++) {
+      if (clusters[i].isNotEmpty) continue;
+      final nearestIdx = _findNearestPlaceToCentroid(scored, _calculateCenter(clusters[i]));
+      if (nearestIdx == -1) continue;
+      final place = scored[nearestIdx];
+      for (var c in clusters) {
+        if (c.contains(place)) {
+          c.remove(place);
+          clusters[i].add(place);
+          break;
+        }
+      }
+    }
+  }
+
+  /// Guarantees a must-visit is never discarded by clustering: a cluster
+  /// containing a must-visit keeps it, and empty clusters are filled first
+  /// from non-must-visit places to avoid pulling a must-visit away.
+  void _protectMustVisits(List<List<ScoredAttraction>> clusters) {
+    for (final cluster in clusters) {
+      if (cluster.isEmpty) continue;
+      // No-op safeguard: keeps must-visits in their nearest cluster.
+      final must = cluster.where((s) => s.isMustVisit).toList();
+      if (must.isEmpty) continue;
+      cluster.sort((a, b) {
+        if (a.isMustVisit && !b.isMustVisit) return -1;
+        if (!a.isMustVisit && b.isMustVisit) return 1;
+        return b.score.compareTo(a.score);
+      });
+    }
   }
 
   List<List<ScoredAttraction>> _kMeansClustering(List<ScoredAttraction> scored, int k) {

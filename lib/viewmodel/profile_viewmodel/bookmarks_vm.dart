@@ -11,7 +11,7 @@ class BookmarksVm extends ChangeNotifier {
 
   BookmarksVm({ProfileRepository? profileRepository})
       : _profileRepository = profileRepository ?? SupabaseProfileRepositoryAdapter() {
-    load();
+    //load();
   }
 
   List<Bookmark> bookmarks = [];

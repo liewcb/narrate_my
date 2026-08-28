@@ -1,66 +1,50 @@
-// lib/data/repositories/place_repository_adapter.dart
-import 'package:sqflite/sqflite.dart';
-import '../../../core/services/database_manager.dart';
-import '../../../core/services/local_database_service.dart';
-import '../../../core/services/remote_database_service.dart';
-import '../../dto/place_dto.dart';
+import 'package:flutter/foundation.dart';
+
+import '../../data_sources/local/places_local_data_source.dart';
+import '../../data_sources/remote/place_remote_source.dart';   // ✅ Supabase source
 import '../../entities/place.dart';
 import '../interfaces/place_repository.dart';
 
 class PlaceRepositoryAdapter implements PlaceRepository {
-  final LocalDatabaseService _local;
-  final RemoteDatabaseService _remote;
+  final PlaceLocalSource _local;
+  final PlaceRemoteSource _remote; // ✅ Supabase, not PlacesRemoteDataSource
 
   PlaceRepositoryAdapter({
-    LocalDatabaseService? local,
-    RemoteDatabaseService? remote,
-  })  : _local = local ?? DatabaseManager().local,
-        _remote = remote ?? DatabaseManager().remote;
+    PlaceLocalSource? local,
+    PlaceRemoteSource? remote, // ✅ correct type
+  })  : _local = local ?? PlaceLocalSource(),
+        _remote = remote ?? PlaceRemoteSource(); // ✅ default to Supabase source
 
   @override
   Future<void> savePlace(Place place) async {
-    final dto = PlaceDto.fromEntity(place);
-    final db = await _local.database;
-    await db.insert(
-      'places',
-      dto.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    // 1. Save locally first (SQLite)
+    await _local.savePlace(place);
+
+    // 2. Sync to Supabase (best-effort)
+    try {
+      await _remote.upsertPlace(place);
+    } catch (e) {
+      debugPrint('[PlaceRepo] Remote upsert failed: $e');
+    }
   }
 
   @override
   Future<Place?> getPlace(String placeId) async {
-    final db = await _local.database;
-    final result = await db.query(
-      'places',
-      where: 'place_id = ?',
-      whereArgs: [placeId],
-    );
-    if (result.isEmpty) return null;
-    return PlaceDto.fromMap(result.first).toEntity();
+    return await _local.getPlace(placeId);
   }
 
   @override
   Future<List<Place>> getAllPlaces() async {
-    final db = await _local.database;
-    final result = await db.query('places');
-    return result.map((map) => PlaceDto.fromMap(map).toEntity()).toList();
+    return await _local.getAllPlaces();
   }
 
   @override
   Future<void> deletePlace(String placeId) async {
-    final db = await _local.database;
-    await db.delete('places', where: 'place_id = ?', whereArgs: [placeId]);
+    await _local.deletePlace(placeId);
   }
 
   @override
   Future<bool> exists(String placeId) async {
-    final db = await _local.database;
-    final result = await db.query(
-      'places',
-      where: 'place_id = ?',
-      whereArgs: [placeId],
-    );
-    return result.isNotEmpty;
+    return await _local.exists(placeId);
   }
 }
