@@ -1,22 +1,23 @@
-// lib/screens/step5_generation_screen.dart
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
+import 'itinerary_final_screen.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../viewmodel/ItineraryModel/step5_generation_vm.dart';
-import 'itinerary_final_screen.dart';
+import '../../viewmodel/ItineraryModel/itinerary_generation_vm.dart';
 
-class Step5GenerationScreen extends StatefulWidget {
+
+class GenerationScreen extends StatefulWidget {
   final TripDraft draft;
-  const Step5GenerationScreen({super.key, required this.draft});
+  const GenerationScreen({super.key, required this.draft});
 
   @override
-  State<Step5GenerationScreen> createState() => _Step5GenerationScreenState();
+  State<GenerationScreen> createState() => _GenerationScreenState();
 }
 
-class _Step5GenerationScreenState extends State<Step5GenerationScreen> {
+class _GenerationScreenState extends State<GenerationScreen> {
   final List<Offset> planePositions = const [
     Offset(0.08, 0.72),
     Offset(0.45, 0.55),
@@ -28,14 +29,14 @@ class _Step5GenerationScreenState extends State<Step5GenerationScreen> {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<Step5GenerationVM>(
       create: (_) => Step5GenerationVM(widget.draft)..startGeneration(),
-      child: _Step5GenerationBody(planePositions: planePositions),
+      child: _GenerationBody(planePositions: planePositions),
     );
   }
 }
 
-class _Step5GenerationBody extends StatelessWidget {
+class _GenerationBody extends StatelessWidget {
   final List<Offset> planePositions;
-  const _Step5GenerationBody({required this.planePositions});
+  const _GenerationBody({required this.planePositions});
 
   @override
   Widget build(BuildContext context) {
@@ -44,19 +45,41 @@ class _Step5GenerationBody extends StatelessWidget {
     final currentStep = _stepIndex(vm.progressMessage);
     final planeIndex = currentStep.clamp(0, planePositions.length - 1);
 
+    // If generation is complete and successful, navigate to preview screen
+    if (!isLoading && vm.isReady && vm.result != null && vm.result!.success) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ItineraryFinalScreen(
+              result: vm.result!,
+              title: vm.draft.title.isEmpty ? 'My Trip' : vm.draft.title,
+              itineraryId: vm.savedItineraryId,
+              explorationTime: vm.draft.explorationTime ?? 'Standard',
+              mustVisitPlaceIds: List.of(vm.draft.mustVisitPlaceIds),
+              tripStartDate: vm.draft.startDate ?? DateTime.now(),
+              onRegenerate: () => vm.regenerate(),
+              onSave: () => vm.saveItinerary(),
+            ),
+          ),
+        );
+      });
+      // Return a placeholder while navigation happens
+      return const SizedBox.shrink();
+    }
+
     return Scaffold(
       backgroundColor: AppColors.creamBg,
       body: SafeArea(
         child: SingleChildScrollView(
-          // Alignment: 24px horizontal grid padding
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
-            // Alignment: Strict left alignment across all section blocks
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _AppBar(step: 5),
-              // Spacing: 32px strict margin between major sections (8px grid)
-              const SizedBox(height: 32),
+              const WizardAppBar(step: 5),
+              const SizedBox(height: 8),
+              const WizardProgressBar(activeSteps: 5),
+              const SizedBox(height: 24),
               if (vm.errorMessage != null) ...[
                 _ErrorView(message: vm.errorMessage!),
               ] else if (isLoading) ...[
@@ -66,26 +89,6 @@ class _Step5GenerationBody extends StatelessWidget {
                   stage: vm.progressMessage ?? 'Preparing...',
                   currentStep: currentStep,
                 ),
-              ] else if (vm.isReady) ...[
-                const _ReadyHero(),
-                const SizedBox(height: 32),
-                _StatsGrid(totalDays: vm.totalDays),
-                const SizedBox(height: 32),
-                _PreviewCard(vm: vm),
-                const SizedBox(height: 32),
-                _ReadyCTA(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ItineraryFinalScreen(
-                          result: vm.result,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 32),
               ],
             ],
           ),
@@ -96,54 +99,23 @@ class _Step5GenerationBody extends StatelessWidget {
 
   int _stepIndex(String? message) {
     if (message == null) return 0;
-    final idx = Step5GenerationVM.progressStages.indexWhere(
-          (s) => message.startsWith(s.substring(0, s.length > 12 ? 12 : s.length)),
-    );
-    return idx < 0 ? 0 : idx;
+    final stages = Step5GenerationVM.progressStages;
+    // Find the first stage that the message starts with
+    for (int i = 0; i < stages.length; i++) {
+      if (message.startsWith(stages[i])) {
+        return i;
+      }
+    }
+    // Fallback: if the message contains the stage string (e.g., "Scoring places...")
+    for (int i = 0; i < stages.length; i++) {
+      if (message.contains(stages[i])) {
+        return i;
+      }
+    }
+    return 0;
   }
 }
 
-// ─── Private sub‑widgets ──────────────────────────────────────
-
-class _AppBar extends StatelessWidget {
-  final int step;
-  const _AppBar({required this.step});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: List.generate(5, (i) {
-              final active = i < step;
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                width: 24,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: active ? AppColors.brandGreen : AppColors.outlineLight,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              );
-            }),
-          ),
-          // Hierarchy: 14px regular secondary step indicator
-          Text(
-            'Step $step of 5',
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
-              color: AppColors.brandGreen,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _MapHero extends StatefulWidget {
   final Offset planeOffset;
@@ -520,212 +492,6 @@ class _FunFact extends StatelessWidget {
   }
 }
 
-class _ReadyHero extends StatelessWidget {
-  const _ReadyHero();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 280,
-      // Simplification: Soft flat container, 16px radius, no shadows
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.network(
-              'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=600&q=80',
-              fit: BoxFit.cover,
-            ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppColors.brandGreen.withOpacity(0.6),
-                    AppColors.brandGreen.withOpacity(0.9),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 24,
-              left: 24,
-              right: 24,
-              child: Column(
-                // Alignment: Text left aligned
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: const BoxDecoration(color: AppColors.white, shape: BoxShape.circle),
-                    child: const Icon(Icons.celebration, color: AppColors.brandGreen, size: 24),
-                  ),
-                  const SizedBox(height: 16),
-                  // Hierarchy: Main header strictly 24px bold
-                  Text(
-                    'Your trip is ready!',
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      height: 1.2,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  // Hierarchy: Secondary text 14px regular
-                  const Text(
-                    '5 days · 2 cities · Perfectly balanced',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatsGrid extends StatelessWidget {
-  final int totalDays;
-  const _StatsGrid({required this.totalDays});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _statCard('8', 'Places'),
-        const SizedBox(width: 16),
-        _statCard('$totalDays', 'Days'),
-        const SizedBox(width: 16),
-        _statCard('4h', 'Transit'),
-      ],
-    );
-  }
-
-  Widget _statCard(String num, String label) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        // Simplification: Flat background decoration, radius 12px
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            // Hierarchy: Accent values 20px Playfair font
-            Text(
-              num,
-              style: GoogleFonts.playfairDisplay(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppColors.brandGreen,
-              ),
-            ),
-            const SizedBox(height: 4),
-            // Hierarchy: Label text 14px regular muted
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.normal,
-                color: AppColors.outline,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PreviewCard extends StatelessWidget {
-  final Step5GenerationVM vm;
-  const _PreviewCard({required this.vm});
-
-  @override
-  Widget build(BuildContext context) {
-    final result = vm.result;
-    final scheduledDays = result?.scheduledDays ?? const [];
-
-    final firstDay = scheduledDays.isNotEmpty ? scheduledDays.first : null;
-    final dayLabel = firstDay != null ? 'Day ${firstDay.dayIndex + 1}' : 'Day 1';
-    final stopCount = firstDay?.stops.length ?? 0;
-    final stopNames = firstDay != null
-        ? firstDay.stops.map((s) => s.attraction.place.name).take(3).join(' · ')
-        : 'Your itinerary is ready';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Hierarchy: Section Header bold
-        const Text(
-          'Preview',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: AppColors.black,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.creamBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: Text(
-                    dayLabel,
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.brandGreen, fontSize: 14),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      stopNames.isNotEmpty ? stopNames : 'Your itinerary is ready',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$stopCount stop(s) · ${scheduledDays.length} day(s)',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: AppColors.outline),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: AppColors.outline),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _ErrorView extends StatelessWidget {
   final String message;
   const _ErrorView({required this.message});
@@ -756,40 +522,6 @@ class _ErrorView extends StatelessWidget {
             elevation: 0,
           ),
           child: const Text('Go Back'),
-        ),
-      ],
-    );
-  }
-}
-
-class _ReadyCTA extends StatelessWidget {
-  final VoidCallback onPressed;
-  const _ReadyCTA({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        ElevatedButton.icon(
-          onPressed: onPressed,
-          icon: const Icon(Icons.map, color: Colors.white),
-          label: const Text(
-            'Explore Your Itinerary',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.brandTerracotta,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 56),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0, // Simplification: Flat button aesthetic, shadows removed
-          ),
-        ),
-        const SizedBox(height: 16),
-        // Hierarchy: 14px regular muted secondary text
-        const Text(
-          'You can edit, reorder or add places anytime',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: AppColors.outline),
         ),
       ],
     );

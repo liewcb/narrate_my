@@ -4,19 +4,20 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/interest_mapping.dart';
 import '../../core/theme/colors.dart';
+import '../../model/business_logic/itinerary_service/itinerary_validation_service.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../viewmodel/ItineraryModel/step2_trip_style_vm.dart';
-import 'step3_add_place_screen.dart';
+import '../../viewmodel/ItineraryModel/trip_customization_vm.dart';
+import 'must_visit_selection_screen.dart';
 
-class Step2TripStyleScreen extends StatefulWidget {
+class TripCustomizationScreen extends StatefulWidget {
   final TripDraft draft;
-  const Step2TripStyleScreen({super.key, required this.draft});
+  const TripCustomizationScreen({super.key, required this.draft});
 
   @override
-  State<Step2TripStyleScreen> createState() => _Step2TripStyleScreenState();
+  State<TripCustomizationScreen> createState() => _TripCustomizationScreenState();
 }
 
-class _Step2TripStyleScreenState extends State<Step2TripStyleScreen> {
+class _TripCustomizationScreenState extends State<TripCustomizationScreen> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<Step2TripStyleVM>(
@@ -50,6 +51,11 @@ class _Step2TripStyleBody extends StatelessWidget {
                   const SizedBox(height: 24),
                   _Header(vm: vm),
                   const SizedBox(height: 24),
+                  _TravelType(
+                    selected: vm.travelType,
+                    onSelected: vm.setTravelType,
+                  ),
+                  const SizedBox(height: 24),
                   _TripName(
                     initialValue: vm.tripName,
                     onChanged: vm.setTripName,
@@ -72,9 +78,9 @@ class _Step2TripStyleBody extends StatelessWidget {
                     onToggle: vm.toggleInterest,
                   ),
                   const SizedBox(height: 24),
-                  _Notes(
-                    initialValue: vm.notes,
-                    onChanged: vm.setNotes,
+                  _Transportation(
+                    selected: vm.transportation,
+                    onSelected: vm.setTransportation,
                   ),
                   const SizedBox(height: 120),
                 ],
@@ -101,7 +107,7 @@ class _Step2TripStyleBody extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => Step3AddPlaceScreen(
+                      builder: (_) => MustVisitSelectionScreen(
                         draft: draft,
                       ),
                     ),
@@ -154,12 +160,12 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
                 color: AppColors.outline,
               ),
             ),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.more_horiz, color: AppColors.brandCharcoal),
-              onPressed: () {},
-              padding: EdgeInsets.zero,
-            ),
+            // const Spacer(),
+            // IconButton(
+            //   icon: const Icon(Icons.more_horiz, color: AppColors.brandCharcoal),
+            //   onPressed: () {},
+            //   padding: EdgeInsets.zero,
+            // ),
           ],
         ),
       ),
@@ -262,6 +268,93 @@ class _Header extends StatelessWidget {
   }
 }
 
+class _TravelType extends StatelessWidget {
+  final String? selected;
+  final ValueChanged<String> onSelected;
+
+  const _TravelType({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const types = [
+      {'label': 'Solo', 'icon': Icons.person_rounded},
+      {'label': 'Couple', 'icon': Icons.favorite_rounded},
+      {'label': 'Family', 'icon': Icons.family_restroom_rounded},
+      {'label': 'Friends', 'icon': Icons.groups_rounded},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Travel Type',
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.brandCharcoal,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: types.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final t = entry.value;
+            final label = t['label'] as String;
+            final icon = t['icon'] as IconData;
+            final isSelected = selected == label;
+
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: idx < types.length - 1 ? 8.0 : 0.0),
+                child: GestureDetector(
+                  onTap: () => onSelected(label),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.brandGreenLight : AppColors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSelected ? AppColors.brandGreen : AppColors.outlineLight.withOpacity(0.5),
+                        width: isSelected ? 1.5 : 1,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x0A004D40), offset: Offset(0, 2), blurRadius: 10)
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          icon,
+                          size: 22,
+                          color: isSelected ? AppColors.brandGreen : AppColors.outline,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          label,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            color: isSelected ? AppColors.brandGreen : AppColors.brandCharcoal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+}
+
 class _TripName extends StatefulWidget {
   final String initialValue;
   final ValueChanged<String> onChanged;
@@ -335,13 +428,21 @@ class _TravelDates extends StatelessWidget {
 
   Future<void> _pickRange(BuildContext context) async {
     final now = DateTime.now();
+
+    // ✅ FIX: Start date limited so full trip stays in forecast
+    final maxStartDate = vm.latestPossibleStartDate;
+
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
       firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
+      // ✅ lastDate = today + forecast range
+      //    setDates() handles clamping to maxTripDays
+      lastDate: vm.latestPossibleEndDate(),
       initialDateRange: vm.startDate != null && vm.endDate != null
           ? DateTimeRange(start: vm.startDate!, end: vm.endDate!)
           : null,
+      saveText: 'Select',
+      helpText: 'Pick travel dates',
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -355,8 +456,21 @@ class _TravelDates extends StatelessWidget {
         );
       },
     );
-    if (picked != null) {
-      vm.setDates(start: picked.start, end: picked.end);
+
+    if (picked == null || !context.mounted) return;
+
+    final wasClamped = vm.setDates(start: picked.start, end: picked.end);
+
+    if (wasClamped && context.mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'Dates adjusted to max ${ItineraryValidationService.maxTripDays} days.',
+            ),
+          ),
+        );
     }
   }
 
@@ -364,19 +478,48 @@ class _TravelDates extends StatelessWidget {
   Widget build(BuildContext context) {
     String format(DateTime? d) =>
         d == null ? 'Pick date' : DateFormat('MMM d, yyyy').format(d);
+    final days = vm.totalDays;
+
+    // Weather coverage status
+    final coverage = vm.weatherCoverage;
+    final warning = vm.weatherWarning;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Travel Dates',
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.brandCharcoal,
-          ),
+        // ── Section Header ──
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Travel Dates',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.brandCharcoal,
+              ),
+            ),
+            if (vm.startDate != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.brandGreenLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '$days day${days == 1 ? '' : 's'}',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.brandGreen,
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 8),
+
+        // ── Date Cards ──
         GestureDetector(
           onTap: () => _pickRange(context),
           child: Row(
@@ -388,10 +531,64 @@ class _TravelDates extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
+
+        // ── Helper Text ──
         Text(
-          '${vm.totalDays} day(s) · tap to change',
+          vm.startDate != null
+              ? 'Up to ${ItineraryValidationService.maxTripDays} days · tap to change'
+              : 'Tap to pick · up to ${ItineraryValidationService.maxTripDays} days',
           style: GoogleFonts.inter(fontSize: 12, color: AppColors.outline),
         ),
+
+        // ── Weather Coverage Badge ──
+        if (coverage != WeatherCoverage.unknown) ...[
+          const SizedBox(height: 8),
+          _WeatherCoverageBadge(coverage: coverage),
+        ],
+
+        // ── Weather Warning Banner ──
+        if (warning != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: coverage == WeatherCoverage.outOfRange
+                  ? Colors.red.shade50
+                  : Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: coverage == WeatherCoverage.outOfRange
+                    ? Colors.red.shade200
+                    : Colors.orange.shade200,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  coverage == WeatherCoverage.outOfRange
+                      ? Icons.warning_amber_rounded
+                      : Icons.info_outline_rounded,
+                  size: 18,
+                  color: coverage == WeatherCoverage.outOfRange
+                      ? Colors.red.shade700
+                      : Colors.orange.shade700,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    warning,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: coverage == WeatherCoverage.outOfRange
+                          ? Colors.red.shade700
+                          : Colors.orange.shade700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -420,7 +617,8 @@ class _TravelDates extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.brandGreen),
+                const Icon(Icons.calendar_today_rounded,
+                    size: 14, color: AppColors.brandGreen),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -437,6 +635,63 @@ class _TravelDates extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Small badge showing weather coverage status
+class _WeatherCoverageBadge extends StatelessWidget {
+  final WeatherCoverage coverage;
+  const _WeatherCoverageBadge({required this.coverage});
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color, icon) = switch (coverage) {
+      WeatherCoverage.full => (
+      'Weather data available for all days',
+      AppColors.brandGreen,
+      Icons.check_circle_rounded,
+      ),
+      WeatherCoverage.primaryOnly => (
+      'Primary forecast only (${ItineraryValidationService.primaryForecastDays}-day)',
+      Colors.orange,
+      Icons.info_outline_rounded,
+      ),
+      WeatherCoverage.outOfRange => (
+      'Beyond weather forecast range',
+      Colors.red,
+      Icons.warning_amber_rounded,
+      ),
+      WeatherCoverage.unknown => (
+      '',
+      AppColors.outline,
+      Icons.help_outline,
+      ),
+    };
+
+    if (coverage == WeatherCoverage.unknown) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -619,6 +874,8 @@ class _Interests extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final allKeys = InterestMapping.interestToGoogleTypes.keys.toList();
+    final max = ItineraryValidationService.maxInterests;
+    final remaining = max - selected.length;
 
     const icons = {
       'History & Culture': Icons.museum_rounded,
@@ -644,15 +901,28 @@ class _Interests extends StatelessWidget {
               ),
             ),
             Text(
-              'SELECT MULTIPLE',
+              '${selected.length}/$max',
               style: GoogleFonts.inter(
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
-                color: AppColors.outline,
+                color: remaining == 0
+                    ? AppColors.brandTerracotta
+                    : AppColors.brandGreen,
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          remaining == 0
+              ? 'You\'ve reached the maximum ($max interests)'
+              : 'SELECT UP TO $max — $remaining remaining',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.0,
+            color: remaining == 0 ? AppColors.brandTerracotta : AppColors.outline,
+          ),
         ),
         const SizedBox(height: 10),
         Wrap(
@@ -660,17 +930,24 @@ class _Interests extends StatelessWidget {
           runSpacing: 8,
           children: allKeys.map((label) {
             final isSelected = selected.contains(label);
+            final isDisabled = !isSelected && remaining == 0;
             final icon = icons[label] ?? Icons.stars_rounded;
             return GestureDetector(
-              onTap: () => onToggle(label),
+              onTap: isDisabled ? null : () => onToggle(label),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppColors.brandGreen : AppColors.white,
+                  color: isSelected
+                      ? AppColors.brandGreen
+                      : isDisabled
+                          ? AppColors.brandGrayLight
+                          : AppColors.white,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: isSelected ? AppColors.brandGreen : AppColors.outlineLight.withOpacity(0.6),
+                    color: isSelected
+                        ? AppColors.brandGreen
+                        : AppColors.outlineLight.withOpacity(0.6),
                     width: 1,
                   ),
                   boxShadow: const [
@@ -683,7 +960,11 @@ class _Interests extends StatelessWidget {
                     Icon(
                       icon,
                       size: 16,
-                      color: isSelected ? Colors.white : AppColors.brandCharcoal,
+                      color: isSelected
+                          ? Colors.white
+                          : isDisabled
+                              ? AppColors.outline
+                              : AppColors.brandCharcoal,
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -691,7 +972,11 @@ class _Interests extends StatelessWidget {
                       style: GoogleFonts.inter(
                         fontSize: 13,
                         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isSelected ? Colors.white : AppColors.brandCharcoal,
+                        color: isSelected
+                            ? Colors.white
+                            : isDisabled
+                                ? AppColors.outline
+                                : AppColors.brandCharcoal,
                       ),
                     ),
                   ],
@@ -705,40 +990,34 @@ class _Interests extends StatelessWidget {
   }
 }
 
-class _Notes extends StatefulWidget {
-  final String initialValue;
-  final ValueChanged<String> onChanged;
-  const _Notes({
-    required this.initialValue,
-    required this.onChanged,
+class _Transportation extends StatelessWidget {
+  final String? selected;
+  final ValueChanged<String> onSelected;
+  const _Transportation({
+    required this.selected,
+    required this.onSelected,
   });
 
   @override
-  State<_Notes> createState() => _NotesState();
-}
-
-class _NotesState extends State<_Notes> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialValue);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    const options = [
+      {
+        'title': 'Public Transit (LRT/MRT/KTM)',
+        'desc': 'Accounts for rail networks and transfers, ideal for downtown city exploration.',
+        'icon': Icons.directions_subway_rounded,
+      },
+      {
+        'title': 'Driving / Car',
+        'desc': 'Accounts for direct routing, Grab/Taxi pickup wait times, and parking search times.',
+        'icon': Icons.directions_car_rounded,
+      },
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Additional Notes',
+          'Transportation Mode',
           style: GoogleFonts.inter(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -746,27 +1025,89 @@ class _NotesState extends State<_Notes> {
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.outlineLight.withOpacity(0.5)),
-            boxShadow: const [
-              BoxShadow(color: Color(0x0A004D40), offset: Offset(0, 4), blurRadius: 16)
-            ],
-          ),
-          child: TextField(
-            controller: _controller,
-            onChanged: widget.onChanged,
-            maxLines: 3,
-            style: GoogleFonts.inter(fontSize: 14, color: AppColors.brandCharcoal),
-            decoration: const InputDecoration(
-              hintText: 'e.g., Dietary restrictions or specific places to visit',
-              hintStyle: TextStyle(color: AppColors.outline, fontSize: 13),
-              contentPadding: EdgeInsets.all(16),
-              border: InputBorder.none,
-            ),
-          ),
+        Column(
+          children: options.map((opt) {
+            final title = opt['title'] as String;
+            final desc = opt['desc'] as String;
+            final icon = opt['icon'] as IconData;
+            final isSelected = selected == title;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: GestureDetector(
+                onTap: () => onSelected(title),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeInOut,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.brandGreenLight : AppColors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected ? AppColors.brandGreen : AppColors.outlineLight.withOpacity(0.5),
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isSelected ? AppColors.brandGreen.withOpacity(0.08) : const Color(0x0A004D40),
+                        offset: const Offset(0, 3),
+                        blurRadius: 10,
+                      )
+                    ],
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppColors.brandGreen.withOpacity(0.15) : AppColors.brandGrayLight,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          icon,
+                          size: 22,
+                          color: isSelected ? AppColors.brandGreen : AppColors.outline,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                                color: isSelected ? AppColors.brandGreen : AppColors.brandCharcoal,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              desc,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w400,
+                                height: 1.35,
+                                color: isSelected ? AppColors.brandGreen.withOpacity(0.85) : AppColors.outline,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                        color: isSelected ? AppColors.brandGreen : AppColors.outlineLight,
+                        size: 22,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );

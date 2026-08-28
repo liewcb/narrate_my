@@ -130,6 +130,10 @@ class ItineraryConstants {
 
   /// Number of attraction/activity stops targeted per day
   /// according to travel pace.
+  ///
+  /// DEPRECATED for candidate-target calculation: travel pace is a SOFT
+  /// scheduling preference for DeepSeek, NOT a places-per-day formula.
+  /// Kept only for legacy services (daily allocation, old clusterPlaces).
   static const Map<String, int> paceToAttractionsPerDay = {
     'Slow': 2,
     'Standard': 4,
@@ -137,6 +141,8 @@ class ItineraryConstants {
   };
 
   /// Returns the target number of attraction stops per day.
+  @Deprecated('Travel pace must not drive places/day. Use '
+      'retrievalCandidateTarget() instead.')
   static int attractionsPerDayFor(String pace) {
     return paceToAttractionsPerDay[pace] ??
         paceToAttractionsPerDay['Standard']!;
@@ -144,6 +150,8 @@ class ItineraryConstants {
 
   /// Returns the target number of attractions for
   /// the complete trip.
+  @Deprecated('Travel pace must not drive places/day. Use '
+      'retrievalCandidateTarget() instead.')
   static int targetAttractions({
     required int days,
     required String pace,
@@ -152,31 +160,97 @@ class ItineraryConstants {
         attractionsPerDayFor(pace);
   }
 
+  /// ============================================================
+  /// CANDIDATE POOL TARGETS (pace-independent)
+  ///
+  /// The candidate pool is a RETRIEVAL target, NOT a final itinerary size.
+  /// Travel pace is deliberately NOT used as a places/day multiplier.
+  /// ============================================================
+
+  /// Neutral baseline of candidate places considered per trip day when
+  /// sizing the retrieval target. This is NOT a final-stops-per-day rule —
+  /// it is only used to decide how many alternatives to fetch.
+  static const double candidatePerDayRetrievalBaseline = 6.0;
+
+  /// Exploration-window factor: a longer available window can reasonably
+  /// absorb more candidate alternatives.
+  static double explorationRetrievalFactor(String? explorationTime) {
+    switch (explorationTime) {
+      case 'Relaxed':
+        return 0.8;
+      case 'Intense':
+        return 1.2;
+      case 'Standard':
+      default:
+        return 1.0;
+    }
+  }
+
+  /// Retrieval target for the RAW (pre-filter) candidate pool.
+  ///
+  /// Based on: trip duration + exploration requirements + must-visit count +
+  /// candidate diversity buffer. Travel pace is NOT used.
+  static int retrievalCandidateTarget({
+    required int days,
+    required int mustVisitCount,
+    String? explorationTime,
+  }) {
+    final base =
+        (days * candidatePerDayRetrievalBaseline *
+                explorationRetrievalFactor(explorationTime))
+            .ceil();
+    final buffered = (base * candidateOverfetchFactor).ceil() + mustVisitCount;
+    return buffered < minCandidatesAbsolute
+        ? minCandidatesAbsolute
+        : buffered;
+  }
+
+  /// Minimum number of USABLE (post-filter) candidates that must remain
+  /// before clustering + DeepSeek scheduling can proceed.
+  static const int minimumUsableCandidatePool = 12;
+
+  /// Usable candidate target: the post-filter pool must be comfortably
+  /// larger than any plausible final itinerary so DeepSeek has alternatives.
+  ///
+  /// Based on trip duration × baseline × a usability buffer.  Does NOT
+  /// compound the full overfetch factor (that already sized the raw pool).
+  static int usableCandidateTarget({
+    required int days,
+    required int mustVisitCount,
+    String? explorationTime,
+  }) {
+    final base =
+        (days * candidatePerDayRetrievalBaseline *
+                explorationRetrievalFactor(explorationTime) *
+                1.5)
+            .ceil();
+    final usable = base + mustVisitCount;
+    return usable < minimumUsableCandidatePool
+        ? minimumUsableCandidatePool
+        : usable;
+  }
+
   /// Calculates how many attraction candidates should
   /// ideally be retrieved before filtering and planning.
   ///
+  /// Backward-compatible wrapper. Travel pace is no longer used as a
+  /// places/day multiplier; the target is derived from trip duration,
+  /// exploration requirements and a diversity buffer.
+  ///
   /// Example:
   ///
-  /// 3 days × 4 attractions/day = 12
-  ///
-  /// 12 × 2 overfetch = 24 candidates
+  /// 5 days × baseline + overfetch ≈ 60+ candidates
   static int targetCandidateCount({
     required int days,
     required String pace,
+    int mustVisitCount = 0,
+    String? explorationTime,
   }) {
-    final required =
-    targetAttractions(
+    return retrievalCandidateTarget(
       days: days,
-      pace: pace,
+      mustVisitCount: mustVisitCount,
+      explorationTime: explorationTime,
     );
-
-    final overFetched =
-    (required * candidateOverfetchFactor).ceil();
-
-    return overFetched <
-        minCandidatesAbsolute
-        ? minCandidatesAbsolute
-        : overFetched;
   }
 
   // ============================================================

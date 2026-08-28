@@ -22,13 +22,13 @@ class DestinationAllocation {
 }
 
 /// ViewModel for Step 4 (Split your trip).
-class Step4SplitVM extends ChangeNotifier {
+class AddAllocationVM extends ChangeNotifier {
   final TripDraft _incomingDraft;
 
   late List<String> destinations;
   final Map<String, int> _daySplit = {};
 
-  Step4SplitVM(this._incomingDraft) {
+  AddAllocationVM(this._incomingDraft) {
     destinations = List.of(_incomingDraft.destinations);
 
     if (_incomingDraft.daySplit.isNotEmpty) {

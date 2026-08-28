@@ -1,25 +1,25 @@
-﻿// lib/screens/step4_split_screen.dart
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
-import '../../core/theme/colors.dart';
+import '../../core/theme/app_theme.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../viewmodel/ItineraryModel/step4_split_vm.dart';
-import 'step5_generation_screen.dart';
+import '../../viewmodel/ItineraryModel/day_allocation_vm.dart';
+import 'itinerary_generation_screen.dart';
 
-class Step4SplitScreen extends StatefulWidget {
+class AddAllocationScreen extends StatefulWidget {
   final TripDraft draft;
-  const Step4SplitScreen({super.key, required this.draft});
+  const AddAllocationScreen({super.key, required this.draft});
 
   @override
-  State<Step4SplitScreen> createState() => _Step4SplitScreenState();
+  State<AddAllocationScreen> createState() => _AddAllocationScreenState();
 }
 
-class _Step4SplitScreenState extends State<Step4SplitScreen> {
+class _AddAllocationScreenState extends State<AddAllocationScreen> {
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<Step4SplitVM>(
-      create: (_) => Step4SplitVM(widget.draft),
+    return ChangeNotifierProvider<AddAllocationVM>(
+      create: (_) => AddAllocationVM(widget.draft),
       child: const _Step4SplitBody(),
     );
   }
@@ -30,26 +30,27 @@ class _Step4SplitBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final vm = context.watch<Step4SplitVM>();
+    final vm = context.watch<AddAllocationVM>();
     final totalDays = vm.totalDays;
     final destinations = vm.destinations;
 
     return Scaffold(
-      backgroundColor: AppColors.creamBg,
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: Stack(
           children: [
             SingleChildScrollView(
-              // Spacing: Bottom padding ensures content clears the fixed bottom CTA
               padding: const EdgeInsets.only(bottom: 160),
               child: Column(
-                // Alignment: Strict left alignment across all section blocks
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 16),
-                  const _AppBar(),
-                  // Spacing: 32px strict margin between major sections (8px grid)
-                  const SizedBox(height: 32),
+                  const WizardAppBar(step: 4),
+                  const SizedBox(height: 8),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24),
+                    child: WizardProgressBar(activeSteps: 4),
+                  ),
+                  const SizedBox(height: 24),
                   _Title(totalDays: totalDays, vm: vm),
                   const SizedBox(height: 32),
                   _AllocationBar(
@@ -63,9 +64,8 @@ class _Step4SplitBody extends StatelessWidget {
                     onChanged: vm.setDayCount,
                     onReorder: vm.reorderDestinations,
                   ),
-                  const SizedBox(height: 24),
-                  _AutoBalanceButton(onPressed: vm.autoBalanceDays),
                   const SizedBox(height: 32),
+                  const SizedBox(height: 45),
                 ],
               ),
             ),
@@ -82,7 +82,7 @@ class _Step4SplitBody extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => Step5GenerationScreen(draft: vm.buildDraft()),
+                    builder: (_) => GenerationScreen(draft: vm.buildDraft()),
                   ),
                 );
               },
@@ -94,71 +94,11 @@ class _Step4SplitBody extends StatelessWidget {
   }
 }
 
-// ─── Private Sub‑Widgets ──────────────────────────────────────
-
-class _AppBar extends StatelessWidget {
-  const _AppBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      // Alignment: 24px horizontal grid margin
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // Simplification: Flat button container, no elevation or heavy drop shadows
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: AppColors.brandGreen),
-                  onPressed: () => Navigator.maybePop(context),
-                  padding: EdgeInsets.zero,
-                  iconSize: 20,
-                ),
-              ),
-              const Spacer(),
-              Row(
-                children: List.generate(4, (i) {
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    width: 24,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: i < 4 ? AppColors.brandGreen : AppColors.outlineLight,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  );
-                }),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Hierarchy: 14px regular muted text for step indicator
-          const Text(
-            'Step 4 of 4 · Plan Your Days',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
-              color: AppColors.outline,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// ─── Title ──────────────────────────────────────────────────────────
 
 class _Title extends StatelessWidget {
   final int totalDays;
-  final Step4SplitVM vm;
+  final AddAllocationVM vm;
   const _Title({required this.totalDays, required this.vm});
 
   @override
@@ -168,50 +108,46 @@ class _Title extends StatelessWidget {
     final range = (sd != null && ed != null) ? '${_fmt(sd)}–${_fmt(ed)}' : '';
 
     return Padding(
-      // Alignment: Shares identical 24px horizontal grid line
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
-        // Alignment: Left aligned text
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Hierarchy: Main header strictly 24px bold
           Text(
             'Split your trip',
             style: GoogleFonts.playfairDisplay(
               fontSize: 24,
               fontWeight: FontWeight.bold,
               height: 1.2,
-              color: AppColors.brandGreen,
+              color: AppColors.ink,
             ),
           ),
           const SizedBox(height: 8),
-          // Hierarchy: Secondary text strictly 14px regular muted color
           RichText(
             text: TextSpan(
               text: 'You have ',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.normal,
-                color: AppColors.outline,
+                color: AppColors.inkFaint,
               ),
               children: [
                 TextSpan(
                   text: '$totalDays days',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: AppColors.brandGreen,
+                    color: AppColors.primary,
                   ),
                 ),
                 if (range.isNotEmpty)
                   TextSpan(
                     text: ' from $range.',
                     style: const TextStyle(
-                      color: AppColors.outline,
+                      color: AppColors.inkFaint,
                     ),
                   ),
                 const TextSpan(
                   text: ' Drag to adjust how long you stay in each place.',
-                  style: TextStyle(color: AppColors.outline),
+                  style: TextStyle(color: AppColors.inkFaint),
                 ),
               ],
             ),
@@ -222,12 +158,13 @@ class _Title extends StatelessWidget {
   }
 
   String _fmt(DateTime d) => '${_month(d.month)} ${d.day}';
-
   String _month(int m) => const [
     '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ][m];
 }
+
+// ─── Allocation Bar ────────────────────────────────────────────────
 
 class _AllocationBar extends StatelessWidget {
   final Map<String, int> split;
@@ -245,44 +182,42 @@ class _AllocationBar extends StatelessWidget {
     final balanced = total == totalDays && split.isNotEmpty;
 
     return Padding(
-      // Alignment: Shares 24px horizontal grid margin
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Container(
-        // Spacing: Increased internal padding to strict 24px grid standard
         padding: const EdgeInsets.all(24),
-        // Simplification: Clean flat background shade with no elevation or shadows
         decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ✅ Fixed overflow: use Expanded + Flexible
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Hierarchy: Section Header bold
-                const Text(
-                  'Your Allocation',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.black,
+                Expanded(
+                  child: Text(
+                    'Your Allocation',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.ink,
+                    ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: balanced ? AppColors.brandGreenLight : AppColors.dangerBg,
+                    color: balanced ? AppColors.green : AppColors.error.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  // Hierarchy: Status text 14px font size
                   child: Text(
-                    balanced ? '✓ $total / $totalDays days balanced' : '$total / $totalDays days',
+                    balanced ? '✓ $total / $totalDays days' : '$total / $totalDays days',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: balanced ? AppColors.brandGreen : AppColors.dangerText,
+                      color: balanced ? AppColors.green : AppColors.error,
                     ),
                   ),
                 ),
@@ -322,13 +257,12 @@ class _AllocationBar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // Hierarchy: Secondary text 14px regular muted color
                     Text(
                       '$d · ${days}d',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.normal,
-                        color: AppColors.outline,
+                        color: AppColors.inkFaint,
                       ),
                     ),
                   ],
@@ -343,17 +277,19 @@ class _AllocationBar extends StatelessWidget {
 
   Color _segmentColor(String destination) {
     final colors = [
-      AppColors.brandGreen,
-      AppColors.brandTerracotta,
-      AppColors.indigo,
-      AppColors.brown,
+      AppColors.primary,
+      AppColors.accent,
       AppColors.teal,
-      AppColors.purple,
+      AppColors.gold,
+      AppColors.green,
+      const Color(0xFF8E44AD),
     ];
     final index = destination.hashCode.abs() % colors.length;
     return colors[index];
   }
 }
+
+// ─── Timeline ──────────────────────────────────────────────────────
 
 class _Timeline extends StatelessWidget {
   final List<DestinationAllocation> allocations;
@@ -369,16 +305,15 @@ class _Timeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = [
-      AppColors.brandGreen,
-      AppColors.brandTerracotta,
-      AppColors.indigo,
-      AppColors.brown,
+      AppColors.primary,
+      AppColors.accent,
       AppColors.teal,
-      AppColors.purple,
+      AppColors.gold,
+      AppColors.green,
+      const Color(0xFF8E44AD),
     ];
 
     return Padding(
-      // Alignment: Shared 24px vertical grid line
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: ReorderableListView.builder(
         shrinkWrap: true,
@@ -401,6 +336,8 @@ class _Timeline extends StatelessWidget {
   }
 }
 
+// ─── Destination Card ─────────────────────────────────────────────
+
 class _DestinationCard extends StatelessWidget {
   final int index;
   final DestinationAllocation allocation;
@@ -421,15 +358,12 @@ class _DestinationCard extends StatelessWidget {
     final days = allocation.days;
 
     return Padding(
-      // Spacing: 16px bottom margin between cards (8px grid)
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Timeline indicator icon
           Column(
             children: [
-              // Simplification: Soft flat container, shadow removed
               Container(
                 width: 44,
                 height: 44,
@@ -439,12 +373,11 @@ class _DestinationCard extends StatelessWidget {
                 ),
                 child: const Icon(
                   Icons.location_on,
-                  color: AppColors.white,
+                  color: AppColors.surface,
                   size: 20,
                 ),
               ),
               const SizedBox(height: 8),
-              // Hierarchy: Secondary label 14px regular
               Text(
                 allocation.dayLabel,
                 style: TextStyle(
@@ -456,18 +389,14 @@ class _DestinationCard extends StatelessWidget {
             ],
           ),
           const SizedBox(width: 16),
-          // Grouped Card Component
           Expanded(
             child: Container(
-              // Spacing: Internal 24px padding rule
               padding: const EdgeInsets.all(24),
-              // Simplification: Soft background card, removed shadows
               decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(16),
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
               ),
               child: Column(
-                // Alignment: Text left aligned
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -493,16 +422,16 @@ class _DestinationCard extends StatelessWidget {
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 height: 1.2,
+                                color: AppColors.ink,
                               ),
                             ),
                             const SizedBox(height: 4),
-                            // Hierarchy: Secondary text 14px regular muted color
                             Text(
                               allocation.dateRangeLabel,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.normal,
-                                color: AppColors.outline,
+                                color: AppColors.inkFaint,
                               ),
                             ),
                           ],
@@ -512,18 +441,17 @@ class _DestinationCard extends StatelessWidget {
                         index: index,
                         child: const Icon(
                           Icons.drag_indicator,
-                          color: AppColors.outline,
+                          color: AppColors.inkFaint,
                           size: 20,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 24),
-                  // Stepper Control
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.creamBg,
+                      color: AppColors.surface2,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -535,12 +463,12 @@ class _DestinationCard extends StatelessWidget {
                             if (days > 1) onChanged(days - 1);
                           },
                         ),
-                        // Hierarchy: Value text 14px bold
                         Text(
                           '$days Days',
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
+                            color: AppColors.ink,
                           ),
                         ),
                         _stepperButton(
@@ -566,11 +494,11 @@ class _DestinationCard extends StatelessWidget {
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(6),
       ),
       child: IconButton(
-        icon: Icon(icon, size: 18, color: AppColors.black),
+        icon: Icon(icon, size: 18, color: AppColors.ink),
         onPressed: onTap,
         padding: EdgeInsets.zero,
         iconSize: 18,
@@ -579,42 +507,7 @@ class _DestinationCard extends StatelessWidget {
   }
 }
 
-class _AutoBalanceButton extends StatelessWidget {
-  final VoidCallback onPressed;
-  const _AutoBalanceButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      // Alignment: 24px horizontal grid margin
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: onPressed,
-          icon: const Icon(Icons.auto_awesome, size: 16, color: AppColors.outline),
-          label: const Text(
-            'Auto-balance for me',
-            // Hierarchy: 14px regular secondary text
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
-              color: AppColors.outline,
-            ),
-          ),
-          style: OutlinedButton.styleFrom(
-            backgroundColor: AppColors.white,
-            side: const BorderSide(color: AppColors.outlineLight),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-        ),
-      ),
-    );
-  }
-}
+// ─── Sticky CTA ────────────────────────────────────────────────────
 
 class _StickyCTA extends StatelessWidget {
   final int totalDays;
@@ -628,7 +521,6 @@ class _StickyCTA extends StatelessWidget {
       left: 0,
       right: 0,
       child: Container(
-        // Alignment & Spacing: 24px horizontal grid padding, 32px top margin padding
         padding: EdgeInsets.only(
           left: 24,
           right: 24,
@@ -636,36 +528,35 @@ class _StickyCTA extends StatelessWidget {
           bottom: MediaQuery.of(context).padding.bottom + 24,
         ),
         decoration: BoxDecoration(
-          color: AppColors.creamBg.withOpacity(0.95),
+          color: AppColors.bg.withOpacity(0.95),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ElevatedButton.icon(
               onPressed: onPressed,
-              icon: const Icon(Icons.auto_awesome, color: Colors.white),
+              icon: const Icon(Icons.auto_awesome, color: AppColors.surface),
               label: Text(
                 'Generate My $totalDays-Day Itinerary',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.brandGreen,
-                foregroundColor: Colors.white,
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.surface,
                 minimumSize: const Size(double.infinity, 56),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
-                elevation: 0, // Simplification: Flat button aesthetic, shadows removed
+                elevation: 0,
               ),
             ),
             const SizedBox(height: 16),
-            // Hierarchy: 14px regular muted secondary text
-            const Text(
+            Text(
               'You can still edit everything after',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.normal,
-                color: AppColors.outline,
+                color: AppColors.inkFaint,
               ),
             ),
           ],

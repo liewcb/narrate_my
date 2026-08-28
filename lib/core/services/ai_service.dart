@@ -1,4 +1,5 @@
 // lib/core/services/ai_service.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart' as http;
@@ -13,6 +14,15 @@ import '../../model/entities/place.dart';
 /// - Primary: B.AI Gateway (DeepSeek V4 Flash/Pro)
 /// - Fallback 1: OpenRouter (free router)
 /// - Fallback 2: Cohere
+///
+/// RESPONSIBILITY SPLIT (mandatory):
+///   DART / DETERMINISTIC — input validation, retrieval, must-visit
+///     recovery, filtering, scoring, expansion, K-Means clustering,
+///     fact preservation, hard-constraint validation, persistence.
+///   DEEPSEEK / AI — daily activity selection, activity combination,
+///     activity sequence, reasonable activity count, human-friendly
+///     schedule, meal placement, weather-aware planning, travel-pace
+///     interpretation, daily-flow reasoning, planning explanations.
 class AIService {
   final String baiApiKey;
   final String baiModel;
@@ -20,6 +30,19 @@ class AIService {
   final String cohereApiKey;
 
   static const String _baiBaseUrl = 'https://api.b.ai/v1/chat/completions';
+
+  /// Timeout for the main (B.AI / DeepSeek) itinerary-planning request.
+  static const Duration aiRequestTimeout = Duration(seconds: 90);
+
+  /// Timeout for the explicit fallback providers (OpenRouter / Cohere).
+  static const Duration fallbackProviderTimeout = Duration(seconds: 30);
+
+  /// Print the full prompt body when enabled (off by default to avoid
+  /// flooding the console). The prompt SIZE is always printed.
+  static const bool debugAiPrompt = false;
+
+  /// Maximum regeneration attempts for a single failed AI planning day.
+  static const int maxAiRegenerationAttempts = 2;
 
   AIService({
     String? baiApiKey,
@@ -54,7 +77,302 @@ Return ONLY a number. Examples: 120, 60, 90.
 
   /// Public wrapper to generate raw text from a custom prompt
   Future<String> generateRawContent(String prompt) async {
-    return await _callAi(prompt);
+    return await _callAi(prompt, timeout: aiRequestTimeout);
+  }
+
+  // ============================================================
+  // AI ITINERARY PLANNER
+  //
+  // DeepSeek is the ACTUAL planner: it selects daily places, their order,
+  // a reasonable number of stops and the human-friendly schedule from the
+  // supplied candidate pool + geographic clusters. It NEVER invents places,
+  // times, opening hours or travel data — it plans within the facts given.
+  //
+  // Dart retains: validation, must-visit enforcement, hard constraints,
+  // destination allocation checks and persistence.
+  // ============================================================
+
+  Future<AIItineraryPlanningResult> generatePlannedItinerary({
+    required AIPlannerTripContext trip,
+    required List<AIPlannerCandidate> candidates,
+    required List<String> mustVisitIds,
+    required List<AIPlannerCluster> clusters,
+    String? regenerationFeedback,
+  }) async {
+    final prompt = _buildPlannerPrompt(
+      trip: trip,
+      candidates: candidates,
+      mustVisitIds: mustVisitIds,
+      clusters: clusters,
+      regenerationFeedback: regenerationFeedback,
+    );
+
+    debugPrint('[AI INPUT SUMMARY]');
+    debugPrint('Destinations: ${trip.destinations.length}');
+    debugPrint('Days: ${trip.totalDays}');
+    debugPrint('Candidates: ${candidates.length}');
+    debugPrint('Must-visits: ${mustVisitIds.length}');
+    debugPrint('Clusters: ${clusters.length}');
+    debugPrint('Prompt characters: ${prompt.length}');
+    if (debugAiPrompt) {
+      debugPrint('─── FULL PROMPT ───\n$prompt\n─── END PROMPT ───');
+    }
+
+    try {
+      final raw = await _callAi(prompt, timeout: aiRequestTimeout);
+      debugPrint('[AI RESPONSE]');
+      debugPrint('Status: ok');
+      debugPrint('Response characters: ${raw.length}');
+      final days = _parsePlannerDays(raw);
+
+      return AIItineraryPlanningResult(
+        success: true,
+        days: days,
+      );
+    } catch (e) {
+      debugPrint('❌ [AI PLANNER] Failed: $e');
+      return AIItineraryPlanningResult(
+        success: false,
+        errorMessage: 'AI itinerary planning failed: $e',
+      );
+    }
+  }
+
+  /// Builds the structured DeepSeek planner prompt. No pre-computed times,
+  /// no "schedule formatter" role, no fixed stops-per-day rule.
+  String _buildPlannerPrompt({
+    required AIPlannerTripContext trip,
+    required List<AIPlannerCandidate> candidates,
+    required List<String> mustVisitIds,
+    required List<AIPlannerCluster> clusters,
+    String? regenerationFeedback,
+  }) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('You are an expert travel itinerary PLANNER.');
+    buffer.writeln('You plan a complete multi-day itinerary from the supplied '
+        'candidate places and geographic clusters. You NEVER invent places, '
+        'place IDs, coordinates, opening hours, visit durations or travel '
+        'times. Every place you schedule MUST come from the CANDIDATES below.');
+    buffer.writeln('');
+
+    // ── TRIP ────────────────────────────────────────────────────
+    buffer.writeln('TRIP');
+    buffer.writeln('Start date: ${trip.startDate}');
+    buffer.writeln('End date: ${trip.endDate}');
+    buffer.writeln('Total days: ${trip.totalDays}');
+    buffer.writeln('Exploration window: ${trip.explorationStart} → '
+        '${trip.explorationEnd}');
+    buffer.writeln('Travel pace (comfort preference, NOT a stop-count rule): '
+        '${trip.travelPace}');
+    buffer.writeln('Transportation mode: ${trip.transportationMode}');
+    buffer.writeln('Traveler interests: '
+        '${trip.interests.isEmpty ? 'none' : trip.interests.join(', ')}');
+    buffer.writeln('Weather condition: ${trip.weatherCondition ?? 'Unknown'}');
+    buffer.writeln('');
+
+    // ── DESTINATIONS ────────────────────────────────────────────
+    buffer.writeln('DESTINATIONS (with allocated days — respect these)');
+    for (final d in trip.destinations) {
+      buffer.writeln(
+        '- ${d.destinationId} ${d.destinationName}: ${d.allocatedDays} day(s)',
+      );
+    }
+    buffer.writeln('');
+
+    // ── MUST-VISITS ─────────────────────────────────────────────
+    buffer.writeln('MUST-VISITS (hard requirement — include every one of '
+        'these in the itinerary)');
+    final mustVisits = candidates.where((c) => c.isMustVisit).toList();
+    if (mustVisits.isEmpty) {
+      buffer.writeln('- none');
+    } else {
+      for (final c in mustVisits) {
+        buffer.writeln(
+          '- ${c.placeId} | ${c.name} | ${c.destinationId ?? '?'} | '
+          'cluster=${c.clusterId}',
+        );
+      }
+    }
+    buffer.writeln('');
+
+    // ── CLUSTERS ────────────────────────────────────────────────
+    buffer.writeln('GEOGRAPHIC CLUSTERS (for proximity reasoning — '
+        'clusters are NOT days)');
+    for (final cluster in clusters) {
+      final names = cluster.candidatePlaceIds.map((id) {
+        AIPlannerCandidate? match;
+        for (final c in candidates) {
+          if (c.placeId == id) {
+            match = c;
+            break;
+          }
+        }
+        return match?.name ?? id;
+      }).join(', ');
+      buffer.writeln(
+        '- cluster ${cluster.clusterId} | destination=${cluster.destinationId} '
+        '| center=(${cluster.centerLatitude}, ${cluster.centerLongitude}) '
+        '| places: $names',
+      );
+    }
+    buffer.writeln('');
+
+    // ── CANDIDATES ──────────────────────────────────────────────
+    buffer.writeln('CANDIDATES (select from these ONLY — never invent)');
+    for (final c in candidates) {
+      buffer.writeln(jsonEncode({
+        'placeId': c.placeId,
+        'name': c.name,
+        'destinationId': c.destinationId,
+        'destinationName': c.destinationName,
+        'clusterId': c.clusterId,
+        'latitude': c.latitude,
+        'longitude': c.longitude,
+        'category': c.category,
+        'types': c.types,
+        'rating': c.rating,
+        'interestScore': c.interestScore,
+        'finalScore': c.finalScore,
+        'isMustVisit': c.isMustVisit,
+        'visitDurationMinutes': c.visitDurationMinutes,
+        'openingHours': c.openingHours,
+        'bestTimeSuggestion': c.bestTimeSuggestion,
+      }));
+    }
+    buffer.writeln('');
+
+    // ── TRAVEL TIMES (if supplied) ──────────────────────────────
+    if (trip.travelTimes != null && trip.travelTimes!.isNotEmpty) {
+      buffer.writeln('TRAVEL TIMES (facts — use these exactly; do NOT invent)');
+      trip.travelTimes!.forEach((k, v) => buffer.writeln('- $k = $v'));
+      buffer.writeln('');
+    } else {
+      buffer.writeln('No travel-time matrix supplied. Reason qualitatively '
+          'about proximity using coordinates/clusters. Do NOT fabricate '
+          'precise travel minutes.');
+      buffer.writeln('');
+    }
+
+    // ── REGENERATION FEEDBACK (optional) ────────────────────────
+    if (regenerationFeedback != null && regenerationFeedback.trim().isNotEmpty) {
+      buffer.writeln('PREVIOUS ATTEMPT WAS REJECTED. Fix ALL of these:');
+      buffer.writeln(regenerationFeedback);
+      buffer.writeln('');
+    }
+
+    // ── PLANNING GUIDANCE ───────────────────────────────────────
+    buffer.writeln('PLANNING GUIDANCE');
+    buffer.writeln('- Decide the reasonable NUMBER of stops per day yourself, '
+        'based on visit durations, travel proximity, opening hours, weather '
+        'and the exploration window. Do NOT force a fixed count.');
+    buffer.writeln('- ${_paceGuidance(trip.travelPace)}');
+    buffer.writeln('- Lunch ≈ 11:00–14:00, Dinner ≈ 17:00–21:00 — only using '
+        'food places supplied in CANDIDATES.');
+    buffer.writeln('- Keep every activity inside the exploration window. '
+        'Unused time is acceptable; a realistic flow beats filling the window.');
+    buffer.writeln('- If a place is closed per its opening hours on a day, '
+        'do not schedule it that day.');
+    buffer.writeln('- Group places geographically so transitions are '
+        'reasonable.');
+    buffer.writeln('- Must-visits must appear exactly once and may not be '
+        'replaced by invented alternatives.');
+    buffer.writeln('- For each day, you MUST assign a unique, sequential '
+        '"stopOrder" starting from 1. '
+        'Example: "stopOrder": 1, "stopOrder": 2, ...');
+    buffer.writeln('');
+
+    // ── OUTPUT CONTRACT ─────────────────────────────────────────
+    buffer.writeln('Return STRICT JSON ONLY (no Markdown fences, no extra '
+        'text) with this exact structure:');
+    buffer.writeln(_plannerJsonTemplate());
+
+    return buffer.toString();
+  }
+
+  String _paceGuidance(String pace) {
+    switch (pace) {
+      case 'Slow':
+        return 'Travel pace is Slow → prefer a relaxed schedule with more '
+            'free time and avoid rushing. Fewer, longer activities are fine.';
+      case 'Fast':
+        return 'Travel pace is Fast → the traveler tolerates a denser '
+            'schedule when geographically and temporally reasonable, but do '
+            'not force it.';
+      case 'Standard':
+      default:
+        return 'Travel pace is Standard → create a balanced itinerary that '
+            'makes reasonable use of the exploration window without rushing.';
+    }
+  }
+
+  String _plannerJsonTemplate() {
+    return '''
+{
+  "days": [
+    {
+      "dayIndex": 1,
+      "destinationId": "D001",
+      "clusterId": 2,
+      "reasoning": "Short explanation of why these places work well together.",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "placeId": "EXACT_CANDIDATE_PLACE_ID",
+          "startTime": "09:30",
+          "endTime": "11:00",
+          "visitDurationMinutes": 90,
+          "travelFromPreviousMinutes": 0,
+          "reason": "Good morning activity and close to the next attraction."
+        }
+      ]
+    }
+  ]
+}
+''';
+  }
+
+  /// Parses the raw planner JSON into a list of [AIDaySchedule].
+  List<AIDaySchedule> _parsePlannerDays(String rawJson) {
+    final cleaned = _normaliseModelText(rawJson);
+    final data = jsonDecode(cleaned) as Map<String, dynamic>;
+    final rawDays = data['days'];
+    if (rawDays is! List) {
+      throw const FormatException('AI planner output has no "days" array.');
+    }
+
+    final days = <AIDaySchedule>[];
+    for (final rawDay in rawDays) {
+      final map = rawDay as Map<String, dynamic>;
+      final rawStops = map['stops'] ?? map['schedule'];
+      final schedule = <AIScheduleStop>[];
+      if (rawStops is List) {
+        for (final rawStop in rawStops) {
+          final s = rawStop as Map<String, dynamic>;
+          schedule.add(AIScheduleStop(
+            stopOrder: (s['stopOrder'] as num?)?.toInt() ?? 0,
+            placeId: s['placeId'] as String? ?? '',
+            startTime: s['startTime'] as String? ?? '',
+            endTime: s['endTime'] as String? ?? '',
+            visitDurationMinutes:
+                (s['visitDurationMinutes'] as num?)?.toInt() ?? 0,
+            travelFromPreviousMinutes:
+                (s['travelFromPreviousMinutes'] as num?)?.toInt() ?? 0,
+            scheduleReason: s['reason'] as String? ?? '',
+            weatherNote: '',
+          ));
+        }
+      }
+      days.add(AIDaySchedule(
+        dayIndex: (map['dayIndex'] as num?)?.toInt() ?? -1,
+        date: map['date'] as String? ?? '',
+        schedule: schedule,
+        warnings: [
+          if (map['reasoning'] != null) '${map['reasoning']}',
+        ],
+      ));
+    }
+    return days;
   }
 
   // ============================================================
@@ -204,7 +522,7 @@ Rules:
 ''';
 
     try {
-      final response = await _callAi(prompt);
+      final response = await _callAi(prompt, timeout: aiRequestTimeout);
       print('[STEP 9 - AI ROUTE] raw response: $response');
       return RoutePlanResult.fromJson(response);
     } catch (e) {
@@ -220,6 +538,15 @@ Rules:
   // 6. AI-ASSISTED SCHEDULE CONSTRUCTION
   // ============================================================
 
+  /// LEGACY per-day schedule formatter (kept ONLY for the "Add Custom
+  /// Place" feature — CustomPlaceService → ScheduleConstructionService).
+  ///
+  /// DEPRECATED ARCHITECTURE: this builds a pre-computed schedule and asks
+  /// the AI to copy times. The main itinerary-generation pipeline does NOT
+  /// use this path — it uses [generatePlannedItinerary] / the structured
+  /// planner prompt, where DeepSeek is the actual planner.
+  @Deprecated('Legacy AI formatter for CustomPlaceService only. The main '
+      'pipeline uses the AI planner architecture instead.')
   Future<AIDaySchedule> constructDaySchedule({
     required int dayIndex,
     required DateTime date,
@@ -323,10 +650,12 @@ Rules:
 
   /// Builds a deterministic [AIDaySchedule] from ground-truth stop facts.
   ///
+  /// LEGACY fallback for [constructDaySchedule] (CustomPlaceService flow).
   /// Uses the SAME `_computeAdjustedSchedule()` as the AI prompt, so the
   /// deterministic fallback also applies the pace modifier, distributes
   /// slack, and ends at explorationEnd. It does NOT route through
   /// `ScheduleRepairService` with an empty stop list.
+  @Deprecated('Legacy deterministic fallback for CustomPlaceService only.')
   AIDaySchedule _deterministicDay({
     required int dayIndex,
     required DateTime date,
@@ -363,6 +692,9 @@ Rules:
 
   /// Forward pass with pace modifier + slack redistribution.
   ///
+  /// LEGACY helper used by [constructDaySchedule] / [_deterministicDay]
+  /// (CustomPlaceService flow). Not used by the main pipeline.
+  ///
   /// 1. Apply the pace modifier to each base visit duration.
   /// 2. Chain stops forward (start at window start).
   /// 3. Compute slack = window span − used time.
@@ -371,6 +703,7 @@ Rules:
   ///
   /// If slack is negative (the schedule already overflows the window),
   /// visits are NOT shrunk — the caller (repair service) handles overflow.
+  @Deprecated('Legacy formatter helper for CustomPlaceService only.')
   _ComputedSchedule _computeAdjustedSchedule({
     required List<Map<String, dynamic>> stops,
     required ExplorationWindow window,
@@ -613,13 +946,21 @@ Return valid JSON only (no Markdown fences):
   // AI PROVIDERS: B.AI (DeepSeek) → OpenRouter → Cohere
   // ============================================================
 
-  Future<String> _callAi(String prompt) async {
+  Future<String> _callAi(String prompt, {Duration timeout = aiRequestTimeout}) async {
+    debugPrint('[AI REQUEST]');
+    debugPrint('Provider: B.AI (DeepSeek)');
+    debugPrint('Model: $baiModel');
+    debugPrint('Prompt characters: ${prompt.length}');
+    debugPrint('Timeout: ${timeout.inSeconds}s');
+
     // 1. Try B.AI Gateway (DeepSeek)
     if (baiApiKey.isNotEmpty && baiModel.isNotEmpty) {
       try {
-        return await _callBai(prompt);
+        return await _callBai(prompt, timeout: timeout);
       } catch (error) {
-        print('B.AI failed: $error');
+        debugPrint('[AI FALLBACK]');
+        debugPrint('Primary provider failed: B.AI — $error');
+        debugPrint('Trying: OpenRouter');
       }
     }
 
@@ -627,18 +968,20 @@ Return valid JSON only (no Markdown fences):
     if (openRouterApiKey.isNotEmpty &&
         openRouterApiKey.startsWith('sk-or-v1-')) {
       try {
-        return await _callOpenRouter(prompt);
+        return await _callOpenRouter(prompt, timeout: fallbackProviderTimeout);
       } catch (error) {
-        print('OpenRouter failed: $error');
+        debugPrint('[AI FALLBACK]');
+        debugPrint('OpenRouter failed: $error');
+        debugPrint('Trying: Cohere');
       }
     }
 
     // 3. Try Cohere
     if (cohereApiKey.isNotEmpty) {
       try {
-        return await _callCohere(prompt);
+        return await _callCohere(prompt, timeout: fallbackProviderTimeout);
       } catch (error) {
-        print('Cohere failed: $error');
+        debugPrint('Cohere failed: $error');
       }
     }
 
@@ -649,15 +992,15 @@ Return valid JSON only (no Markdown fences):
 
   // ---------- B.AI Gateway (DeepSeek V4) ----------
 
-  Future<String> _callBai(String prompt) async {
+  Future<String> _callBai(String prompt, {Duration timeout = aiRequestTimeout}) async {
     try {
       // Try with structured JSON output first. Some gateways reject
       // `response_format`, so fall back to a plain request on failure.
       try {
-        return await _postBai(prompt, enforceJson: true);
+        return await _postBai(prompt, enforceJson: true, timeout: timeout);
       } catch (e) {
         debugPrint('⚠️ [B.AI] structured JSON request failed — retrying plain: $e');
-        return await _postBai(prompt, enforceJson: false);
+        return await _postBai(prompt, enforceJson: false, timeout: timeout);
       }
     } catch (e) {
       // 🛑 Catch and print the exact reason for failure before rethrowing
@@ -666,76 +1009,84 @@ Return valid JSON only (no Markdown fences):
     }
   }
 
-  Future<String> _postBai(String prompt, {required bool enforceJson}) async {
-    final response = await http.post(
-      Uri.parse(_baiBaseUrl),
-      headers: {
-        'Authorization': 'Bearer $baiApiKey',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'model': baiModel, // 'deepseek-v4-flash' or 'deepseek-v4-pro'
-        'messages': [
-          {
-            'role': 'system',
-            'content':
-            'Follow the requested output format exactly. If JSON is requested, return JSON only without Markdown fences.',
-          },
-          {'role': 'user', 'content': prompt},
-        ],
-        'temperature': 0.2,
-        'max_tokens': 8192,
-        'stream': false,
-        if (enforceJson) 'response_format': {'type': 'json_object'},
-      }),
-    ).timeout(const Duration(seconds: 90));
+  Future<String> _postBai(String prompt,
+      {required bool enforceJson, Duration timeout = aiRequestTimeout}) async {
+    final Stopwatch sw = Stopwatch()..start();
+    try {
+      final response = await http.post(
+        Uri.parse(_baiBaseUrl),
+        headers: {
+          'Authorization': 'Bearer $baiApiKey',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'model': baiModel, // 'deepseek-v4-flash' or 'deepseek-v4-pro'
+          'messages': [
+            {
+              'role': 'system',
+              'content':
+              'Follow the requested output format exactly. If JSON is requested, return JSON only without Markdown fences.',
+            },
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.2,
+          'max_tokens': 8192,
+          'reasoning': {'effort': 'low'},
+          'stream': false,
+          if (enforceJson) 'response_format': {'type': 'json_object'},
+        }),
+      ).timeout(timeout);
 
-    // 🛑 ADDED DEBUG PRINTS: See exactly what the API is doing
-    debugPrint('🌐 [B.AI STATUS CODE]: ${response.statusCode}');
-    debugPrint('🌐 [B.AI RAW BODY]: ${response.body}');
+      debugPrint('[AI RESPONSE]');
+      debugPrint('Provider: B.AI (DeepSeek)');
+      debugPrint('Status: ${response.statusCode}');
+      debugPrint('Response characters: ${response.body.length}');
+      debugPrint('Elapsed: ${sw.elapsedMilliseconds}ms');
 
-    if (response.statusCode != 200) {
-      throw Exception(
-        'B.AI error (${response.statusCode}): ${response.body}',
-      );
-    }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final choices = data['choices'];
-    if (choices is List && choices.isNotEmpty && choices.first is Map) {
-      final message = (choices.first as Map)['message'];
-      if (message is Map) {
-        final content = message['content'];
-        if (content is String && content.trim().isNotEmpty) {
-          final normalised = _normaliseModelText(content);
-          if (normalised.trim().isEmpty) {
-            throw const FormatException(
-              'B.AI returned a 200 OK, but the JSON content was entirely empty.',
-            );
-          }
-          debugPrint('[AI RESPONSE] content parsed (${normalised.length} chars)');
-          return normalised;
-        }
-
-        // FIX (CRITICAL): `reasoning_content` is the model's chain-of-thought,
-        // NOT the final answer. It must NEVER be fed to jsonDecode. When the
-        // model returns 200 with empty `content` (only reasoning present), we
-        // throw a clear error so the provider fallback chain (OpenRouter /
-        // Cohere) is tried instead of producing a FormatException on the
-        // reasoning text.
-        throw const FormatException(
-          'B.AI returned 200 OK but `content` is empty. The model produced '
-          'only reasoning_content — refusing to treat reasoning text as the answer.',
+      if (response.statusCode != 200) {
+        throw Exception(
+          'B.AI error (${response.statusCode}): ${response.body}',
         );
       }
-    }
 
-    throw const FormatException('B.AI returned no text content.');
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final choices = data['choices'];
+      if (choices is List && choices.isNotEmpty && choices.first is Map) {
+        final message = (choices.first as Map)['message'];
+        if (message is Map) {
+          final content = message['content'];
+          if (content is String && content.trim().isNotEmpty) {
+            final normalised = _normaliseModelText(content);
+            if (normalised.trim().isEmpty) {
+              throw const FormatException(
+                'B.AI returned a 200 OK, but the JSON content was entirely empty.',
+              );
+            }
+            debugPrint('[AI RESPONSE] content parsed (${normalised.length} chars)');
+            return normalised;
+          }
+
+          throw const FormatException(
+            'B.AI returned 200 OK but `content` is empty. The model produced '
+            'only reasoning_content — refusing to treat reasoning text as the answer.',
+          );
+        }
+      }
+
+      throw const FormatException('B.AI returned no text content.');
+    } on TimeoutException {
+      debugPrint('[AI TIMEOUT]');
+      debugPrint('Provider: B.AI (DeepSeek)');
+      debugPrint('Timeout: ${timeout.inSeconds}s');
+      debugPrint('Prompt characters: ${prompt.length}');
+      rethrow;
+    }
   }
 
   // ---------- OpenRouter ----------
 
-  Future<String> _callOpenRouter(String prompt) async {
+  Future<String> _callOpenRouter(String prompt,
+      {Duration timeout = fallbackProviderTimeout}) async {
     if (!openRouterApiKey.startsWith('sk-or-v1-')) {
       throw StateError('OpenRouter API key is invalid.');
     }
@@ -758,7 +1109,12 @@ Return valid JSON only (no Markdown fences):
         ],
         'temperature': 0.2,
       }),
-    ).timeout(const Duration(seconds: 30));
+    ).timeout(timeout);
+
+    debugPrint('[AI RESPONSE]');
+    debugPrint('Provider: OpenRouter');
+    debugPrint('Status: ${response.statusCode}');
+    debugPrint('Response characters: ${response.body.length}');
 
     if (response.statusCode != 200) {
       throw Exception(
@@ -780,7 +1136,8 @@ Return valid JSON only (no Markdown fences):
 
   // ---------- Cohere ----------
 
-  Future<String> _callCohere(String prompt) async {
+  Future<String> _callCohere(String prompt,
+      {Duration timeout = fallbackProviderTimeout}) async {
     if (cohereApiKey.isEmpty) {
       throw StateError('Cohere API key is missing.');
     }
@@ -802,7 +1159,12 @@ Return valid JSON only (no Markdown fences):
           {'role': 'user', 'content': prompt},
         ],
       }),
-    ).timeout(const Duration(seconds: 30));
+    ).timeout(timeout);
+
+    debugPrint('[AI RESPONSE]');
+    debugPrint('Provider: Cohere');
+    debugPrint('Status: ${response.statusCode}');
+    debugPrint('Response characters: ${response.body.length}');
 
     if (response.statusCode != 200) {
       throw Exception('Cohere error (${response.statusCode}): ${response.body}');
@@ -1170,6 +1532,123 @@ class _ComputedSchedule {
     required this.usedMins,
     required this.slackMins,
     required this.stops,
+  });
+}
+
+// ============================================================
+// AI ITINERARY PLANNER — INPUT CLASSES
+// ============================================================
+
+/// Trip-level context for the AI planner.
+class AIPlannerTripContext {
+  final DateTime startDate;
+  final DateTime endDate;
+  final int totalDays;
+  final List<AIPlannerDestination> destinations;
+  final String explorationStart; // HH:mm
+  final String explorationEnd;   // HH:mm
+  final String travelPace;
+  final String transportationMode;
+  final String travelType;
+  final List<String> interests;
+  final String? weatherCondition;
+  final Map<String, String>? travelTimes; // "A→B" → "15 min"
+
+  const AIPlannerTripContext({
+    required this.startDate,
+    required this.endDate,
+    required this.totalDays,
+    required this.destinations,
+    required this.explorationStart,
+    required this.explorationEnd,
+    required this.travelPace,
+    required this.transportationMode,
+    this.travelType = 'Solo',
+    this.interests = const [],
+    this.weatherCondition,
+    this.travelTimes,
+  });
+}
+
+/// A single destination with its day allocation.
+class AIPlannerDestination {
+  final String destinationId;
+  final String destinationName;
+  final int allocatedDays;
+
+  const AIPlannerDestination({
+    required this.destinationId,
+    required this.destinationName,
+    required this.allocatedDays,
+  });
+}
+
+/// A single candidate place as seen by the AI planner.
+class AIPlannerCandidate {
+  final String placeId;
+  final String name;
+  final String? destinationId;
+  final String? destinationName;
+  final int? clusterId;
+  final double latitude;
+  final double longitude;
+  final String? category;
+  final List<String> types;
+  final double rating;
+  final double? interestScore;
+  final double? finalScore;
+  final bool isMustVisit;
+  final int? visitDurationMinutes;
+  final String? openingHours;
+  final String? bestTimeSuggestion;
+
+  const AIPlannerCandidate({
+    required this.placeId,
+    required this.name,
+    this.destinationId,
+    this.destinationName,
+    this.clusterId,
+    required this.latitude,
+    required this.longitude,
+    this.category,
+    this.types = const [],
+    this.rating = 0.0,
+    this.interestScore,
+    this.finalScore,
+    this.isMustVisit = false,
+    this.visitDurationMinutes,
+    this.openingHours,
+    this.bestTimeSuggestion,
+  });
+}
+
+/// A geographic cluster of candidates.
+class AIPlannerCluster {
+  final int clusterId;
+  final String? destinationId;
+  final double centerLatitude;
+  final double centerLongitude;
+  final List<String> candidatePlaceIds;
+
+  const AIPlannerCluster({
+    required this.clusterId,
+    this.destinationId,
+    required this.centerLatitude,
+    required this.centerLongitude,
+    required this.candidatePlaceIds,
+  });
+}
+
+/// Result of the AI itinerary planner.
+class AIItineraryPlanningResult {
+  final bool success;
+  final String? errorMessage;
+  final List<AIDaySchedule>? days;
+
+  const AIItineraryPlanningResult({
+    required this.success,
+    this.errorMessage,
+    this.days,
   });
 }
 

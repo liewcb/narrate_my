@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/destination.dart';
-import '../../viewmodel/ItineraryModel/step1_where_to_vm.dart';
-import 'step2_trip_style_screen.dart';
+import '../../viewmodel/ItineraryModel/destination_choice_vm.dart';
+import 'trip_customization_screen.dart';
 
-class Step1WhereToScreen extends StatefulWidget {
-  const Step1WhereToScreen({super.key});
+class DestinationChoiceScreen extends StatefulWidget {
+  const DestinationChoiceScreen({super.key});
 
   @override
-  State<Step1WhereToScreen> createState() => _Step1WhereToScreenState();
+  State<DestinationChoiceScreen> createState() => _DestinationChoiceScreenState();
 }
 
-class _Step1WhereToScreenState extends State<Step1WhereToScreen> {
+class _DestinationChoiceScreenState extends State<DestinationChoiceScreen> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<Step1WhereToViewModel>(
@@ -38,7 +38,7 @@ class _Step1WhereToBody extends StatelessWidget {
           SingleChildScrollView(
             padding: const EdgeInsets.only(bottom: 140),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -83,7 +83,7 @@ class _Step1WhereToBody extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => Step2TripStyleScreen(
+                    builder: (_) => TripCustomizationScreen(
                       draft: draft,
                     ),
                   ),
