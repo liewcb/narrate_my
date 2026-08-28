@@ -6,3 +6,12 @@ abstract class RecommendationRepository {
     required double longitude,
   });
 }
+
+class RecommendationResolutionException implements Exception {
+  final String message;
+
+  const RecommendationResolutionException(this.message);
+
+  @override
+  String toString() => message;
+}

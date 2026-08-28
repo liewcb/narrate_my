@@ -1,26 +1,25 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../entities/recommendation.dart';
+import '../../../core/services/database_manager.dart';
+import '../../dto/recommendation_dto.dart';
 
 class RecommendationRemoteDataSource {
   final SupabaseClient _supabase;
 
-  RecommendationRemoteDataSource(this._supabase);
+  RecommendationRemoteDataSource({SupabaseClient? client})
+    : _supabase = client ?? DatabaseManager().remote.client;
 
-  Future<List<Recommendation>> getNearbyRecommendations({
+  Future<List<RecommendationDto>> getNearbyRecommendations({
     required double latitude,
     required double longitude,
   }) async {
     try {
       final response = await _supabase.functions.invoke(
         'recommend-nearby',
-        body: {
-          'latitude': latitude,
-          'longitude': longitude,
-        },
+        body: {'latitude': latitude, 'longitude': longitude},
       );
 
-      if (response.status != 200) {
+      if (response.status < 200 || response.status >= 300) {
         throw Exception(
           'Failed to get recommendations. Status: ${response.status}',
         );
@@ -32,23 +31,23 @@ class RecommendationRemoteDataSource {
         return [];
       }
 
-      final recommendations = data['recommendations'];
+      final recommendations = data is Map ? data['recommendations'] : data;
 
       if (recommendations == null || recommendations is! List) {
         return [];
       }
 
-      return recommendations
-          .map(
-            (item) => Recommendation.fromJson(
-          Map<String, dynamic>.from(item),
-        ),
-      )
-          .toList();
+      final result = <RecommendationDto>[];
+      for (final item in recommendations) {
+        if (item is Map) {
+          result.add(
+            RecommendationDto.fromJson(Map<String, dynamic>.from(item)),
+          );
+        }
+      }
+      return result;
     } catch (e) {
-      throw Exception(
-        'Unable to retrieve nearby recommendations: $e',
-      );
+      throw Exception('Unable to retrieve nearby recommendations: $e');
     }
   }
 }
