@@ -10,6 +10,8 @@ class Itinerary {
   final int totalDays;
   final String explorationTime;   // 'Relaxed', 'Standard', 'Intense'
   final String travelPace;        // 'Slow', 'Standard', 'Fast'
+  final String travelType;        // 'Solo', 'Family', 'Group', ...
+  final String transportationMode; // 'walking', 'driving', 'transit'
   final List<String> interests;
   final String? coverImageUrl;
   final String status;            // 'UPCOMING', 'ONGOING', 'PAST'
@@ -29,6 +31,8 @@ class Itinerary {
     required this.totalDays,
     required this.explorationTime,
     required this.travelPace,
+    this.travelType = 'Solo',
+    this.transportationMode = 'walking',
     required this.interests,
     this.coverImageUrl,
     this.status = 'UPCOMING',
@@ -49,6 +53,8 @@ class Itinerary {
     int? totalDays,
     String? explorationTime,
     String? travelPace,
+    String? travelType,
+    String? transportationMode,
     List<String>? interests,
     String? coverImageUrl,
     String? status,
@@ -68,6 +74,9 @@ class Itinerary {
       totalDays: totalDays ?? this.totalDays,
       explorationTime: explorationTime ?? this.explorationTime,
       travelPace: travelPace ?? this.travelPace,
+      travelType: travelType ?? this.travelType,
+      transportationMode:
+          transportationMode ?? this.transportationMode,
       interests: interests ?? this.interests,
       coverImageUrl: coverImageUrl ?? this.coverImageUrl,
       status: status ?? this.status,

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:narrate_my/view/Itinerary/add_place_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'bin/check_plan_state.dart';
+import 'bin/run_pipeline.dart';
 import 'core/config/app_config.dart';
-import 'core/routes/app_router.dart';
+import 'core/routes/app_routes.dart';
 import 'core/services/database_manager.dart';
 
 void main() async {
@@ -18,8 +18,6 @@ void main() async {
   // Initialize DatabaseManager
   final dbManager = DatabaseManager();
   await dbManager.init();
-  //final passed = await checkItineraryPlanState();
-  //print('Diagnostic passed: $passed');
   //await runItineraryPipeline();
   runApp(const MyApp());
 }
@@ -34,8 +32,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      initialRoute: AppRouter.initialRoute,
-      routes: AppRouter.routes,
+      home: const AppRoutes(),
     );
   }
 }

@@ -1,9 +1,9 @@
 ﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/theme/colors.dart';
+import '../../../core/theme/app_theme.dart';
 
-// â”€â”€â”€ Data Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Data Models ─────────────────────────────────────────────
 class StopData {
   final String time;
   final String duration;
@@ -66,7 +66,7 @@ class ItineraryData {
   });
 }
 
-// â”€â”€â”€ Main Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Main Screen ──────────────────────────────────────────────
 
 class ItineraryDetailScreen extends StatefulWidget {
   final String itineraryId;
@@ -108,7 +108,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
               time: '9:00 AM',
               duration: '1.5 hrs',
               name: 'Pinang Peranakan Mansion',
-              type: 'Museum â€¢ 4.8 â˜…',
+              type: 'Museum • 4.8 ★',
               imageUrl: 'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=200&q=80',
               transit: '10 min walk',
               status: 'Completed',
@@ -118,7 +118,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
               time: '11:00 AM',
               duration: '1 hr',
               name: 'Fort Cornwallis',
-              type: 'Historical â€¢ 4.2 â˜…',
+              type: 'Historical • 4.2 ★',
               imageUrl: null,
               transit: '15 min walk',
               status: 'Skipped',
@@ -129,7 +129,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
               time: '12:30 PM',
               duration: '1.5 hrs',
               name: 'ChinaHouse Restaurant',
-              type: 'Restaurant â€¢ Lunch',
+              type: 'Restaurant • Lunch',
               imageUrl: 'https://images.unsplash.com/photo-1533105079780-92b9be482077?w=200&q=80',
               transit: '5 min walk',
               isHighlighted: true, // Triggers the Active State
@@ -140,7 +140,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
               time: '2:30 PM',
               duration: '2 hrs',
               name: 'Street Art George Town',
-              type: 'Attraction â€¢ 4.9 â˜…',
+              type: 'Attraction • 4.9 ★',
               imageUrl: 'https://images.unsplash.com/photo-1540541338287-41700207dee6?w=200&q=80',
               transit: null,
               status: 'Planned',
@@ -157,7 +157,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
               time: '10:00 AM',
               duration: '2 hrs',
               name: 'Kek Lok Si Temple',
-              type: 'Cultural â€¢ 4.7 â˜…',
+              type: 'Cultural • 4.7 ★',
               status: 'Planned',
             ),
           ],
@@ -191,12 +191,12 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.creamBg,
+      backgroundColor: AppColors.bg,
       body: FutureBuilder<ItineraryData>(
         future: _fetchItinerary(widget.itineraryId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: AppColors.pineGreen));
+            return const Center(child: CircularProgressIndicator(color: AppColors.green));
           }
           if (snapshot.hasError) {
             return Center(child: Text('Error loading itinerary: ${snapshot.error}'));
@@ -272,7 +272,7 @@ class _HeroSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color statusColor = status.toLowerCase() == 'ongoing' ? AppColors.terracotta : AppColors.pineGreen;
+    Color statusColor = status.toLowerCase() == 'ongoing' ? AppColors.accent : AppColors.green;
 
     return SizedBox(
       height: 380,
@@ -313,7 +313,7 @@ class _HeroSection extends StatelessWidget {
                   children: [
                     _badge(status, statusColor, Colors.white),
                     const SizedBox(width: 8),
-                    _badge('$days Days', AppColors.terracotta, Colors.white),
+                    _badge('$days Days', AppColors.accent, Colors.white),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -322,7 +322,7 @@ class _HeroSection extends StatelessWidget {
                   style: GoogleFonts.playfairDisplay(fontSize: 32, fontWeight: FontWeight.w700, height: 1.1, color: Colors.white),
                 ),
                 const SizedBox(height: 6),
-                Text('$dateRange â€¢ $places places', style: const TextStyle(fontSize: 13, color: Colors.white70)),
+                Text('$dateRange • $places places', style: const TextStyle(fontSize: 13, color: Colors.white70)),
               ],
             ),
           ),
@@ -370,9 +370,9 @@ class _StatsBar extends StatelessWidget {
       child: Row(
         children: [
           _statItem('$places', 'Places'),
-          Container(width: 1, height: 32, color: AppColors.outlineLight),
+          Container(width: 1, height: 32, color: AppColors.moduleBorder),
           _statItem(transit, 'Transit'),
-          Container(width: 1, height: 32, color: AppColors.outlineLight),
+          Container(width: 1, height: 32, color: AppColors.moduleBorder),
           _statItem('$cities', 'Cities'),
         ],
       ),
@@ -383,8 +383,8 @@ class _StatsBar extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          Text(number, style: GoogleFonts.playfairDisplay(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          Text(label.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.mutedText)),
+          Text(number, style: GoogleFonts.playfairDisplay(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          Text(label.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.inkFaint)),
         ],
       ),
     );
@@ -406,7 +406,7 @@ class _DayPillsDelegate extends SliverPersistentHeaderDelegate {
     return SizedBox(
       height: minExtent, // must fill the declared extent for a pinned header
       child: Container(
-        color: AppColors.creamBg.withOpacity(0.9),
+        color: AppColors.bg.withOpacity(0.9),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -420,12 +420,12 @@ class _DayPillsDelegate extends SliverPersistentHeaderDelegate {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.pineGreen : Colors.white,
+                      color: isSelected ? AppColors.green : Colors.white,
                       borderRadius: BorderRadius.circular(30),
                     ),
                     child: Text(
                       'Day ${days[index].dayNumber}',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : AppColors.mutedText),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : AppColors.inkFaint),
                     ),
                   ),
                 ),
@@ -454,7 +454,7 @@ class _DayCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: isSelected ? AppColors.pineGreen : Colors.transparent, width: isSelected ? 2 : 0),
+        border: Border.all(color: isSelected ? AppColors.green : Colors.transparent, width: isSelected ? 2 : 0),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), offset: const Offset(0, 4), blurRadius: 20)],
       ),
       child: Column(
@@ -467,7 +467,7 @@ class _DayCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Day ${day.dayNumber}', style: GoogleFonts.playfairDisplay(fontSize: 24, fontWeight: FontWeight.w700)),
-                  Text('${day.date} â€¢ ${day.totalStops} stops', style: const TextStyle(fontSize: 12, color: AppColors.mutedText)),
+                  Text('${day.date} • ${day.totalStops} stops', style: const TextStyle(fontSize: 12, color: AppColors.inkFaint)),
                 ],
               ),
             ],
@@ -480,13 +480,13 @@ class _DayCard extends StatelessWidget {
               onTap: onAddPlace,
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(border: Border.all(color: AppColors.outlineLight), borderRadius: BorderRadius.circular(30)),
+                decoration: BoxDecoration(border: Border.all(color: AppColors.moduleBorder), borderRadius: BorderRadius.circular(30)),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.add, size: 18, color: AppColors.pineGreen),
+                    Icon(Icons.add, size: 18, color: AppColors.green),
                     SizedBox(width: 6),
-                    Text('Add Place', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.pineGreen)),
+                    Text('Add Place', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.green)),
                   ],
                 ),
               ),
@@ -507,9 +507,9 @@ class _DayCard extends StatelessWidget {
             padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
             child: Row(
               children: [
-                const Icon(Icons.directions_walk, size: 14, color: AppColors.mutedText),
+                const Icon(Icons.directions_walk, size: 14, color: AppColors.inkFaint),
                 const SizedBox(width: 18),
-                Text(day.stops[i].transit!, style: const TextStyle(fontSize: 11, color: AppColors.mutedText)),
+                Text(day.stops[i].transit!, style: const TextStyle(fontSize: 11, color: AppColors.inkFaint)),
               ],
             ),
           ),
@@ -520,7 +520,7 @@ class _DayCard extends StatelessWidget {
   }
 }
 
-// â”€â”€â”€ Timeline Stop Item (Core Update) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Timeline Stop Item (Core Update) ─────────────────────────
 
 class _StopItem extends StatelessWidget {
   final StopData stop;
@@ -536,8 +536,8 @@ class _StopItem extends StatelessWidget {
     bool isActive = stop.isHighlighted;
 
     double cardOpacity = (isCompleted || isSkipped) ? 0.6 : 1.0;
-    Color cardBgColor = (isCompleted || isSkipped) ? AppColors.background : Colors.white;
-    Color borderColor = isActive ? AppColors.pineGreen : AppColors.outlineLight.withOpacity(0.6);
+    Color cardBgColor = (isCompleted || isSkipped) ? AppColors.bg : Colors.white;
+    Color borderColor = isActive ? AppColors.green : AppColors.moduleBorder.withOpacity(0.6);
     double borderWidth = isActive ? 2.0 : 1.0;
 
     return IntrinsicHeight(
@@ -553,7 +553,7 @@ class _StopItem extends StatelessWidget {
                 Expanded(
                   child: Container(
                     width: 2,
-                    color: AppColors.outlineLight,
+                    color: AppColors.moduleBorder,
                     margin: const EdgeInsets.symmetric(vertical: 4),
                   ),
                 ),
@@ -573,7 +573,7 @@ class _StopItem extends StatelessWidget {
                     color: cardBgColor,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: borderColor, width: borderWidth),
-                    boxShadow: isActive ? [BoxShadow(color: AppColors.pineGreen.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 4))] : [],
+                    boxShadow: isActive ? [BoxShadow(color: AppColors.green.withOpacity(0.1), blurRadius: 12, offset: const Offset(0, 4))] : [],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -591,8 +591,8 @@ class _StopItem extends StatelessWidget {
                           else
                             Container(
                               width: 48, height: 48,
-                              decoration: BoxDecoration(color: AppColors.creamBg, borderRadius: BorderRadius.circular(10)),
-                              child: const Icon(Icons.place, color: AppColors.mutedText),
+                              decoration: BoxDecoration(color: AppColors.bg, borderRadius: BorderRadius.circular(10)),
+                              child: const Icon(Icons.place, color: AppColors.inkFaint),
                             ),
                           const SizedBox(width: 12),
 
@@ -607,22 +607,22 @@ class _StopItem extends StatelessWidget {
                                     Expanded(
                                       child: Text(
                                         stop.name,
-                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.ink),
                                       ),
                                     ),
                                     if (!isCompleted && !isSkipped)
-                                      const Icon(Icons.more_vert, size: 18, color: AppColors.mutedText),
+                                      const Icon(Icons.more_vert, size: 18, color: AppColors.inkFaint),
                                   ],
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   '${stop.time} (${stop.duration})',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isActive ? AppColors.terracotta : AppColors.mutedText),
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isActive ? AppColors.accent : AppColors.inkFaint),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   stop.type,
-                                  style: const TextStyle(fontSize: 11, color: AppColors.mutedText),
+                                  style: const TextStyle(fontSize: 11, color: AppColors.inkFaint),
                                 ),
                               ],
                             ),
@@ -636,15 +636,15 @@ class _StopItem extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: isCompleted ? AppColors.successGreenLight : AppColors.creamBg,
+                            color: isCompleted ? AppColors.accentSoft : AppColors.bg,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            isCompleted ? 'âœ“ Completed' : 'Skipped',
+                            isCompleted ? '✓ Completed' : 'Skipped',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: isCompleted ? AppColors.pineGreen : AppColors.mutedText,
+                              color: isCompleted ? AppColors.green : AppColors.inkFaint,
                             ),
                           ),
                         ),
@@ -653,7 +653,7 @@ class _StopItem extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 6),
                             child: Text(
                               'Reason: ${stop.skipReason}',
-                              style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: AppColors.mutedText),
+                              style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: AppColors.inkFaint),
                             ),
                           ),
                       ],
@@ -669,7 +669,7 @@ class _StopItem extends StatelessWidget {
                                 icon: const Icon(Icons.check, size: 16),
                                 label: const Text('Complete'),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.pineGreen,
+                                  backgroundColor: AppColors.green,
                                   foregroundColor: Colors.white,
                                   elevation: 0,
                                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -684,8 +684,8 @@ class _StopItem extends StatelessWidget {
                                 icon: const Icon(Icons.fast_forward, size: 16),
                                 label: const Text('Skip'),
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppColors.tertiary,
-                                  side: const BorderSide(color: AppColors.outlineLight),
+                                  foregroundColor: AppColors.inkSoft,
+                                  side: const BorderSide(color: AppColors.moduleBorder),
                                   padding: const EdgeInsets.symmetric(vertical: 8),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                 ),
@@ -710,22 +710,22 @@ class _StopItem extends StatelessWidget {
     if (isCompleted) {
       return Container(
         width: 20, height: 20,
-        decoration: const BoxDecoration(color: AppColors.pineGreen, shape: BoxShape.circle),
+        decoration: const BoxDecoration(color: AppColors.green, shape: BoxShape.circle),
         child: const Icon(Icons.check, color: Colors.white, size: 12),
       );
     } else if (isSkipped) {
       return Container(
         width: 20, height: 20,
-        decoration: const BoxDecoration(color: AppColors.mutedText, shape: BoxShape.circle),
+        decoration: const BoxDecoration(color: AppColors.inkFaint, shape: BoxShape.circle),
         child: const Icon(Icons.fast_forward, color: Colors.white, size: 12),
       );
     } else if (isActive) {
       return Container(
         width: 20, height: 20,
         decoration: BoxDecoration(
-          color: AppColors.pineGreen,
+          color: AppColors.green,
           shape: BoxShape.circle,
-          border: Border.all(color: AppColors.pineGreen.withOpacity(0.2), width: 4),
+          border: Border.all(color: AppColors.green.withOpacity(0.2), width: 4),
         ),
       );
     } else {
@@ -734,7 +734,7 @@ class _StopItem extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
-          border: Border.all(color: AppColors.outlineLight, width: 3),
+          border: Border.all(color: AppColors.moduleBorder, width: 3),
         ),
       );
     }

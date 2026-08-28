@@ -51,6 +51,11 @@ class ARSceneState {
 ///   GPS fix -> query nearby markers -> live compass matching -> primary
 ///   marker selection.
 ///
+/// Permission checking is NOT this class's job (see
+/// `core/services/permission_service.dart` + the ViewModel, which gate
+/// entry before this service is ever started) — this only runs once the
+/// tourist has already granted camera + location.
+///
 /// Emits [ARSceneState] any time the tourist's position or heading
 /// changes meaningfully.
 class ARExplorationService {

@@ -1,175 +1,134 @@
-// lib/run_pipeline.dart
+// lib/bin/run_pipeline.dart
+//
+// Standalone driver for the new ItineraryGenerationPipeline.
+// Run via: flutter test test/run_pipeline_test.dart
+// (dart run does not resolve flutter packages.)
+
 import 'package:flutter/foundation.dart';
 
-import '../core/services/ai_service.dart';
-import '../core/services/weather_service.dart';
-import '../model/business_logic/itinerary_service/ai_schedule_service.dart';
-import '../model/business_logic/itinerary_service/candidate_retrieval_service.dart';
-import '../model/business_logic/itinerary_service/clustering_service.dart';
-import '../model/business_logic/itinerary_service/itinerary_plan_state.dart';
-import '../model/business_logic/itinerary_service/scoring_service.dart';
-import '../model/data_sources/remote/places_remote_data_source.dart';
-import '../model/entities/place.dart';
-import '../model/entities/trip_request.dart';
+import '../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../model/entities/coordinates.dart';
+import '../model/entities/trip_draft.dart';
 
-/// Run the full pipeline with real Google Places API and multi-provider AI scheduling.
-Future<ItineraryPlanState> runItineraryPipeline() async {
-  // 1. Set up services
-  final placesDataSource = PlacesRemoteDataSource();
-  final retrievalService = CandidateRetrievalService(placesDataSource: placesDataSource);
-  final scoringService = ScoringService();
-  final clusteringService = ClusteringService();
-  final weatherService = WeatherService();
+/// Static mock Google Place IDs for Melaka must-visit places.
+class MockTestData {
+  static const List<String> mustVisitIds = [
+    'ChIJ308630g3zDER6r6vHh6v1AI', // Stadthuys
+    'ChIJgU_8wEQ3zDERiJzE-zXwZ60', // Taming Sari Tower
+    'ChIJwWvVl0M3zDERU-5eB0Y8c-8', // Baba Nyonya Heritage Museum
+  ];
+}
 
-  // Initialize your custom robust AIService (handles DeepSeek, OpenRouter, Cohere fallbacks)
-  final aiGatewayService = AIService();
-  final aiScheduleService = AiScheduleService(aiGatewayService);
-
-  // 2. Define trip parameters using the TripRequest model
-  final startDate = DateTime(2026, 9, 1);
-  final tripDays = 2;
-  final endDate = startDate.add(Duration(days: tripDays - 1));
-  final mainDestination = 'Langkawi';
-
-  final tripRequest = TripRequest(
-    destinations: [mainDestination],
+/// Run the complete new pipeline and print results.
+Future<ItineraryResult> runItineraryPipeline() async {
+  final tripRequest = TripDraft(
+    destinations: ['Melaka'],
     destinationCoordinates: {
-      mainDestination: const Coordinates(latitude: 6.350, longitude: 99.800),
+      'Melaka': const Coordinates(latitude: 2.1896, longitude: 102.2501),
     },
-    title: 'Langkawi Adventure Sprint',
-    startDate: startDate,
-    endDate: endDate,
-    explorationTime: 'Intense',
-    travelPace: 'Fast',
-    interests: ['Nature & Outdoors', 'Water Sports', 'Food & Culinary'],
-    additionalNotes: '',
-    mustVisitIds: [],
-    daySplit: {mainDestination: tripDays},
+    title: 'Melaka Must Visit Test',
+    startDate: DateTime(2026, 9, 1),
+    endDate: DateTime(2026, 9, 2),
+    explorationTime: 'Moderate',
+    travelPace: 'Moderate',
+    travelType: 'Solo',
+    transportation: 'Driving',
+    interests: [
+      'Culture & History',
+      'Shopping',
+      'Food & Culinary',
+    ],
+    mustVisitPlaceIds: MockTestData.mustVisitIds,
+    daySplit: {'Melaka': 2},
   );
 
-  final dietaryPrefs = ['Seafood-Free'];
-  final accessibilityPrefs = <String>[];
-  final exclusions = ['shopping_mall'];
-  // 3. Step 1: Candidate Retrieval
-  debugPrint('🚀 Starting Itinerary Pipeline');
-  final pool = await retrievalService.retrieveCandidates(
-    request: tripRequest, // Now cleanly passing the TripRequest object
+  debugPrint('═══════════════════════════════════════════');
+  debugPrint('🚀 NEW PIPELINE — Melaka Must-Visit Test');
+  debugPrint('═══════════════════════════════════════════');
+
+  final pipeline = ItineraryGenerationPipeline();
+
+  final result = await pipeline.generate(
+    request: tripRequest,
+    onProgress: (stage) => debugPrint('[PROGRESS] $stage'),
   );
 
-  // 4. Step 2: Scoring
-  debugPrint('⭐ SCORING');
-  final allPlaces = pool.all;
-  final scored = scoringService.scorePlaces(
-    places: allPlaces,
-    selectedInterests: tripRequest.interests,
-    mustVisitIds: tripRequest.mustVisitIds,
-    explorationTime: tripRequest.explorationTime,
-    tripLocation: null,
-    // Strict-preference inputs (optional; defaults keep other callers intact).
-    travelerType: 'Solo',
-    travelPace: tripRequest.travelPace,
-    accessibilityRequirements: accessibilityPrefs,
-    categoryExclusions: exclusions,
-    strictInterestFilter: true,
-    minPoolFloor: 3,
-  );
+  debugPrint('═══════════════════════════════════════════');
+  if (result.success) {
+    debugPrint('✅ PIPELINE SUCCEEDED');
+  } else {
+    debugPrint('❌ PIPELINE FAILED: ${result.message}');
+    for (final e in result.errors ?? []) {
+      debugPrint('   ${e.type}: ${e.message}');
+    }
+  }
+  debugPrint('═══════════════════════════════════════════');
 
-  // 5. Step 3: Clustering
-  debugPrint('🗺️ CLUSTERING');
-  final clusters = clusteringService.clusterPlaces(
-    scoredPlaces: scored,
-    numberOfDays: tripDays,
-    pace: tripRequest.travelPace,
-  );
-
-  // 6. Step 4: Fetch Weather Forecast
-  debugPrint('🌤️ FETCHING WEATHER');
-  final forecast = await weatherService.getDailyForecast(
-    latitude: tripRequest.destinationCoordinates[mainDestination]!.latitude,
-    longitude: tripRequest.destinationCoordinates[mainDestination]!.longitude,
-    startDate: tripRequest.startDate,
-    endDate: tripRequest.endDate,
-  );
-
-  // 7. Step 5: AI-Driven Scheduling & Routing
-  debugPrint('🤖 GENERATING AI SCHEDULE');
-  debugPrint('[PIPELINE] ExplorationTime=${tripRequest.explorationTime} '
-      'TravelPace=${tripRequest.travelPace}');
-  final aiSchedule = await aiScheduleService.generateSchedule(
-    dailyClusters: clusters,
-    forecast: forecast,
-    travelPace: tripRequest.travelPace,
-    intensity: tripRequest.explorationTime,
-    interests: tripRequest.interests,
-    destinationName: mainDestination,
-    dietaryPreferences: dietaryPrefs,
-    categoryExclusions: exclusions,
-    startDate: tripRequest.startDate,
-  );
-
-  final List<List<Place>> finalDailyStops = [];
-
-  for (final day in aiSchedule) {
-    final List<Place> dayPlaces = [];
-    for (final stop in day.schedule) {
-      final place = pool.findByPlaceId(stop.placeId);
-      if (place != null) {
-        dayPlaces.add(place);
+  // ── Print final scheduled days ────────────────────────────────
+  if (result.success && result.scheduledDays != null) {
+    final days = result.scheduledDays!;
+    debugPrint('🎯 SCHEDULE: ${days.length} day(s)');
+    for (final day in days) {
+      debugPrint('');
+      debugPrint('── DAY ${day.dayIndex + 1} (${day.date.toIso8601String().split('T').first}) ──');
+      debugPrint('   Duration: ${day.totalDuration}m | Travel: ${day.totalTravelTime}m');
+      for (final stop in day.stops) {
+        final p = stop.attraction.place;
+        debugPrint(
+          '   ${stop.startTime.hour.toString().padLeft(2, '0')}:'
+          '${stop.startTime.minute.toString().padLeft(2, '0')} — '
+          '${stop.endTime.hour.toString().padLeft(2, '0')}:'
+          '${stop.endTime.minute.toString().padLeft(2, '0')}  '
+          '${p.placeName} '
+          '(${(stop.durationMinutes)}m, '
+          'travel: ${stop.travelFromPreviousMinutes}m)',
+        );
       }
     }
-    debugPrint('[FINAL ITINERARY] Day ${day.dayIndex + 1}: '
-        '${dayPlaces.length} places mapped '
-        '(aiSchedule dayIndex=${day.dayIndex}, date=${day.date})');
-    finalDailyStops.add(dayPlaces);
   }
 
-  // Convert destinations for the state
-  final queryDestinations = tripRequest.destinations.map((name) {
-    final coords = tripRequest.destinationCoordinates[name];
-    return QueryDestination(
-      name: name,
-      latitude: coords?.latitude ?? 0.0,
-      longitude: coords?.longitude ?? 0.0,
-    );
-  }).toList();
+  // ── Must-visit summary ─────────────────────────────────────────
+  if (result.unretrievableMustVisits.isNotEmpty) {
+    debugPrint('⚠️ UNRETRIEVABLE MUST-VISITS: ${result.unretrievableMustVisits}');
+  }
 
-  // ============================================================
-  // 9. PACKAGE INTO CENTRALIZED STATE & RETURN
-  // ============================================================
-  final finalPlanState = ItineraryPlanState(
-    itineraryId: 'trip_${DateTime.now().millisecondsSinceEpoch}',
-    destinations: queryDestinations,
-    totalDays: tripDays,
-    pace: tripRequest.travelPace,
-    intensity: tripRequest.explorationTime,
-    selectedInterests: tripRequest.interests,
-    mustVisitPlaceIds: tripRequest.mustVisitIds,
-    destinationPools: {
-      mainDestination: pool,
-    },
-    dailyStops: finalDailyStops,
-    dailyClusters: clusters,      // Pass the clusters here
-    aiDaySchedules: aiSchedule,   // Pass the AI Schedule here
-  );
+  // ── Weather ────────────────────────────────────────────────────
+  if (result.weather != null) {
+    debugPrint('🌤️ WEATHER: ${result.weather!.daily.length} day(s) forecasted');
+  }
 
-  // Print the state to verify it packaged correctly
-  finalPlanState.debugPrintState();
-
-// 8. Print final summary and verify structure for Supabase
-  debugPrint('═══════════════════════════════════════════');
-  debugPrint('✅ PIPELINE COMPLETE');
-  debugPrint('═══════════════════════════════════════════');
-  debugPrint('Total candidates retrieved: ${pool.totalCount}');
-  debugPrint('Clusters created: ${clusters.length}');
-
-  for (final day in aiSchedule) {
-    // CHANGE: Use day.schedule instead of day.stops
-    debugPrint('Day ${day.dayIndex}: ${day.schedule.length} stops generated.');
-    for (final stop in day.schedule) {
-      debugPrint('  - [${stop.startTime} - ${stop.endTime}] Place ID: ${stop.placeId} (Order: ${stop.stopOrder})');
+  // ── Critic feedback ────────────────────────────────────────────
+  if (result.criticFeedback != null) {
+    final c = result.criticFeedback!;
+    debugPrint('🧠 CRITIC: score=${c.score} suitable=${c.overallSuitable}');
+    if (c.issues.isNotEmpty) {
+      for (final issue in c.issues) {
+        debugPrint('   ⚠️ $issue');
+      }
+    }
+    if (c.recommendations.isNotEmpty) {
+      for (final rec in c.recommendations) {
+        debugPrint('   💡 $rec');
+      }
     }
   }
 
-  return finalPlanState;
+  // ── Candidate pool summary ─────────────────────────────────────
+  if (result.candidatePool != null) {
+    final pool = result.candidatePool!;
+    debugPrint('📦 POOL: ${pool.attractionCount} attractions, '
+        '${pool.foodCount} food');
+  }
+
+  debugPrint('═══════════════════════════════════════════');
+  debugPrint('🏁 DONE');
+  debugPrint('═══════════════════════════════════════════');
+
+  return result;
+}
+
+void main() async {
+  debugPrint('Starting pipeline from main()...');
+  final result = await runItineraryPipeline();
+  debugPrint('Exit code: ${result.success ? 0 : 1}');
 }

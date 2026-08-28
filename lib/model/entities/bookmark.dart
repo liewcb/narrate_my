@@ -1,8 +1,7 @@
-/// Domain entity for a user's bookmark.
-///
-/// [itemId] identifies the bookmarked entity (e.g., a place ID from Google).
-/// [itemType] identifies the type (e.g., 'place', 'attraction', 'restaurant').
-/// [placeId] is optional and may reference the local `places` table.
+/// Domain entity for UC402 A22 (View and Delete Bookmarks, REQ_503_21/22).
+/// The bookmarked *entity* itself (attraction/restaurant details) is owned
+/// by the Recommendation Engine module's own tables — [itemId] is a plain
+/// FK reference, not resolved/joined here.
 class Bookmark {
   final String id;
   final String userId;

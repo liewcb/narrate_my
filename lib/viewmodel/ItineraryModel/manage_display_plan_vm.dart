@@ -206,24 +206,21 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Add the given bookmarked places as new stops on [dayIndex].
+  /// Add bookmarked places (by their Google placeIds) as new stops on
+  /// [dayIndex].
   ///
-  /// Only runs for ongoing itineraries. Each bookmark is saved as a Place
-  /// (so the stop can be joined later) and appended to the day after the
-  /// last existing stop.
-  Future<bool> addBookmarkedPlaces({
+  /// Each place is fetched from the local place cache, saved if missing,
+  /// and appended to the day. Only runs for ongoing itineraries.
+  Future<int> addBookmarkedPlaces({
     required int dayIndex,
-    required List<Bookmark> bookmarks,
+    required List<String> placeIds,
   }) async {
-    if (!canCustomize) return false;
-    if (bookmarks.isEmpty) return true;
+    if (!canCustomize) return 0;
+    if (placeIds.isEmpty) return 0;
 
-    // Skip bookmarks already used in this itinerary.
     final usedIds = _stops.map((s) => s.placeId).toSet();
-    final toAdd = bookmarks
-        .where((b) => !usedIds.contains(b.placeId))
-        .toList();
-    if (toAdd.isEmpty) return true;
+    final toAdd = placeIds.where((id) => !usedIds.contains(id)).toList();
+    if (toAdd.isEmpty) return 0;
 
     var nextOrder = _stops
             .where((s) => s.dayIndex == dayIndex)
@@ -233,19 +230,16 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     final now = DateTime.now();
     final added = <ItineraryStop>[];
 
-    for (final b in toAdd) {
-      final place = Place(
-        placeId: b.placeId,
-        placeName: b.placeName,
-        placeAddress: b.placeAddress,
-        placeLatitude: b.placeLatitude,
-        placeLongitude: b.placeLongitude,
-        placeRating: b.placeRating ?? 3.5,
-        placeTypes: (b.placeTypes ?? '').split(','),
-        placePhotoRef: b.placePhotoRef,
-        category: 'landmark',
-        visitDurationMinutes: 90,
-      );
+    for (final placeId in toAdd) {
+      Place? place;
+      try {
+        place = await _placeRepo.getPlace(placeId);
+      } catch (_) {
+        place = null;
+      }
+      if (place == null) {
+        place = Place.empty(placeId);
+      }
       try {
         await _placeRepo.savePlace(place);
       } catch (e) {
@@ -255,7 +249,7 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
       added.add(ItineraryStop(
         stopId: 0,
         itineraryId: itineraryId,
-        placeId: b.placeId,
+        placeId: place.placeId,
         dayIndex: dayIndex,
         stopOrder: nextOrder++,
         startTime: now,
@@ -271,7 +265,7 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     _stops.addAll(added);
     await _stopRepo.saveStops(_stops);
     notifyListeners();
-    return true;
+    return added.length;
   }
 
   /// Remove a stop by its stop ID.

@@ -1,8 +1,6 @@
-import 'package:equatable/equatable.dart';
-
-class ItineraryDestination extends Equatable {
+class ItineraryDestination {
   final String itineraryId;
-  final String destinationId;   // references destinations(id)
+  final String destinationId;   // references destinations(destination_id)
   final int allocatedDays;
   final DateTime createdAt;
   final DateTime updatedAt;

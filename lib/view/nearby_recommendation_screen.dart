@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+
 class NearbyRecommendationScreen extends StatelessWidget {
   const NearbyRecommendationScreen({super.key});
 
@@ -7,7 +8,11 @@ class NearbyRecommendationScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Nearby')),
-      body: const Center(child: Text('Nearby recommendations go here')),
+      body: Stack(
+        children: [
+          const Center(child: Text('Nearby recommendations go here')),
+        ],
+      ),
     );
   }
 }

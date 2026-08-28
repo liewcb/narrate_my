@@ -49,6 +49,12 @@ dependencies:
   camera: ^0.11.0+2            # Live camera feed background
   provider: ^6.1.2             # ChangeNotifier binding for MVVM viewmodels
   google_fonts: ^8.2.1
+  google_maps_flutter: ^2.5.0
+
+  # --- Module 5: User Profile & Language Management (UC400-403) ---
+  #google_fonts: ^6.2.1         # Nunito typeface, matches the design canvas
+  webview_flutter: ^4.10.0     # Hosts the hCaptcha JS challenge widget (OTP screen, 5-fail gate)
+  image_picker: ^1.1.2         # Profile picture upload (gallery picker) — added feature, not in spec
 
 dev_dependencies:
   flutter_test:
@@ -71,6 +77,14 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Module 5: real photos for the 5 attraction-category tiles
+  # (Preferences / Initial Preferences screens — see
+  # `preference_options.dart`'s `kAttractionCategoryImages`) and the app's
+  # branding logo (Register/Login screen header).
+  assets:
+    - assets/images/attractions/
+    - assets/images/branding/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

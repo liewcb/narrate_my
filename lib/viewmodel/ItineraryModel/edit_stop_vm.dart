@@ -6,9 +6,10 @@ import '../../model/repositories/adapters/itinerary_stop_repository_adapter.dart
 
 /// Traveler progress for a single itinerary stop.
 ///
-/// Only the traveler's progress note (status + optional skip reason) is
-/// mutated here. The scheduled start/end time, duration, stop order,
-/// day index, route and travel times are NEVER changed.
+/// The traveler may edit the stop's scheduled START TIME (end time is
+/// derived from the existing duration) and the progress status. Place,
+/// day index, stop order, duration, route and travel times are NEVER
+/// changed by this feature.
 class EditStopViewModel extends ChangeNotifier {
   static const String planned = 'PLANNED';
   static const String completed = 'COMPLETED';
@@ -23,13 +24,22 @@ class EditStopViewModel extends ChangeNotifier {
   bool _isSaving = false;
   String? _error;
 
+  // ── Temporary (uncommitted) time editing state ──────────────
+  // The persisted stop is never mutated until the change is confirmed
+  // and the repository update succeeds.
+  late DateTime _editedStartTime;
+  late DateTime _editedEndTime;
+
   EditStopViewModel({
     required ItineraryStop stop,
     required DateTime itineraryStartDate,
     bool isReadOnly = false,
   })  : _stop = stop,
         _itineraryStartDate = itineraryStartDate,
-        _isReadOnly = isReadOnly;
+        _isReadOnly = isReadOnly {
+    _editedStartTime = stop.startTime;
+    _editedEndTime = stop.endTime;
+  }
 
   // ─── Getters ────────────────────────────────────────────────
 
@@ -42,6 +52,21 @@ class EditStopViewModel extends ChangeNotifier {
 
   /// Whether progress can be modified (Past itineraries are read-only).
   bool get isReadOnly => _isReadOnly;
+
+  /// The temporary start time currently shown in the UI.
+  DateTime get editedStartTime => _editedStartTime;
+
+  /// The temporary end time derived from the edited start + duration.
+  DateTime get editedEndTime => _editedEndTime;
+
+  /// Whether the traveler has changed the start time (pending).
+  bool get hasTimeChanges {
+    return _editedStartTime.hour != _stop.startTime.hour ||
+        _editedStartTime.minute != _stop.startTime.minute;
+  }
+
+  /// Whether any temporary value differs from the persisted stop.
+  bool get hasUnsavedChanges => hasTimeChanges;
 
   /// The actual scheduled start date+time of this stop: the itinerary
   /// start date shifted to this stop's day, combined with the stop's
@@ -85,7 +110,99 @@ class EditStopViewModel extends ChangeNotifier {
     }
   }
 
-  // ─── Actions ────────────────────────────────────────────────
+  // ─── Time editing ───────────────────────────────────────────
+
+  /// Set a new temporary START time and derive the end time from the
+  /// existing [durationMinutes]. Validates the result and does NOT
+  /// touch the database. Returns `false` when the time is invalid.
+  bool setStartTime(DateTime newStart) {
+    final candidate = DateTime(
+      _editedStartTime.year,
+      _editedStartTime.month,
+      _editedStartTime.day,
+      newStart.hour,
+      newStart.minute,
+      newStart.second,
+    );
+    final newEnd = candidate.add(Duration(minutes: _stop.durationMinutes));
+
+    if (!newEnd.isAfter(candidate)) {
+      _error = 'The selected start time is invalid.';
+      notifyListeners();
+      return false;
+    }
+
+    debugPrint('[EDIT STOP] Time selected');
+    debugPrint('[EDIT STOP] Original: '
+        '${_fmt(_stop.startTime)} - ${_fmt(_stop.endTime)}');
+    debugPrint('[EDIT STOP] New: ${_fmt(candidate)} - ${_fmt(newEnd)}');
+    debugPrint('[EDIT STOP] Duration: ${_stop.durationMinutes} minutes');
+
+    _editedStartTime = candidate;
+    _editedEndTime = newEnd;
+    _error = null;
+    notifyListeners();
+    return true;
+  }
+
+  /// Discard any pending time edits (restore the persisted values).
+  void resetTimeEdits() {
+    _editedStartTime = _stop.startTime;
+    _editedEndTime = _stop.endTime;
+    _error = null;
+    notifyListeners();
+  }
+
+  /// Persist the pending time change (and optional skip reason) in a single
+  /// repository update. Does not touch status here — status is handled by
+  /// [updateStatus] after its own confirmation.
+  Future<bool> saveTimeChanges() async {
+    if (_isReadOnly) {
+      _error = 'This itinerary is in the past and cannot be modified.';
+      notifyListeners();
+      return false;
+    }
+    if (!hasTimeChanges) {
+      _error = null;
+      return true; // Nothing to save.
+    }
+
+    _isSaving = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final updated = _buildUpdatedStop(
+        startTime: _editedStartTime,
+        endTime: _editedEndTime,
+      );
+
+      debugPrint('[EDIT STOP] Updating stop');
+      debugPrint('[EDIT STOP] Stop ID: ${updated.stopId}');
+      debugPrint('[EDIT STOP] Start: ${_fmt(updated.startTime)}');
+      debugPrint('[EDIT STOP] End: ${_fmt(updated.endTime)}');
+      debugPrint('[EDIT STOP] Status: ${updated.stopStatus}');
+
+      final saved = await _repo.updateStop(updated);
+      _stop = saved.copyWith(place: _stop.place);
+      _editedStartTime = _stop.startTime;
+      _editedEndTime = _stop.endTime;
+      _error = null;
+      notifyListeners();
+      debugPrint('[EDIT STOP] Stop updated successfully');
+      return true;
+    } catch (e) {
+      _error = 'Unable to update the stop. Please try again.';
+      debugPrint('[EDIT STOP] Stop update failed: $e');
+      notifyListeners();
+      return false;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  // ─── Status ─────────────────────────────────────────────────
 
   /// Attempt to change this stop's status. Returns `true` on success.
   ///
@@ -122,34 +239,26 @@ class EditStopViewModel extends ChangeNotifier {
       return false;
     }
 
+    debugPrint('[EDIT STOP] Status change confirmed');
+    debugPrint('[EDIT STOP] From: ${_stop.stopStatus}');
+    debugPrint('[EDIT STOP] To: $newStatus');
+
     _isSaving = true;
     _error = null;
     notifyListeners();
 
     try {
       // Build the updated stop preserving ALL scheduling/planning fields.
-      final updated = ItineraryStop(
-        stopId: _stop.stopId,
-        itineraryId: _stop.itineraryId,
-        placeId: _stop.placeId,
-        dayIndex: _stop.dayIndex,
-        stopOrder: _stop.stopOrder,
-        startTime: _stop.startTime,
-        endTime: _stop.endTime,
-        durationMinutes: _stop.durationMinutes,
-        travelFromPrevMinutes: _stop.travelFromPrevMinutes,
+      final updated = _buildUpdatedStop(
         stopStatus: newStatus,
         skipReason:
             newStatus == skipped ? (skipReason ?? _stop.skipReason) : null,
-        weatherNote: _stop.weatherNote,
-        place: _stop.place,
-        createdAt: _stop.createdAt,
-        updatedAt: DateTime.now(),
       );
 
       final saved = await _repo.updateStop(updated);
       _stop = saved.copyWith(place: _stop.place);
       notifyListeners();
+      debugPrint('[EDIT STOP] Status updated successfully');
       return true;
     } catch (e) {
       _error = 'Unable to update the stop status. Please try again.';
@@ -172,23 +281,7 @@ class EditStopViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final updated = ItineraryStop(
-        stopId: _stop.stopId,
-        itineraryId: _stop.itineraryId,
-        placeId: _stop.placeId,
-        dayIndex: _stop.dayIndex,
-        stopOrder: _stop.stopOrder,
-        startTime: _stop.startTime,
-        endTime: _stop.endTime,
-        durationMinutes: _stop.durationMinutes,
-        travelFromPrevMinutes: _stop.travelFromPrevMinutes,
-        stopStatus: _stop.stopStatus,
-        skipReason: reason,
-        weatherNote: _stop.weatherNote,
-        place: _stop.place,
-        createdAt: _stop.createdAt,
-        updatedAt: DateTime.now(),
-      );
+      final updated = _buildUpdatedStop(skipReason: reason);
 
       final saved = await _repo.updateStop(updated);
       _stop = saved.copyWith(place: _stop.place);
@@ -232,5 +325,43 @@ class EditStopViewModel extends ChangeNotifier {
       _isSaving = false;
       notifyListeners();
     }
+  }
+
+  // ─── Helpers ────────────────────────────────────────────────
+
+  /// Build an updated stop preserving every scheduling/planning field,
+  /// applying only the provided changes. Never overwrites with null.
+  ItineraryStop _buildUpdatedStop({
+    DateTime? startTime,
+    DateTime? endTime,
+    String? stopStatus,
+    String? skipReason,
+    bool clearSkipReason = false,
+  }) {
+    return ItineraryStop(
+      stopId: _stop.stopId,
+      itineraryId: _stop.itineraryId,
+      placeId: _stop.placeId,
+      dayIndex: _stop.dayIndex,
+      stopOrder: _stop.stopOrder,
+      startTime: startTime ?? _stop.startTime,
+      endTime: endTime ?? _stop.endTime,
+      durationMinutes: _stop.durationMinutes,
+      travelFromPrevMinutes: _stop.travelFromPrevMinutes,
+      stopStatus: stopStatus ?? _stop.stopStatus,
+      skipReason: clearSkipReason
+          ? null
+          : (skipReason ?? _stop.skipReason),
+      weatherNote: _stop.weatherNote,
+      place: _stop.place,
+      createdAt: _stop.createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  String _fmt(DateTime t) {
+    final h = t.hour.toString().padLeft(2, '0');
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 }

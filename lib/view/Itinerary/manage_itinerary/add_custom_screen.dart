@@ -1,50 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'dart:ui';
-import '../../../model/entities/bookmark.dart';
-import '../../../core/theme/colors.dart';
 
-
-/// Dummy bookmarks for testing the AddCustomStopScreen.
-final List<Bookmark> testBookmarks = [
-  Bookmark(
-    placeId: 'bm_001',
-    placeName: 'Central Market',
-    placeAddress: 'Jalan Hang Kasturi, 50050 Kuala Lumpur',
-    placeRating: 4.2,
-    placeTypes: 'shopping_mall,market',
-    placePhotoRef: 'AenMKlG5YVjO1W3R4qZvEf8hB9xV2pNlQ6tY',
-    placeLatitude: 3.1464,
-    placeLongitude: 101.6953,userId: '1',
-  ),
-  Bookmark(
-    placeId: 'bm_002',
-    placeName: 'Petronas Twin Towers',
-    placeAddress: 'Kuala Lumpur City Centre, 50088 Kuala Lumpur',
-    placeRating: 4.7,
-    placeTypes: 'tourist_attraction,landmark',
-    placePhotoRef: 'Bk8S3mN6tY7uJ5wX2vZ1qA0pL9kHdF',
-    placeLatitude: 3.1579,
-    placeLongitude: 101.7117,userId: '1',
-  ),
-  Bookmark(
-    placeId: 'bm_003',
-    placeName: 'National Museum',
-    placeAddress: 'Jalan Damansara, 50566 Kuala Lumpur',
-    placeRating: 4.1,
-    placeTypes: 'museum',
-    placePhotoRef: 'P3qLmN8oV6wX2yZ1rA0sT9uJ5kHdG',
-    placeLatitude: 3.1378,
-    placeLongitude: 101.6864,userId: '1',
-  ),
-];
-
-/// Dummy place details for the selected place.
-final Map<String, dynamic> testPlaceDetails = {
-  'name': "Uncle Lim's Secret Kopitiam",
-  'address': 'Lorong Panggong, City Centre',
-  'category': 'RESTAURANT',
-  'imageUrl': 'https://lh3.googleusercontent.com/aida-public/AB6AXuD7sMqjJwniDkNSnDFw4lYdbUT4wQev7JionRYJw-N-I31zwLm0rw6wKwL3-8_C5oYZ-7IZBnQZlnk6HgZ4jkbWZi3RXNgxPz0OSBKNhTiZ7nlTkzcSRiUc_xA5kfsVS0yP2j8Nn3tKHNjzpphl4HKmj1H0aHvKL_40ZZrhj2dqyxs2uMzRO6lE_lvswuZ3XyM-VJsYyHp4U7e14Ux9xQV-khzp4FWcn3MP98CMRlubUiAJPaegabHx',
-};
+import '../../../core/theme/app_theme.dart';
 
 class AddCustomStopScreen extends StatefulWidget {
   const AddCustomStopScreen({Key? key}) : super(key: key);
@@ -55,18 +12,18 @@ class AddCustomStopScreen extends StatefulWidget {
 
 class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
   // Brand Colors
-  final Color _bg = AppColors.creamBg;
-  final Color _surfaceCard = AppColors.white;
-  final Color _surfaceInactive = AppColors.surfaceInactive;
-  final Color _surfaceDim = AppColors.surfaceDim;
+  final Color _bg = AppColors.bg;
+  final Color _surfaceCard = AppColors.surface;
+  final Color _surfaceInactive = AppColors.surface2;
+  final Color _surfaceDim = AppColors.surface2;
 
-  final Color _pineGreen = AppColors.pineGreen;
-  final Color _onSurface = AppColors.charcoal;
-  final Color _tertiary = AppColors.tertiary;
-  final Color _textMuted = AppColors.mutedText;
+  final Color _pineGreen = AppColors.green;
+  final Color _onSurface = AppColors.ink;
+  final Color _tertiary = AppColors.inkSoft;
+  final Color _textMuted = AppColors.inkFaint;
 
-  final Color _dangerBg = AppColors.dangerBg;
-  final Color _dangerText = AppColors.dangerText;
+  final Color _dangerBg = AppColors.surface2;
+  final Color _dangerText = AppColors.error;
 
   // State
   int _selectedDayIndex = 1;
@@ -378,7 +335,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: AppColors.successGreenLight,
+                        color: AppColors.accentSoft,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -599,7 +556,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                       style: const TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 16,
-                        color: AppColors.charcoal,
+                        color: AppColors.ink,
                       ),
                     ),
                   ),

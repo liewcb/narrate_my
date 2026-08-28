@@ -2,373 +2,317 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../../core/theme/app_theme.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
-import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
+import '../../viewmodel/ItineraryModel/itinerary_final_vm.dart';
+
 import 'add_place_screen.dart';
-import '../../core/theme/colors.dart';
-
-// â”€â”€â”€ Data Models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-class StopData {
-  final String time;
-  final String duration;
-  final String name;
-  final String type;
-  final String? imageUrl;
-  final String? transit;
-  final bool isHighlighted;
-
-  StopData({
-    required this.time,
-    required this.duration,
-    required this.name,
-    required this.type,
-    this.imageUrl,
-    this.transit,
-    this.isHighlighted = false,
-  });
-}
-
-class DayData {
-  final int dayNumber;
-  final String date;
-  final int totalStops;
-  final String? timeRange;
-  final bool isSelected;
-  final List<StopData> stops;
-
-  DayData({
-    required this.dayNumber,
-    required this.date,
-    required this.totalStops,
-    this.timeRange,
-    this.isSelected = false,
-    required this.stops,
-  });
-}
-
-// â”€â”€â”€ Main Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+import 'manage_itinerary/manage_edit_itinerary_screen.dart';
+import 'my_itineraries_screen.dart';
 
 class ItineraryFinalScreen extends StatefulWidget {
-  /// The generated itinerary (from the Step 5 pipeline). When null the
-  /// screen shows its demo data instead.
-  final ItineraryResult? result;
+  final ItineraryResult result;
+  final String title;
+  final String? itineraryId;
+  final Future<void> Function()? onRegenerate;
+  final Future<ItineraryResult> Function()? onRegenerateAlternatives;
+  final Future<bool> Function()? onSave;
 
-  const ItineraryFinalScreen({super.key, this.result});
+  const ItineraryFinalScreen({
+    super.key,
+    required this.result,
+    required this.title,
+    this.itineraryId,
+    this.onRegenerate,
+    this.onRegenerateAlternatives,
+    this.onSave,
+  });
 
   @override
   State<ItineraryFinalScreen> createState() => _ItineraryFinalScreenState();
 }
 
 class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
-  int _selectedDayIndex = 0;
+  late ItineraryFinalViewModel _vm;
   final ScrollController _scrollController = ScrollController();
-  late final List<GlobalKey> _dayKeys; // âœ… fixed: late final
-
-  // â”€â”€â”€ Data (from the generation result when available) â”€â”€â”€â”€â”€â”€â”€â”€
-  late final List<DayData> _days;
-
-  List<DayData> get _finalDays =>
-      widget.result?.scheduledDays != null
-          ? _fromScheduledDays(widget.result!.scheduledDays!)
-          : const [];
-
-  // â”€â”€â”€ Dummy Data (fallback) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  final List<DayData> _mockDays = [
-    DayData(
-      dayNumber: 1,
-      date: 'Mon, Aug 12',
-      totalStops: 3,
-      timeRange: '9:00 AM - 6:00 PM',
-      isSelected: true,
-      stops: [
-        StopData(
-          time: '9:00 AM',
-          duration: '2 hrs',
-          name: 'Batu Caves',
-          type: 'Cultural â€¢ 4.8 â˜… â€¢ Must-go',
-          imageUrl:
-          'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=200&q=80',
-          transit: '12 min drive â€¢ 8.2 km',
-          isHighlighted: true,
-        ),
-        StopData(
-          time: '12:30 PM',
-          duration: '1.5 hrs',
-          name: 'Precious Old China',
-          type: 'Restaurant â€¢ You added',
-          imageUrl: null,
-          transit: '8 min walk',
-          isHighlighted: false,
-        ),
-        StopData(
-          time: '4:00 PM',
-          duration: '2 hrs',
-          name: 'Petronas Towers',
-          type: 'Viewpoint â€¢ Sunset spot',
-          imageUrl:
-          'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=200&q=80',
-          transit: null,
-          isHighlighted: false,
-        ),
-      ],
-    ),
-    DayData(
-      dayNumber: 2,
-      date: 'Tue, Aug 13',
-      totalStops: 2,
-      timeRange: null,
-      isSelected: false,
-      stops: [
-        StopData(
-          time: '10:00 AM',
-          duration: '1.5 hrs',
-          name: 'Islamic Arts Museum',
-          type: 'Museum â€¢ 4.7 â˜…',
-          imageUrl:
-          'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=200&q=80',
-          transit: null,
-          isHighlighted: false,
-        ),
-        StopData(
-          time: '1:00 PM',
-          duration: '2 hrs',
-          name: 'Central Market',
-          type: 'Shopping â€¢ 4.6 â˜…',
-          imageUrl:
-          'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=200&q=80',
-          transit: null,
-          isHighlighted: false,
-        ),
-      ],
-    ),
-    DayData(
-      dayNumber: 3,
-      date: 'Wed, Aug 14',
-      totalStops: 2,
-      timeRange: null,
-      isSelected: false,
-      stops: [
-        StopData(
-          time: '9:30 AM',
-          duration: '2 hrs',
-          name: 'Batu Caves',
-          type: 'Cultural â€¢ 4.8 â˜…',
-          imageUrl:
-          'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=200&q=80',
-          transit: null,
-          isHighlighted: false,
-        ),
-        StopData(
-          time: '2:00 PM',
-          duration: '3 hrs',
-          name: 'KL Tower',
-          type: 'Viewpoint â€¢ 4.5 â˜…',
-          imageUrl:
-          'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=200&q=80',
-          transit: null,
-          isHighlighted: false,
-        ),
-      ],
-    ),
-    DayData(
-      dayNumber: 4,
-      date: 'Thu, Aug 15',
-      totalStops: 2,
-      timeRange: null,
-      isSelected: false,
-      stops: [
-        StopData(
-          time: '8:00 AM',
-          duration: '3 hrs',
-          name: 'Penang Hill',
-          type: 'Nature â€¢ 4.9 â˜…',
-          imageUrl:
-          'https://images.unsplash.com/photo-1533105079780-92b9be482077?w=200&q=80',
-          transit: null,
-          isHighlighted: false,
-        ),
-      ],
-    ),
-  ];
+  late final List<GlobalKey> _dayKeys;
 
   @override
   void initState() {
     super.initState();
-    _days = _finalDays.isNotEmpty ? _finalDays : _mockDays;
-    _dayKeys = List.generate(_days.length, (_) => GlobalKey()); // âœ… assigned here
+    _vm = ItineraryFinalViewModel(
+      result: widget.result,
+      title: widget.title,
+      itineraryId: widget.itineraryId,
+      regenerateRequest: widget.onRegenerate,
+      regenerateAlternatives: widget.onRegenerateAlternatives,
+      saveRequest: widget.onSave,
+    );
+    final days = _vm.days;
+    _dayKeys = List.generate(days.length, (_) => GlobalKey());
   }
 
-  /// Convert the pipeline's [ScheduledDay] list into the screen's
-  /// [DayData] display model.
-  List<DayData> _fromScheduledDays(List<ScheduledDay> days) {
-    final formatter = DateFormat('EEE, MMM d');
-    return days.map((day) {
-      final stops = day.stops.map((s) {
-        final place = s.attraction.place;
-        return StopData(
-          time: _fmtTime(s.startTime),
-          duration: '${s.durationMinutes} min',
-          name: place.placeName,
-          type: place.category ?? (place.placeTypes.isNotEmpty ? place.placeTypes.first : 'Attraction'),
-          imageUrl: place.placePhotoRef != null
-              ? 'https://maps.googleapis.com/maps/api/place/photo'
-                  '?maxwidth=200&photoreference=${place.placePhotoRef}'
-              : null,
-          transit: s.attraction.matchedInterest.isNotEmpty
-              ? s.attraction.matchedInterest
-              : null,
-          isHighlighted: day.stops.isNotEmpty && s == day.stops.first,
-        );
-      }).toList();
+  @override
+  void dispose() {
+    _vm.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
-      final first = day.stops.isNotEmpty ? day.stops.first : null;
-      final last = day.stops.isNotEmpty ? day.stops.last : null;
+  /// Prompts user with a confirmation dialog before discarding
+  Future<void> _handleDiscard() async {
+    final shouldDiscard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Discard Itinerary?'),
+        content: const Text(
+          'Are you sure you want to discard this generated plan? Any unsaved progress will be lost.',
+          style: TextStyle(color: AppColors.inkFaint),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.inkFaint)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
 
-      return DayData(
-        dayNumber: day.dayIndex + 1,
-        date: formatter.format(day.date),
-        totalStops: stops.length,
-        timeRange: (first != null && last != null)
-            ? '${_fmtTime(first.startTime)} - ${_fmtTime(last.endTime)}'
-            : null,
-        isSelected: day.dayIndex == _selectedDayIndex,
-        stops: stops,
+    if (shouldDiscard == true && mounted) {
+      Navigator.pop(context);
+    }
+  }
+
+  /// Persist the itinerary via the ViewModel, then navigate to the saved
+  /// itinerary list on success.
+  Future<void> _handleSave() async {
+    await _vm.save();
+    if (_vm.isSaved && mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const MyItinerariesScreen(),
+        ),
       );
-    }).toList();
-  }
-
-  String _fmtTime(DateTime t) {
-    final h = t.hour;
-    final m = t.minute.toString().padLeft(2, '0');
-    final ampm = h >= 12 ? 'PM' : 'AM';
-    final hh = h % 12 == 0 ? 12 : h % 12;
-    return '$hh:$m $ampm';
-  }
-
-  /// Derived stats from the generated data.
-  String get _title => widget.result?.scheduledDays?.isNotEmpty == true
-      ? '${widget.result!.scheduledDays!.length}-Day Trip'
-      : 'Kuala Lumpur Getaway';
-
-  String get _dateRange {
-    final days = widget.result?.scheduledDays;
-    if (days == null || days.isEmpty) return 'Aug 12-15';
-    final first = days.first.date;
-    final last = days.last.date;
-    return '${DateFormat('MMM d').format(first)} â€“ ${DateFormat('MMM d').format(last)}';
-  }
-
-  int get _totalStops => widget.result?.scheduledDays?.fold<int>(
-          0, (sum, d) => sum + d.stops.length) ??
-      0;
-
-  Duration get _totalTravelTime => Duration(
-      minutes: widget.result?.scheduledDays?.fold<int>(
-              0, (sum, d) => sum + d.totalTravelTime.toInt()) ??
-          0);
-
-  int get _cityCount => widget.result?.scheduledDays?.isNotEmpty == true
-      ? 1
-      : 2;
-
-  void _selectDay(int index) {
-    setState(() {
-      _selectedDayIndex = index;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final key = _dayKeys[index];
-      if (key.currentContext != null) {
-        Scrollable.ensureVisible(
-          key.currentContext!,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.creamBg,
-      body: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          SliverToBoxAdapter(
-            child: _HeroSection(
-              title: _title,
-              dateRange: _dateRange,
-              places: '${_totalStops}',
-              days: '${_days.length}',
-            ),
+    return ChangeNotifierProvider.value(
+      value: _vm,
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(kToolbarHeight),
+          child: Stack(
+            children: [
+              Positioned(
+                right: 16,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: TextButton.icon(
+                    onPressed: _handleDiscard,
+                    icon: const Icon(Icons.close, size: 18, color: AppColors.error),
+                    label: const Text(
+                      'Discard',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          SliverToBoxAdapter(
-            child: _StatsBar(
-              places: _totalStops,
-              transit: '${_totalTravelTime.inHours}h',
-              cities: _cityCount,
-            ),
-          ),
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _DayPillsDelegate(
-              days: _days,
-              selectedIndex: _selectedDayIndex,
-              onDaySelected: _selectDay,
-            ),
-          ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                final day = _days[index];
-                return Container(
-                  key: _dayKeys[index],
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  child: _DayCard(
-                    day: day,
-                    isSelected: index == _selectedDayIndex,
-                    onAddPlace: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => AddPlaceScreen(
-                            itineraryId: 'draft',
-                            dayIndex: index,
-                          ),
+        ),
+        body: ListenableBuilder(
+          listenable: _vm,
+          builder: (context, _) {
+            final days = _vm.days;
+            if (_dayKeys.length != days.length) {
+              _dayKeys.length = days.length;
+            }
+
+            // ── Empty / error state ──────────────────────────────
+            if (days.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.map_outlined, size: 64, color: AppColors.inkFaint),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Something went wrong',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.ink),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Unable to display the generated itinerary.',
+                      style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+                    ),
+                    if (_vm.errorMessage != null) ...[
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          _vm.errorMessage!,
+                          style: const TextStyle(fontSize: 12, color: AppColors.error),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: AppColors.surface,
+                      ),
+                      child: const Text('Go Back'),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // ── Loading state ──────────────────────────────────────
+            if (_vm.isLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            // ── Main content ────────────────────────────────────────
+            return CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _HeroSection(
+                    title: _vm.title,
+                    dateRange: _vm.dateRange,
+                    places: '${_vm.totalStops}',
+                    days: '${days.length}',
+                    imageUrl: _vm.heroImageUrl,
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: _StatsBar(
+                    places: _vm.totalStops,
+                    transit: '${_vm.totalTravelTime.inHours}h',
+                    cities: _vm.cityCount,
+                  ),
+                ),
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _DayPillsDelegate(
+                    days: days,
+                    selectedIndex: _vm.selectedDayIndex,
+                    onDaySelected: (index) {
+                      _vm.selectDay(index);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        final key = _dayKeys[index];
+                        if (key.currentContext != null) {
+                          Scrollable.ensureVisible(
+                            key.currentContext!,
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeInOut,
+                          );
+                        }
+                      });
+                    },
+                  ),
+                ),
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                      final day = days[index];
+                      return Container(
+                        key: _dayKeys[index],
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                        child: _DayCard(
+                          day: day,
+                          isSelected: index == _vm.selectedDayIndex,
+                          onAddPlace: () {
+                            final id = _vm.itineraryId;
+                            if (id == null) return;
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AddPlaceScreen(
+                                  itineraryId: id,
+                                  dayIndex: index,
+                                ),
+                              ),
+                            );
+                          },
+                          onEditDay: () {
+                            final id = _vm.itineraryId;
+                            if (id == null) return;
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ManageEditItineraryScreen(
+                                  itineraryId: id,
+                                  dayNumber: day.dayNumber,
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       );
                     },
-                    onEditDay: () {
-                      // Navigate to edit itinerary screen
-                    },
+                    childCount: days.length,
                   ),
-                );
-              },
-              childCount: _days.length,
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 120)),
-        ],
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 140)),
+              ],
+            );
+          },
+        ),
+        bottomNavigationBar: _BottomActions(
+          onDiscard: _handleDiscard,
+          onRegenerate: _vm.canRegenerate ? () => _vm.regenerate() : null,
+          isRegenerating: _vm.isRegenerating,
+          onSave: _vm.canSave ? () => _handleSave() : null,
+          isSaving: _vm.isSaveInProgress,
+          saveMessage: _vm.saveMessage,
+        ),
       ),
-      bottomNavigationBar: _BottomActions(),
     );
   }
 }
 
-// â”€â”€â”€ Subâ€‘Widgets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ═══════════════════════════════════════════════════════════════════
+//  SUB-WIDGETS
+// ═══════════════════════════════════════════════════════════════════
 
 class _HeroSection extends StatelessWidget {
   final String title;
   final String dateRange;
   final String places;
   final String days;
+  final String? imageUrl;
 
   const _HeroSection({
     required this.title,
     required this.dateRange,
     required this.places,
     required this.days,
+    this.imageUrl,
   });
 
   @override
@@ -378,10 +322,10 @@ class _HeroSection extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=800&q=80',
-            fit: BoxFit.cover,
-          ),
+          if (imageUrl != null)
+            Image.network(imageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder())
+          else
+            _placeholder(),
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -403,7 +347,7 @@ class _HeroSection extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _roundIconButton(Icons.arrow_back, () => Navigator.pop(context)),
+                const SizedBox.shrink(),
                 Row(
                   children: [
                     _roundIconButton(Icons.share, () {}),
@@ -425,7 +369,7 @@ class _HeroSection extends StatelessWidget {
                   children: [
                     _badge('Editable', Colors.white.withOpacity(0.2), Colors.white),
                     const SizedBox(width: 8),
-                    _badge('$days Days', AppColors.terracotta, Colors.white),
+                    _badge('$days Days', AppColors.accent, Colors.white),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -438,21 +382,32 @@ class _HeroSection extends StatelessWidget {
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.calendar_today, size: 16, color: Colors.white70),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$dateRange â€¢ $places places',
-                      style: const TextStyle(fontSize: 13, color: Colors.white70),
-                    ),
-                  ],
-                ),
+                if (dateRange.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.calendar_today, size: 16, color: Colors.white70),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$dateRange • $places places',
+                        style: const TextStyle(fontSize: 13, color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      color: AppColors.surface2,
+      child: const Center(
+        child: Icon(Icons.map_outlined, size: 80, color: AppColors.inkFaint),
       ),
     );
   }
@@ -477,7 +432,6 @@ class _HeroSection extends StatelessWidget {
     );
   }
 
-  // âœ… Corrected with BackdropFilter
   Widget _roundIconButton(IconData icon, VoidCallback onPressed) {
     return BackdropFilter(
       filter: ui.ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
@@ -503,11 +457,7 @@ class _StatsBar extends StatelessWidget {
   final String transit;
   final int cities;
 
-  const _StatsBar({
-    required this.places,
-    required this.transit,
-    required this.cities,
-  });
+  const _StatsBar({required this.places, required this.transit, required this.cities});
 
   @override
   Widget build(BuildContext context) {
@@ -515,18 +465,18 @@ class _StatsBar extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         boxShadow: const [
-          BoxShadow(color: Color(0x14000000), offset: Offset(0, 8), blurRadius: 24),
+          BoxShadow(color: AppShadows.card, offset: Offset(0, 8), blurRadius: 24),
         ],
       ),
       child: Row(
         children: [
           _statItem('$places', 'Places'),
-          Container(width: 1, height: 32, color: AppColors.outlineLight),
+          Container(width: 1, height: 32, color: AppColors.moduleBorder),
           _statItem(transit, 'Transit'),
-          Container(width: 1, height: 32, color: AppColors.outlineLight),
+          Container(width: 1, height: 32, color: AppColors.moduleBorder),
           _statItem('$cities', 'Cities'),
         ],
       ),
@@ -542,17 +492,17 @@ class _StatsBar extends StatelessWidget {
             style: GoogleFonts.playfairDisplay(
               fontSize: 20,
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
+              color: AppColors.ink,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             label.toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.2,
-              color: AppColors.mutedText,
+              color: AppColors.inkFaint,
             ),
           ),
         ],
@@ -580,9 +530,9 @@ class _DayPillsDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     return SizedBox(
-      height: minExtent, // must fill the declared extent for a pinned header
+      height: minExtent,
       child: Container(
-        color: AppColors.creamBg.withOpacity(0.9),
+        color: AppColors.bg.withOpacity(0.9),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -597,18 +547,18 @@ class _DayPillsDelegate extends SliverPersistentHeaderDelegate {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.pineGreen : Colors.white,
-                      borderRadius: BorderRadius.circular(30),
+                      color: isSelected ? AppColors.primary : AppColors.surface,
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
                       border: Border.all(
-                        color: isSelected ? AppColors.pineGreen : AppColors.outlineLight,
+                        color: isSelected ? AppColors.primary : AppColors.moduleBorder,
                       ),
                     ),
                     child: Text(
-                      'Day ${day.dayNumber}${index == 0 ? ' â€¢ ${day.date}' : ''}',
+                      'Day ${day.dayNumber}${index == 0 ? ' • ${day.date}' : ''}',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        color: isSelected ? Colors.white : AppColors.mutedText,
+                        color: isSelected ? AppColors.surface : AppColors.inkFaint,
                       ),
                     ),
                   ),
@@ -643,20 +593,19 @@ class _DayCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(
-          color: isSelected ? AppColors.pineGreen : AppColors.outlineLight.withOpacity(0.6),
+          color: isSelected ? AppColors.primary : AppColors.moduleBorder.withOpacity(0.6),
           width: isSelected ? 2 : 1,
         ),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), offset: const Offset(0, 4), blurRadius: 20),
+          BoxShadow(color: AppShadows.card, offset: const Offset(0, 4), blurRadius: 20),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -671,7 +620,7 @@ class _DayCard extends StatelessWidget {
                           style: GoogleFonts.playfairDisplay(
                             fontSize: 24,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                            color: AppColors.ink,
                           ),
                         ),
                         if (isSelected) ...[
@@ -679,12 +628,12 @@ class _DayCard extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: AppColors.pineGreen,
+                              color: AppColors.primary,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Text(
+                            child: Text(
                               'Selected',
-                              style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                              style: TextStyle(fontSize: 10, color: AppColors.surface, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
@@ -692,13 +641,13 @@ class _DayCard extends StatelessWidget {
                     ),
                     Text(
                       day.date,
-                      style: const TextStyle(fontSize: 12, color: AppColors.mutedText),
+                      style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
                     ),
                     if (day.timeRange != null) ...[
                       const SizedBox(height: 2),
                       Text(
-                        '${day.totalStops} stops â€¢ ${day.timeRange}',
-                        style: const TextStyle(fontSize: 12, color: AppColors.mutedText),
+                        '${day.totalStops} stops • ${day.timeRange}',
+                        style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
                       ),
                     ],
                   ],
@@ -711,10 +660,10 @@ class _DayCard extends StatelessWidget {
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: AppColors.creamBg,
+                      color: AppColors.surface2,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.edit, color: AppColors.textPrimary, size: 18),
+                    child: Icon(Icons.edit, color: AppColors.ink, size: 18),
                   ),
                 ),
             ],
@@ -732,20 +681,20 @@ class _DayCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.outlineLight, width: 1),
-                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: AppColors.moduleBorder, width: 1),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.add, size: 16, color: AppColors.mutedText),
+                    const Icon(Icons.add, size: 16, color: AppColors.inkFaint),
                     const SizedBox(width: 6),
                     Text(
                       'Add a place to Day ${day.dayNumber}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.mutedText,
+                        color: AppColors.inkFaint,
                       ),
                     ),
                   ],
@@ -770,17 +719,18 @@ class _DayCard extends StatelessWidget {
           isActive: day.isSelected,
         ),
       );
-      if (i < day.stops.length - 1 && stop.transit != null) {
+      if (i < day.stops.length - 1) {
+        final transitText = stop.transitTime ?? '';
         widgets.add(
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                const Icon(Icons.directions_car, size: 14, color: AppColors.mutedText),
+                const Icon(Icons.directions_car, size: 14, color: AppColors.inkFaint),
                 const SizedBox(width: 6),
                 Text(
-                  stop.transit!,
-                  style: const TextStyle(fontSize: 11, color: AppColors.mutedText),
+                  transitText.isNotEmpty ? transitText : 'travel',
+                  style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
                 ),
               ],
             ),
@@ -818,15 +768,15 @@ class _StopItem extends StatelessWidget {
               height: 12,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isFirst ? AppColors.pineGreen : AppColors.outlineLight,
-                border: Border.all(color: isFirst ? Colors.transparent : Colors.white, width: 2),
+                color: isFirst ? AppColors.primary : AppColors.moduleBorder,
+                border: Border.all(color: isFirst ? Colors.transparent : AppColors.surface, width: 2),
               ),
             ),
             if (!isLast)
               Container(
                 width: 2,
                 height: 40,
-                color: AppColors.outlineLight,
+                color: AppColors.moduleBorder,
               ),
           ],
         ),
@@ -838,11 +788,11 @@ class _StopItem extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${stop.time} â€¢ ${stop.duration}',
+                '${stop.time} • ${stop.duration}',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: isFirst ? AppColors.pineGreen : AppColors.mutedText,
+                  color: isFirst ? AppColors.primary : AppColors.inkFaint,
                 ),
               ),
               const SizedBox(height: 6),
@@ -851,9 +801,9 @@ class _StopItem extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: isFirst ? AppColors.creamBg : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  border: isFirst ? null : Border.all(color: AppColors.outlineLight.withOpacity(0.6)),
+                  color: isFirst ? AppColors.surface2 : Colors.transparent,
+                  borderRadius: BorderRadius.circular(AppRadius.card),
+                  border: isFirst ? null : Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
                 ),
                 child: Row(
                   children: [
@@ -865,18 +815,11 @@ class _StopItem extends StatelessWidget {
                           width: 56,
                           height: 56,
                           fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _fallbackImage(),
                         ),
                       )
                     else
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: AppColors.creamBg,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Center(child: Text('ðŸœ', style: TextStyle(fontSize: 24))),
-                      ),
+                      _fallbackImage(),
                     const SizedBox(width: 12),
 
                     Expanded(
@@ -885,24 +828,24 @@ class _StopItem extends StatelessWidget {
                         children: [
                           Text(
                             stop.name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
+                              color: AppColors.ink,
                             ),
                           ),
                           Text(
                             stop.type,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
-                              color: AppColors.mutedText,
+                              color: AppColors.inkFaint,
                             ),
                           ),
                         ],
                       ),
                     ),
                     if (isActive)
-                      const Icon(Icons.drag_indicator, color: AppColors.mutedText, size: 18),
+                      Icon(Icons.drag_indicator, color: AppColors.inkFaint, size: 18),
                   ],
                 ),
               ),
@@ -913,57 +856,144 @@ class _StopItem extends StatelessWidget {
       ],
     );
   }
+
+  Widget _fallbackImage() {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Center(child: Text('📍', style: TextStyle(fontSize: 24))),
+    );
+  }
 }
 
 class _BottomActions extends StatelessWidget {
+  final VoidCallback onDiscard;
+  final VoidCallback? onRegenerate;
+  final VoidCallback? onSave;
+  final bool isRegenerating;
+  final bool isSaving;
+  final String? saveMessage;
+
+  const _BottomActions({
+    required this.onDiscard,
+    this.onRegenerate,
+    this.onSave,
+    this.isRegenerating = false,
+    this.isSaving = false,
+    this.saveMessage,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
-        border: Border(top: BorderSide(color: AppColors.outlineLight.withOpacity(0.6))),
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.moduleBorder.withOpacity(0.6))),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C000000),
+            offset: Offset(0, -4),
+            blurRadius: 16,
+          ),
+        ],
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () {},
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textPrimary,
-                side: const BorderSide(color: AppColors.outlineLight),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onDiscard,
+                  icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.error),
+                  label: const Text(
+                    'Discard',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.error),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: AppColors.error.withOpacity(0.4)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.refresh, size: 18),
-                  const SizedBox(width: 6),
-                  const Text('Regenerate', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: (onRegenerate == null || isRegenerating) ? null : onRegenerate,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.ink,
+                    side: BorderSide(color: AppColors.moduleBorder),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (isRegenerating) ...[
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ] else ...[
+                        const Icon(Icons.refresh, size: 16, color: AppColors.ink),
+                      ],
+                      const SizedBox(width: 6),
+                      Text(
+                        isRegenerating ? 'Generating...' : 'Regenerate',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (saveMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                saveMessage!,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isSaving ? AppColors.inkFaint : AppColors.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.pineGreen,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                elevation: 8,
-                shadowColor: AppColors.pineGreen.withOpacity(0.25),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: (onSave == null || isSaving) ? null : onSave,
+              icon: isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0x80FFFFFF),
+                      ),
+                    )
+                  : const Icon(Icons.check_circle, size: 18, color: AppColors.surface),
+              label: Text(
+                isSaving ? 'Saving...' : 'Save Itinerary',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.check_circle, size: 18),
-                  const SizedBox(width: 6),
-                  const Text('Save Itinerary', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                ],
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.surface,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                elevation: 4,
+                shadowColor: AppColors.primary.withOpacity(0.25),
               ),
             ),
           ),

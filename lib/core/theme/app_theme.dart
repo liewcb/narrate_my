@@ -1,240 +1,267 @@
+/// NarrateMy design tokens + ThemeData for Module 5 (User Profile & Language
+/// Management) screens — matches the published design canvas 1:1.
+///
+/// Canvas: https://claude.ai/code/artifact/34afab66-1712-4337-847f-7bde85a754c3
+/// Palette: "Warm Heritage Editorial" — warm cream background, terracotta
+/// accent, teal/green secondary accents. Typeface: Nunito (Google Font).
+///
+/// MERGE NOTE (25 Aug): this file used to diverge from a teammate's simpler
+/// green-primary theme (used by `AppBottomNavBar`, shared across every
+/// module's tab). Merged rather than picking one side — every Module 5
+/// screen already depends on the tokens below (`ink`/`accent`/`error`/etc,
+/// confirmed by grepping the whole `lib/` tree), while `AppBottomNavBar` is
+/// the ONLY file outside Module 5 that touches `AppColors` at all, and it
+/// only needs `primary`/`unselected`/`surface`/`border`. Everything from
+/// both sides is kept; the one real collision (`border` meant a different
+/// color on each side) is resolved by leaving the teammate's `border`
+/// value and name exactly as they wrote it (so `AppBottomNavBar`, a shared
+/// component, needed zero edits) and renaming Module 5's own warm-tan
+/// divider color to `moduleBorder` instead — only Module 5's own files
+/// needed updating to the new name, never anyone else's code.
+library;
+
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-// ═══════════════════════════════════════════════════════════════
-// APP THEME — "Serene Traveler" Design System
-// ═══════════════════════════════════════════════════════════════
-
-// ─── Colors ───────────────────────────────────────────────────
+/// Raw design tokens, exposed directly for widgets that need a color not
+/// covered by [ThemeData] (e.g. the specific teal/gold accents used for
+/// tags and status pills in the design canvas).
 class AppColors {
-  // Background & surfaces
-  static const background = Color(0xFFFCF9F8);       // background / surface
-  static const surfaceCard = Color(0xFFFFFFFF);      // surface-container-lowest
-  static const surfaceInactive = Color(0xFFE6E2D6);  // Inactive pills / disabled
+  AppColors._();
 
-  // Primary Terracotta family
-  static const primaryTerracotta = Color(0xFF914C21);
-  static const primaryContainer = Color(0xFFD48152);
-  static const onPrimary = Color(0xFFFFFFFF);
+  static const bg = Color(0xFFFBF3EA);
+  static const surface = Color(0xFFFFFFFF);
+  static const surface2 = Color(0xFFF5EAD8);
+  static const ink = Color(0xFF2B241D);
+  static const inkSoft = Color(0xFF6B5D4F);
+  static const inkFaint = Color(0xFF9C8A76);
+  /// Module 5's own warm-tan divider/border color (dividers, outlined
+  /// buttons, input underlines, switch tracks). Named `moduleBorder`, not
+  /// `border`, so it never collides with the shared `border` token below
+  /// that `AppBottomNavBar` (a component shared across every module) was
+  /// already written against.
+  static const moduleBorder = Color(0xFFE6D7C3);
+  static const accent = Color(0xFFC1622D);
+  static const accentDark = Color(0xFF8F4620);
+  static const accentSoft = Color(0xFFF1DCC3);
+  static const green = Color(0xFF3F6B52);
+  static const teal = Color(0xFF3E7C8A);
+  static const gold = Color(0xFFD9A441);
 
-  // Secondary Pine Green family
-  static const secondaryPine = Color(0xFF35675D);
-  static const secondaryActive = Color(0xFF194D44);  // Active Choice Pills
-  static const onSecondary = Color(0xFFFFFFFF);
+  /// Standard error/failure red — not part of the original palette, chosen
+  /// to sit comfortably alongside the warm tones (not a cold pure red).
+  static const error = Color(0xFFC0392B);
 
-  // Text
-  static const textPrimary = Color(0xFF1B1B1B);      // Charcoal
-  static const textSecondary = Color(0xFF54433B);    // on-surface-variant
-  static const textMuted = Color(0xFF9E9B93);        // text-muted
-  static const textInactive = Color(0xFF6B6A65);     // Inactive pill text
+  // --- Shared app-wide tokens (from the teammate's theme, kept for
+  // AppBottomNavBar and any other module's screens) ---------------------
 
-  // Lines & borders
-  static const outline = Color(0xFF87736A);
-  static const outlineVariant = Color(0xFFD9C2B7);
-  static const divider = Color(0xFFE6E2D6);          // 1px inner card dividers
+  /// Primary brand green — selected/active states in the bottom nav bar
+  /// (active tab, etc.), used app-wide outside Module 5.
+  static const Color primary = Color(0xFF2D6A5E);
 
-  // Semantic (Danger/Error)
-  static const error = Color(0xFFBA1A1A);
-  static const dangerBg = Color(0xFFF9E4E4);
-  static const dangerText = Color(0xFFD9534F);
+  static const Color unselected = Color(0xFF9CA3AF);
 
-  // Overlays
-  static const shadow = Color(0x0A000000);           // 4% opacity (rgba(0,0,0,0.04))
+  /// Bottom nav bar's own border color — the teammate's original name and
+  /// value, unchanged. `AppBottomNavBar` already reads `AppColors.border`
+  /// directly, so this stays as `border` rather than being renamed; see
+  /// [moduleBorder] above for Module 5's own (differently-named) divider
+  /// color, which is what actually moved to avoid the collision.
+  static const Color border = Color(0xFFF3F4F6);
+
+  static const Color background = Colors.white;
 }
 
-// ─── Fonts ────────────────────────────────────────────────────
-const String _bodyFont = 'Inter';
-
-class AppTextStyles {
-  // Displays
-  static const pageTitle = TextStyle(
-    fontFamily: _bodyFont,
-    fontSize: 24,
-    fontWeight: FontWeight.w600,
-    height: 32 / 24, // 32px line height
-    letterSpacing: -0.48, // -0.02em
-    color: AppColors.textPrimary,
-  );
-
-  static const sectionLabel = TextStyle(
-    fontFamily: _bodyFont,
-    fontSize: 11,
-    fontWeight: FontWeight.w700,
-    height: 16 / 11,
-    letterSpacing: 1.1, // 0.1em
-    color: AppColors.textSecondary,
-  );
-
-  // Body
-  static const bodyLg = TextStyle(
-    fontFamily: _bodyFont,
-    fontSize: 16,
-    fontWeight: FontWeight.w400,
-    height: 24 / 16,
-    color: AppColors.textPrimary,
-  );
-
-  static const bodySm = TextStyle(
-    fontFamily: _bodyFont,
-    fontSize: 14,
-    fontWeight: FontWeight.w400,
-    height: 20 / 14,
-    color: AppColors.textPrimary,
-  );
-
-  // Labels & Meta
-  static const labelSm = TextStyle(
-    fontFamily: _bodyFont,
-    fontSize: 12,
-    fontWeight: FontWeight.w400,
-    height: 16 / 12,
-    color: AppColors.textMuted,
-  );
-
-  // Buttons
-  static const button = TextStyle(
-    fontFamily: _bodyFont,
-    fontSize: 16,
-    fontWeight: FontWeight.w600,
-    height: 24 / 16,
-    color: AppColors.onPrimary,
-  );
-}
-
-// ─── Spacing & Sizes ─────────────────────────────────────────
-class AppSpacing {
-  static const componentGap = 8.0;
-  static const cardPadding = 16.0;
-  static const screenMargin = 20.0;
-  static const sectionGap = 24.0;
-
-  // Custom button padding mapping
-  static const pillPaddingX = 16.0;
-  static const pillPaddingY = 8.0;
-}
-
-class AppRadius {
-  static const iconSm = 6.0; // 4px - 6px for icons within lists
-  static const card = 16.0;  // Standard for cards & inputs
-  static const pill = 999.0; // Fully rounded
-}
-
-// ─── ThemeData ──────────────────────────────────────────────
 class AppTheme {
+  AppTheme._();
+
   static ThemeData get light {
-    return ThemeData(
+    final base = ThemeData(
       useMaterial3: true,
-      scaffoldBackgroundColor: AppColors.background,
-      fontFamily: _bodyFont,
-
-      colorScheme: const ColorScheme.light(
-        primary: AppColors.primaryTerracotta,
-        onPrimary: AppColors.onPrimary,
-        primaryContainer: AppColors.primaryContainer,
-        secondary: AppColors.secondaryPine,
-        onSecondary: AppColors.onSecondary,
+      scaffoldBackgroundColor: AppColors.bg,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.accent,
+        brightness: Brightness.light,
+        primary: AppColors.accent,
+        onPrimary: AppColors.bg,
+        secondary: AppColors.teal,
+        surface: AppColors.surface,
         error: AppColors.error,
-        onError: AppColors.onPrimary,
-        surface: AppColors.surfaceCard,
-        onSurface: AppColors.textPrimary,
-        outline: AppColors.outline,
-        outlineVariant: AppColors.outlineVariant,
       ),
+    );
 
-      textTheme: const TextTheme(
-        displayLarge: AppTextStyles.pageTitle,
-        titleMedium: AppTextStyles.sectionLabel,
-        bodyLarge: AppTextStyles.bodyLg,
-        bodyMedium: AppTextStyles.bodySm,
-        labelSmall: AppTextStyles.labelSm,
-      ),
-
-      appBarTheme: const AppBarTheme(
-        backgroundColor: AppColors.background,
-        foregroundColor: AppColors.textPrimary,
+    return base.copyWith(
+      appBarTheme: AppBarTheme(
+        backgroundColor: AppColors.bg,
+        foregroundColor: AppColors.ink,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: AppTextStyles.pageTitle,
-        iconTheme: IconThemeData(color: AppColors.textPrimary),
-      ),
-
-      // CARDS: White background, 16px radius, subtle 4% shadow
-      cardTheme: CardThemeData(
-        color: AppColors.surfaceCard,
-        elevation: 2,
-        shadowColor: AppColors.shadow,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.card),
+        titleTextStyle: GoogleFonts.nunito(
+          fontWeight: FontWeight.w700,
+          fontSize: 20,
+          color: AppColors.ink,
         ),
-        clipBehavior: Clip.antiAlias,
       ),
-
-      // BUTTONS: Full-width pill, Terracotta Orange, 16px vertical padding
+      textTheme: GoogleFonts.nunitoTextTheme(base.textTheme).apply(
+        bodyColor: AppColors.ink,
+        displayColor: AppColors.ink,
+      ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primaryTerracotta,
-          foregroundColor: AppColors.onPrimary,
-          disabledBackgroundColor: AppColors.surfaceInactive,
-          disabledForegroundColor: AppColors.textInactive,
-          padding: const EdgeInsets.symmetric(vertical: 16.0),
-          textStyle: AppTextStyles.button,
+          backgroundColor: AppColors.accent,
+          foregroundColor: AppColors.bg,
+          minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.pill),
+            borderRadius: BorderRadius.circular(14),
           ),
-          elevation: 0, // Flat styling as per "Interactive Depth" rule
+          textStyle: GoogleFonts.nunito(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+          ),
+          elevation: 0,
         ),
       ),
-
-      // INPUTS: White container, 16px radius, NO border, 16px padding
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.ink,
+          minimumSize: const Size.fromHeight(50),
+          side: const BorderSide(color: AppColors.moduleBorder),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: GoogleFonts.nunito(
+            fontWeight: FontWeight.w600,
+            fontSize: 13.5,
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.accent,
+          textStyle: GoogleFonts.nunito(fontWeight: FontWeight.w600),
+        ),
+      ),
       inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: AppColors.surfaceCard,
-        hintStyle: AppTextStyles.bodyLg.copyWith(color: AppColors.textMuted),
-        contentPadding: const EdgeInsets.all(AppSpacing.cardPadding),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          borderSide: BorderSide.none, // Removes the border
+        filled: false,
+        contentPadding: const EdgeInsets.symmetric(vertical: 13),
+        labelStyle: GoogleFonts.nunito(
+          fontSize: 10.5,
+          color: AppColors.inkFaint,
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          borderSide: BorderSide.none,
+        hintStyle: GoogleFonts.nunito(
+          fontSize: 14.5,
+          color: AppColors.inkFaint,
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          borderSide: const BorderSide(color: AppColors.primaryTerracotta, width: 1.5),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: AppColors.moduleBorder, width: 1.5),
         ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          borderSide: const BorderSide(color: AppColors.error),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: AppColors.accent, width: 1.5),
+        ),
+        errorBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: AppColors.error, width: 1.5),
+        ),
+        focusedErrorBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: AppColors.error, width: 1.5),
         ),
       ),
-
-      // CHOICE PILLS: Dark Pine active, Light Warm Gray inactive
-      chipTheme: ChipThemeData(
-        backgroundColor: AppColors.surfaceInactive,
-        selectedColor: AppColors.secondaryActive,
-        labelStyle: AppTextStyles.bodySm.copyWith(color: AppColors.textInactive),
-        secondaryLabelStyle: AppTextStyles.bodySm.copyWith(color: AppColors.onSecondary),
-        padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.pillPaddingX,
-            vertical: AppSpacing.pillPaddingY
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.pill),
-        ),
-        side: BorderSide.none, // Depth communicated via color, not borders
-      ),
-
-      // DIVIDERS: 1px subtle separation within cards
       dividerTheme: const DividerThemeData(
-        color: AppColors.divider,
+        color: AppColors.moduleBorder,
         thickness: 1,
-        space: 1,
       ),
-
-      iconTheme: const IconThemeData(
-        color: AppColors.secondaryPine,
+      switchTheme: SwitchThemeData(
+        trackColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+              ? AppColors.accent
+              : AppColors.moduleBorder,
+        ),
+        thumbColor: const WidgetStatePropertyAll(AppColors.surface),
+      ),
+      // --- From the teammate's theme — kept so AppBottomNavBar (and any
+      // other module relying on Theme-driven nav/filled-button styling)
+      // keeps working exactly as they built it.
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: AppColors.unselected,
+        backgroundColor: AppColors.surface,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
       ),
     );
   }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ADDED FROM itinerary_theme_tokens.dart (merged)
+// ──────────────────────────────────────────────────────────────────────
+
+/// Itinerary screens' text styles, expressed with the current theme's
+/// palette and Nunito typeface.
+class AppTextStyles {
+  AppTextStyles._();
+
+  static TextStyle get pageTitle => GoogleFonts.nunito(
+    fontWeight: FontWeight.w600,
+    fontSize: 24,
+    color: AppColors.ink,
+  );
+
+  static TextStyle get sectionLabel => GoogleFonts.nunito(
+    fontWeight: FontWeight.w700,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    color: AppColors.inkSoft,
+  );
+
+  static TextStyle get bodyLg => GoogleFonts.nunito(
+    fontWeight: FontWeight.w400,
+    fontSize: 16,
+    color: AppColors.ink,
+  );
+
+  static TextStyle get bodySm => GoogleFonts.nunito(
+    fontWeight: FontWeight.w400,
+    fontSize: 14,
+    color: AppColors.ink,
+  );
+
+  static TextStyle get labelSm => GoogleFonts.nunito(
+    fontWeight: FontWeight.w400,
+    fontSize: 12,
+    color: AppColors.inkFaint,
+  );
+
+  static TextStyle get button => GoogleFonts.nunito(
+    fontWeight: FontWeight.w600,
+    fontSize: 15,
+    color: AppColors.bg,
+  );
+}
+
+/// Corner radius tokens used by itinerary screens.
+class AppRadius {
+  AppRadius._();
+
+  static const double card = 16.0;
+  static const double iconSm = 6.0;
+  static const double pill = 999.0;
+}
+
+/// Spacing tokens used by itinerary screens (mapped to the theme grid).
+class AppSpacing {
+  AppSpacing._();
+
+  static const double componentGap = 8.0;
+  static const double cardPadding = 16.0;
+  static const double screenMargin = 20.0;
+  static const double sectionGap = 24.0;
+  static const double pillPaddingX = 16.0;
+  static const double pillPaddingY = 8.0;
+}
+
+/// Alias token for soft shadows used on cards.
+class AppShadows {
+  AppShadows._();
+
+  static const Color card = Color(0x0A000000);
 }

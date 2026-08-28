@@ -1,61 +1,91 @@
-// lib/view/Itinerary/manage_itinerary/add_custom_place_screen.dart
+// lib/view/Itinerary/add_custom_stop_screen.dart
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-
+import 'dart:ui';
 import '../../../core/theme/app_theme.dart';
-import '../../../model/entities/itinerary_stop.dart';
-import '../../../model/entities/place.dart';
-import '../../../viewmodel/ItineraryModel/add_custom_place_vm.dart';
+import '../../../model/entities/trip_draft.dart';
 
-/// UI for the "Add Location" workflow (Manage Itinerary).
-///
-/// Flow: search Google Places by text → select a result → view place info,
-/// distance (Near/Moderate/Far) and travel time → AI plans + validates →
-/// confirmation popup → confirm/cancel.
-class AddCustomPlaceScreen extends StatefulWidget {
-  final String itineraryId;
-  final int dayIndex; // 1-based
-  final DateTime dayDate;
-  final String explorationTime;
-  final String travelPace;
-  final String transportMode;
-  final List<String> interests;
-
-  const AddCustomPlaceScreen({
-    Key? key,
-    required this.itineraryId,
-    required this.dayIndex,
-    required this.dayDate,
-    this.explorationTime = 'Standard',
-    this.travelPace = 'Standard',
-    this.transportMode = 'walking',
-    this.interests = const [],
-  }) : super(key: key);
+class AddCustomStopScreen extends StatefulWidget {
+  final TripDraft tripDraft;
+  const AddCustomStopScreen({Key? key, required this.tripDraft}) : super(key: key);
 
   @override
-  State<AddCustomPlaceScreen> createState() => _AddCustomPlaceScreenState();
+  State<AddCustomStopScreen> createState() => _AddCustomStopScreenState();
 }
 
-class _AddCustomPlaceScreenState extends State<AddCustomPlaceScreen> {
-  late AddCustomPlaceVM _vm;
-  final TextEditingController _searchController = TextEditingController();
+class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
+  // Brand Colors
+  final Color _bg = AppColors.bg;
+  final Color _surfaceCard = AppColors.surface;
+  final Color _surfaceInactive = AppColors.surface2;
+  final Color _surfaceDim = AppColors.surface2;
+
+  final Color _pineGreen = AppColors.green;
+  final Color _onSurface = AppColors.ink;
+  final Color _tertiary = AppColors.inkSoft;
+  final Color _textMuted = AppColors.inkFaint;
+
+  final Color _dangerBg = AppColors.surface2;
+  final Color _dangerText = AppColors.error;
+
+  // State
+  int _selectedDayIndex = 1;
+  final _startTimeController = TextEditingController(text: '11:00 AM');
+  final _durationController = TextEditingController(text: '1 hr 30 mins');
+  final _searchController = TextEditingController();
+
+  bool _hasConflict = false;
+  bool _isOutOfBounds = false; // 👈 Tracks if search violates destination constraint
+  String _searchQuery = '';
+
+  bool get _isFormValid {
+    final time = _startTimeController.text.trim();
+    final dur = _durationController.text.trim();
+    return time.isNotEmpty && dur.isNotEmpty && !_isOutOfBounds;
+  }
 
   @override
   void initState() {
     super.initState();
-    _vm = AddCustomPlaceVM(
-      itineraryId: widget.itineraryId,
-      dayIndex: widget.dayIndex,
-      dayDate: widget.dayDate,
-      explorationTime: widget.explorationTime,
-      travelPace: widget.travelPace,
-      transportMode: widget.transportMode,
-      interests: widget.interests,
-    )..load();
+    _startTimeController.addListener(_onFieldChanged);
+    _durationController.addListener(_onFieldChanged);
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  void _onFieldChanged() {
+    setState(() {
+      _hasConflict = _startTimeController.text.contains('11:');
+    });
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _searchQuery = query;
+
+      // Constraint Check based on Step 1 Destination Choice
+      // e.g., if trip destinations include "Kuala Lumpur" or "Puchong", block conflicting queries
+      final primaryDestination = widget.tripDraft.destinations.isNotEmpty
+          ? widget.tripDraft.destinations.first.toLowerCase()
+          : 'kuala lumpur';
+
+      // Example simulation: if user searches for something containing a mismatched major city
+      if (query.isNotEmpty) {
+        if (primaryDestination.contains('kuala lumpur') &&
+            (query.contains('penang') || query.contains('johor') || query.contains('langkawi'))) {
+          _isOutOfBounds = true;
+        } else {
+          _isOutOfBounds = false;
+        }
+      } else {
+        _isOutOfBounds = false;
+      }
+    });
   }
 
   @override
   void dispose() {
+    _startTimeController.dispose();
+    _durationController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -63,103 +93,139 @@ class _AddCustomPlaceScreenState extends State<AddCustomPlaceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context, _vm.saved),
-        ),
-        title: Text(
-          'Add Location • Day ${widget.dayIndex}',
-          style: AppTextStyles.pageTitle,
-        ),
-      ),
-      body: ListenableBuilder(
-        listenable: _vm,
-        builder: (context, _) {
-          if (_vm.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+      backgroundColor: _bg,
+      appBar: _buildAppBar(context),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 24,
+              bottom: 120,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildDayStopsSection(),
+                _buildDestinationConstraintBanner(),
+                const SizedBox(height: 16),
+                _buildWarningBanner(),
                 const SizedBox(height: 24),
-                _buildSearchSection(),
-                if (_vm.hasSearched) ...[
-                  const SizedBox(height: 24),
-                  _buildResultsSection(),
-                ],
-                if (_vm.selectedPlace != null) ...[
-                  const SizedBox(height: 24),
-                  _buildSelectedPlaceSection(),
-                ],
-                if (_vm.hasPlan) ...[
-                  const SizedBox(height: 24),
-                  _buildPlanPreviewSection(),
-                ],
-                if (_vm.planResult != null && !_vm.planResult!.success) ...[
-                  const SizedBox(height: 24),
-                  _buildPlanErrorBanner(),
-                ],
-                if (_vm.saveError != null) ...[
-                  const SizedBox(height: 24),
-                  _buildSaveErrorBanner(),
-                ],
+                _buildSearchBar(),
                 const SizedBox(height: 24),
+                _buildBookmarksSection(),
+                const SizedBox(height: 24),
+                _buildPlaceDetails(),
+                const SizedBox(height: 24),
+                _buildAddToDay(),
+                const SizedBox(height: 24),
+                _buildSchedule(),
               ],
             ),
-          );
-        },
+          ),
+          _buildStickyFooter(),
+        ],
       ),
-      bottomNavigationBar: _vm.hasPlan && _vm.planResult?.success == true
-          ? _buildConfirmBar()
-          : null,
     );
   }
 
-  // ─── Day stops ──────────────────────────────────────────────
-
-  Widget _buildDayStopsSection() {
-    final stops = _vm.dayStops;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('CURRENT DAY STOPS', style: AppTextStyles.labelSm.copyWith(
-          color: AppColors.textMuted,
-          fontWeight: FontWeight.bold,
-        )),
-        const SizedBox(height: 12),
-        if (stops.isEmpty)
-          Text('This day has no stops yet.',
-              style: AppTextStyles.bodySm.copyWith(color: AppColors.textMuted))
-        else
-          ...stops.map((stop) => _buildDayStopRow(stop)),
-      ],
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    return AppBar(
+      backgroundColor: _bg.withOpacity(0.9),
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: true,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 12.0),
+        child: IconButton(
+          icon: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: _surfaceInactive,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.arrow_back, color: _onSurface),
+          ),
+          onPressed: () => Navigator.maybePop(context),
+        ),
+      ),
+      title: Text(
+        "Add custom stop",
+        style: TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: _onSurface,
+          letterSpacing: -0.5,
+        ),
+      ),
+      actions: const [SizedBox(width: 52)],
     );
   }
 
-  Widget _buildDayStopRow(ItineraryStop stop) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+  Widget _buildDestinationConstraintBanner() {
+    final destination = widget.tripDraft.destinations.isNotEmpty
+        ? widget.tripDraft.destinations.first
+        : 'Selected Region';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Row(
         children: [
-          const Icon(Icons.access_time, size: 16, color: AppColors.textMuted),
+          Icon(Icons.info_outline, size: 16, color: _pineGreen),
           const SizedBox(width: 8),
-          Text(
-            '${DateFormat('HH:mm').format(stop.startTime)} – '
-            '${DateFormat('HH:mm').format(stop.endTime)}',
-            style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary),
+          Expanded(
+            child: Text(
+              "Restricted to your chosen destination: $destination",
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                color: _onSurface,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWarningBanner() {
+    if (!_hasConflict && !_isOutOfBounds) return const SizedBox.shrink();
+
+    String message = "";
+    if (_isOutOfBounds) {
+      message = "Location constraint violation. Selected place is outside your trip's destination zone.";
+    } else if (_hasConflict) {
+      message = "Schedule conflict. This time overlaps with an existing stop (Central Market: 10:30 AM - 12:00 PM).";
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _dangerBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _dangerText.withOpacity(0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline, color: _dangerText, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              stop.place?.name ?? stop.placeId,
-              style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.w600),
+              message,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 14,
+                color: _dangerText,
+                height: 1.4,
+              ),
             ),
           ),
         ],
@@ -167,457 +233,467 @@ class _AddCustomPlaceScreenState extends State<AddCustomPlaceScreen> {
     );
   }
 
-  // ─── Search ─────────────────────────────────────────────────
+  Widget _buildSearchBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _surfaceCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _isOutOfBounds ? _dangerText : Colors.transparent,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))
+        ],
+      ),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: "Search location within destination...",
+          hintStyle: TextStyle(color: _tertiary),
+          prefixIcon: Icon(Icons.search, color: _tertiary),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+            icon: const Icon(Icons.clear, size: 18),
+            onPressed: () => _searchController.clear(),
+          )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+        ),
+      ),
+    );
+  }
 
-  Widget _buildSearchSection() {
+  Widget _buildBookmarksSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('SEARCH GOOGLE PLACES', style: AppTextStyles.labelSm.copyWith(
-          color: AppColors.textMuted,
-          fontWeight: FontWeight.bold,
-        )),
-        const SizedBox(height: 12),
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                textInputAction: TextInputAction.search,
-                onSubmitted: (_) => _vm.searchPlaces(),
-                onChanged: (v) => _vm.query = v,
-                decoration: InputDecoration(
-                  hintText: 'e.g. Petaling Street, National Mosque…',
-                  prefixIcon: const Icon(Icons.search, color: AppColors.textMuted),
-                  filled: true,
-                  fillColor: AppColors.surfaceCard,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                    borderSide: BorderSide(color: AppColors.outlineVariant),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                    borderSide: BorderSide(color: AppColors.outlineVariant),
-                  ),
+            Padding(
+              padding: const EdgeInsets.only(left: 4.0),
+              child: Text(
+                "FROM YOUR BOOKMARKS",
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: _tertiary,
                 ),
               ),
             ),
-            const SizedBox(width: 12),
-            ElevatedButton(
-              onPressed: _vm.isSearching ? null : _vm.searchPlaces,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryTerracotta,
-                foregroundColor: AppColors.onPrimary,
-                minimumSize: const Size(0, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.card),
+            TextButton(
+              onPressed: () {},
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 0),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                "View all",
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: _pineGreen,
                 ),
               ),
-              child: Text(_vm.isSearching ? '…' : 'Search'),
             ),
           ],
         ),
-        if (_vm.searchError != null) ...[
-          const SizedBox(height: 12),
-          Text(
-            'Search failed: ${_vm.searchError}',
-            style: AppTextStyles.bodySm.copyWith(color: AppColors.error),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: Row(
+            children: [
+              _buildBookmarkChip("storefront", "Central Market"),
+              const SizedBox(width: 12),
+              _buildBookmarkChip("apartment", "Petronas Towers"),
+              const SizedBox(width: 12),
+              _buildBookmarkChip("museum", "National Museum"),
+            ],
           ),
-        ],
+        ),
       ],
     );
   }
 
-  // ─── Results ────────────────────────────────────────────────
+  Widget _buildBookmarkChip(String iconName, String label) {
+    IconData icon = iconName == "storefront" ? Icons.storefront : (iconName == "apartment" ? Icons.apartment : Icons.museum);
 
-  Widget _buildResultsSection() {
-    final results = _vm.searchResults;
+    return GestureDetector(
+      onTap: () {
+        _searchController.text = label; // Auto fill search on click
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: _surfaceCard,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: _surfaceDim.withOpacity(0.3)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 1))
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: _pineGreen),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: _onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceDetails() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('SEARCH RESULTS', style: AppTextStyles.labelSm.copyWith(
-          color: AppColors.textMuted,
-          fontWeight: FontWeight.bold,
-        )),
-        const SizedBox(height: 12),
-        if (results.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceCard,
-              borderRadius: BorderRadius.circular(AppRadius.card),
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0),
+          child: Text(
+            "PLACE DETAILS",
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+              color: _tertiary,
             ),
-            child: Text(
-              'No places found for that query.',
-              style: AppTextStyles.bodySm.copyWith(color: AppColors.textMuted),
-            ),
-          )
-        else
-          ...results.map((place) {
-            final selected = _vm.selectedPlaceId == place.placeId;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _buildResultTile(place, selected),
-            );
-          }),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _surfaceCard,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              )
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  "https://lh3.googleusercontent.com/aida-public/AB6AXuD7sMqjJwniDkNSnDFw4lYdbUT4wQev7JionRYJw-N-I31zwLm0rw6wKwL3-8_C5oYZ-7IZBnQZlnk6HgZ4jkbWZi3RXNgxPz0OSBKNhTiZ7nlTkzcSRiUc_xA5kfsVS0yP2j8Nn3tKHNjzpphl4HKmj1H0aHvKL_40ZZrhj2dqyxs2uMzRO6lE_lvswuZ3XyM-VJsYyHp4U7e14Ux9xQV-khzp4FWcn3MP98CMRlubUiAJPaegabHx",
+                  width: 72,
+                  height: 72,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.accentSoft,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        "RESTAURANT",
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
+                          color: _pineGreen,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _searchQuery.isEmpty ? "Uncle Lim's Secret Kopitiam" : "Selected: ${_searchController.text}",
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _onSurface,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            widget.tripDraft.destinations.isNotEmpty
+                                ? "Mapped to ${widget.tripDraft.destinations.first}"
+                                : "Lorong Panggong, City Centre",
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildResultTile(Place place, bool selected) {
-    return GestureDetector(
-      onTap: () => _vm.selectPlace(place.placeId),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primaryTerracotta.withOpacity(0.08) : AppColors.surfaceCard,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          border: Border.all(
-            color: selected ? AppColors.primaryTerracotta : AppColors.outlineVariant,
-            width: selected ? 2 : 1,
+  Widget _buildAddToDay() {
+    final days = List.generate(widget.tripDraft.endDate != null && widget.tripDraft.startDate != null
+        ? widget.tripDraft.endDate!.difference(widget.tripDraft.startDate!).inDays + 1
+        : 4, (index) => "Day ${index + 1}");
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0),
+          child: Text(
+            "ADD TO DAY",
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+              color: _tertiary,
+            ),
           ),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: Row(
+            children: List.generate(days.length, (index) {
+              final isSelected = _selectedDayIndex == index;
+              return Padding(
+                padding: const EdgeInsets.only(right: 12.0),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedDayIndex = index;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? _pineGreen : _surfaceInactive,
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: Text(
+                      days[index],
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : _tertiary,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSchedule() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0),
+          child: Text(
+            "SCHEDULE",
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+              color: _tertiary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
           children: [
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    place.name,
-                    style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.w600),
-                  ),
+                  Text("Start Time", style: TextStyle(fontSize: 12, color: _tertiary)),
                   const SizedBox(height: 4),
-                  if (place.address.isNotEmpty)
-                    Text(
-                      place.address,
-                      style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _surfaceCard,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _hasConflict ? _dangerText : Colors.transparent,
+                        width: 1.5,
+                      ),
                     ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      if (place.rating > 0) ...[
-                        const Icon(Icons.star, size: 14, color: AppColors.primaryContainer),
-                        const SizedBox(width: 4),
-                        Text('${place.rating.toStringAsFixed(1)}',
-                            style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary)),
-                      ],
-                    ],
+                    child: TextFormField(
+                      controller: _startTimeController,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.schedule, size: 20),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            if (selected)
-              const Icon(Icons.check_circle, color: AppColors.primaryTerracotta),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Estimated Duration", style: TextStyle(fontSize: 12, color: _tertiary)),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _surfaceCard,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: TextFormField(
+                      controller: _durationController,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.hourglass_bottom, size: 20),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
-      ),
+      ],
     );
   }
 
-  // ─── Selected place info + distance + travel ────────────────
-
-  Widget _buildSelectedPlaceSection() {
-    final place = _vm.selectedPlace!;
-    final proximity = _vm.proximity;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('SELECTED LOCATION', style: AppTextStyles.labelSm.copyWith(
-          color: AppColors.textMuted,
-          fontWeight: FontWeight.bold,
-        )),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceCard,
-            borderRadius: BorderRadius.circular(AppRadius.card),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(place.name,
-                  style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.w600)),
-              if (place.address.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(place.address,
-                    style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary)),
-              ],
-              const SizedBox(height: 12),
-              if (proximity != null) ...[
-                Row(
-                  children: [
-                    Icon(_proximityIcon(proximity.proximity),
-                        size: 16, color: _proximityColor(proximity.proximity)),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${proximity.distanceFromItineraryKm.toStringAsFixed(1)} km away',
-                      style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _proximityColor(proximity.proximity).withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                      ),
-                      child: Text(
-                        _proximityIcon(proximity.proximity) == Icons.circle
-                            ? '🟢 ${proximity.proximity}'
-                            : proximity.proximity,
-                        style: AppTextStyles.labelSm.copyWith(
-                          color: _proximityColor(proximity.proximity),
-                          fontWeight: FontWeight.w600,
-                        ),
+  Widget _buildStickyFooter() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: Container(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 16,
+              bottom: MediaQuery.of(context).padding.bottom + 16,
+            ),
+            decoration: BoxDecoration(
+              color: _bg.withOpacity(0.8),
+              border: Border(
+                top: BorderSide(color: _surfaceDim.withOpacity(0.3)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 1,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _surfaceCard,
+                      foregroundColor: _onSurface,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        side: BorderSide(color: _surfaceDim),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.directions, size: 16, color: AppColors.textMuted),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Estimated travel: ${proximity.travelText}',
-                      style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary),
-                    ),
-                  ],
-                ),
-              ] else if (_vm.isPlanning)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Row(
-                    children: [
-                      SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                      SizedBox(width: 12),
-                      Text('Checking distance & schedule…'),
-                    ],
+                    onPressed: () => Navigator.maybePop(context),
+                    child: const Text("Cancel"),
                   ),
                 ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  IconData _proximityIcon(String proximity) => switch (proximity) {
-        'Near' => Icons.circle,
-        'Moderate' => Icons.radio_button_checked,
-        _ => Icons.error,
-      };
-
-  Color _proximityColor(String proximity) => switch (proximity) {
-        'Near' => AppColors.secondaryPine,
-        'Moderate' => AppColors.primaryTerracotta,
-        _ => AppColors.error,
-      };
-
-  // ─── Plan preview ───────────────────────────────────────────
-
-  Widget _buildPlanPreviewSection() {
-    final plan = _vm.planResult!;
-    final day = plan.proposedDay;
-    if (day == null) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text('PREVIEW', style: AppTextStyles.labelSm.copyWith(
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.bold,
-            )),
-            const Spacer(),
-            Icon(
-              plan.success ? Icons.check_circle : Icons.error,
-              color: plan.success ? AppColors.secondaryPine : AppColors.error,
-              size: 18,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              plan.success ? 'Valid' : 'Invalid',
-              style: AppTextStyles.labelSm.copyWith(
-                color: plan.success ? AppColors.secondaryPine : AppColors.error,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceCard,
-            borderRadius: BorderRadius.circular(AppRadius.card),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: day.stops.map((s) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      s.attraction.place.placeId == _vm.selectedPlaceId
-                          ? Icons.add_circle
-                          : Icons.circle,
-                      size: 14,
-                      color: s.attraction.place.placeId == _vm.selectedPlaceId
-                          ? AppColors.primaryTerracotta
-                          : AppColors.textMuted,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${DateFormat('HH:mm').format(s.startTime)} – '
-                      '${DateFormat('HH:mm').format(s.endTime)}',
-                      style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        s.attraction.place.name,
-                        style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.w600),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isFormValid && !_hasConflict && !_isOutOfBounds
+                          ? _pineGreen
+                          : _surfaceInactive,
+                      foregroundColor: _isFormValid && !_hasConflict && !_isOutOfBounds
+                          ? Colors.white
+                          : _textMuted,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
                       ),
                     ),
-                  ],
+                    onPressed: () {
+                      if (_isOutOfBounds) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Cannot add place outside your selected destination zone.')),
+                        );
+                        return;
+                      }
+                      if (!_isFormValid) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Fill in valid start time and duration.')),
+                        );
+                        return;
+                      }
+                      if (_hasConflict) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Resolve schedule conflict before adding.')),
+                        );
+                        return;
+                      }
+                      Navigator.maybePop(context);
+                    },
+                    child: const Text("Add to Itinerary"),
+                  ),
                 ),
-              );
-            }).toList(),
-          ),
-        ),
-        if (plan.message != null) ...[
-          const SizedBox(height: 12),
-          Text(
-            plan.message!,
-            style: AppTextStyles.bodySm.copyWith(color: AppColors.error),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildPlanErrorBanner() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.dangerBg,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      child: Text(
-        'This location cannot be added because it does not fit the schedule '
-        '(exploration time, travel time, or opening hours).',
-        style: AppTextStyles.bodySm.copyWith(color: AppColors.error),
-      ),
-    );
-  }
-
-  Widget _buildSaveErrorBanner() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.dangerBg,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-      ),
-      child: Text(
-        'Failed to save: ${_vm.saveError}',
-        style: AppTextStyles.bodySm.copyWith(color: AppColors.error),
-      ),
-    );
-  }
-
-  // ─── Confirm bar → confirmation popup ───────────────────────
-
-  Widget _buildConfirmBar() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primaryTerracotta,
-            minimumSize: const Size(double.infinity, 52),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(26),
+              ],
             ),
           ),
-          onPressed: _vm.isSaving ? null : _showConfirmation,
-          child: Text(
-            _vm.isSaving ? 'Saving…' : 'Add Location',
-            style: const TextStyle(color: Colors.white, fontSize: 16),
-          ),
         ),
       ),
     );
-  }
-
-  Future<void> _showConfirmation() async {
-    final place = _vm.selectedPlace;
-    final proximity = _vm.proximity;
-    if (place == null) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Location?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(place.name,
-                style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.w600)),
-            if (proximity != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                '${proximity.distanceFromItineraryKm.toStringAsFixed(1)} km from '
-                'current itinerary',
-                style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Estimated travel: ${proximity.travelText}',
-                style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary),
-              ),
-            ],
-            const SizedBox(height: 12),
-            const Text(
-              'The itinerary will be updated to accommodate this location.',
-              style: TextStyle(fontSize: 13),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Add Location'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      final ok = await _vm.confirmAndSave();
-      if (!mounted) return;
-      if (ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location added successfully.')),
-        );
-        Navigator.pop(context, true);
-      }
-    }
   }
 }
