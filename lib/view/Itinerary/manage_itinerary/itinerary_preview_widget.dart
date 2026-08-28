@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import 'package:narrate_my/view/Itinerary/itinerary_theme_tokens.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../model/entities/itinerary_stop.dart';
 
 /// Condensed itinerary preview: renders the first stop of each day

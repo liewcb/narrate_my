@@ -1,11 +1,16 @@
 import 'package:flutter/foundation.dart';
 import '../../core/services/google_maps_service.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/business_logic/itinerary_service/itinerary_regeneration_service.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/itinerary.dart';
+import '../../model/entities/itinerary_destination.dart';
+import '../../model/entities/itinerary_must_visit.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../model/entities/trip_request.dart';
+import '../../model/repositories/adapters/destination_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary_destination_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary_must_visit_repository_adapter.dart';
 import '../../model/repositories/adapters/itinerary_repository_adapter.dart';
 import '../../model/repositories/adapters/itinerary_stop_repository_adapter.dart';
 import '../../model/repositories/adapters/place_repository_adapter.dart';
@@ -25,6 +30,9 @@ class Step5GenerationVM extends ChangeNotifier {
   String? progressMessage;
   String? errorMessage;
   ItineraryResult? result;
+
+  /// The ID of the persisted itinerary (set after Supabase save).
+  String? savedItineraryId;
 
   Step5GenerationVM(this.draft,
       {this.userId = '252f0924-192c-42fe-8643-881da7bbf285',
@@ -56,13 +64,14 @@ class Step5GenerationVM extends ChangeNotifier {
     isReady = false;
     errorMessage = null;
     result = null;
+    savedItineraryId = null;
     progressMessage = 'Finding attractions...';
     notifyListeners();
 
     final pipeline = ItineraryGenerationPipeline();
 
     final generated = await pipeline.generate(
-      request: await _buildTripRequest(),
+      request: await _buildTripDraft(),
       onProgress: (stage) {
         progressMessage = stage;
         notifyListeners();
@@ -75,7 +84,8 @@ class Step5GenerationVM extends ChangeNotifier {
     if (generated.success) {
       isReady = true;
       errorMessage = null;
-      await _persistResult(generated);
+      // Do NOT auto-save to Supabase. The traveler reviews the itinerary
+      // on ItineraryFinalScreen and explicitly clicks Save to persist it.
     } else {
       isReady = false;
       errorMessage = generated.message ?? 'Could not generate the itinerary.';
@@ -83,24 +93,99 @@ class Step5GenerationVM extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Re-run the generation pipeline (regeneration request from the final
+  /// preview). The pipeline + persistence live here, never in the View.
+  Future<void> regenerate() => startGeneration();
+
+  /// Regenerate the itinerary reusing the existing candidate pool, clusters,
+  /// and scored candidates (no Google Places re-run, no re-scoring, no
+  /// re-clustering). Returns the new result, or the original unchanged
+  /// result when all attempts fail.
+  Future<ItineraryResult> regenerateItinerary() async {
+    if (result == null) throw StateError('No itinerary to regenerate.');
+    final regenerationService = ItineraryRegenerationService();
+    final oldResult = result!;
+    final newResult = await regenerationService.regenerate(
+      current: oldResult,
+      request: await _buildTripDraft(),
+    );
+
+    // The service returns the original object unchanged when all attempts
+    // fail — in that case do NOT repersist or replace the state.
+    if (!identical(newResult, oldResult) && newResult.success) {
+      result = newResult;
+      // Do NOT auto-persist — the traveler clicks Save on the final screen.
+    }
+    return newResult;
+  }
+
+  bool isSaving = false;
+  bool isSaved = false;
+  String? saveError;
+
+  /// Persist the currently held result (called when the traveler explicitly
+  /// clicks Save on the final screen). Returns true on success.
+  Future<bool> saveItinerary() async {
+    final current = result;
+    if (current == null) return false;
+    if (isSaving) return false; // prevent duplicate saves
+    isSaving = true;
+    saveError = null;
+    notifyListeners();
+
+    debugPrint('[SAVE] Traveler clicked Save');
+    debugPrint('[SAVE] Validation status: ${current.success ? 'PASS' : 'FAIL'}');
+    if (!current.success) {
+      saveError = 'The itinerary is not valid and cannot be saved.';
+      isSaving = false;
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      await _persistResult(current);
+      isSaved = true;
+      debugPrint('[SAVE] Itinerary saved successfully');
+      isSaving = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('[SAVE] Supabase save failed');
+      debugPrint('[SAVE] Error: $e');
+      saveError = 'Unable to save itinerary. Please check your connection '
+          'and try again.';
+      isSaving = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   /// Persist the generated itinerary (plus stops and their places) to the
-  /// local SQLite cache so it appears in "My Itineraries".
+  /// local SQLite cache + remote Supabase so it appears in "My Itineraries".
+  ///
+  /// Sets [savedItineraryId] on success so downstream screens (final preview,
+  /// add place, edit) can reference the real persisted itinerary.
   Future<void> _persistResult(ItineraryResult generated) async {
     try {
       final scheduledDays = generated.scheduledDays ?? const [];
-      if (scheduledDays.isEmpty) return;
+      if (scheduledDays.isEmpty) {
+        debugPrint('[SAVE] No scheduled days to save — aborting.');
+        return;
+      }
 
       final now = DateTime.now();
       final itinerary = Itinerary(
         itineraryId: _generateId('itin'),
         userId: userId,
-        title: draft.tripName.isEmpty ? 'My Trip' : draft.tripName,
+        title: draft.title.isEmpty ? 'My Trip' : draft.title,
         description: draft.additionalNotes,
         startDate: draft.startDate ?? now,
         endDate: draft.endDate ?? now,
         totalDays: scheduledDays.length,
         explorationTime: draft.explorationTime ?? 'Standard',
         travelPace: draft.travelPace ?? 'Standard',
+        travelType: draft.travelType ?? 'Solo',
+        transportationMode: draft.transportation,
         interests: List.of(draft.interests),
         lastModifiedAt: now,
         lastValidationResult: generated.errors != null
@@ -109,8 +194,10 @@ class Step5GenerationVM extends ChangeNotifier {
         createdAt: now,
       );
 
+      debugPrint('[SAVE] Saving itinerary header');
       final itineraryRepo = ItineraryRepositoryImpl();
       final saved = await itineraryRepo.createItinerary(itinerary);
+      savedItineraryId = saved.itineraryId;
 
       // Build stops + save places so the edit screen can join them.
       final stopRepo = ItineraryStopRepositoryImpl();
@@ -130,6 +217,7 @@ class Step5GenerationVM extends ChangeNotifier {
             stopId: 0,
             itineraryId: saved.itineraryId,
             placeId: place.placeId,
+            destinationId: place.destinationId,
             // DB schema is 1-based: day_index > 0, stop_order > 0.
             dayIndex: day.dayIndex + 1,
             stopOrder: i + 1,
@@ -151,6 +239,56 @@ class Step5GenerationVM extends ChangeNotifier {
       await stopRepo.saveStops(stops);
       debugPrint('[STEP 5 - PERSIST] Saved ${stops.length} stops for '
           '${saved.itineraryId}');
+
+      // Persist selected destinations (itinerary_selected_destinations).
+      // Resolve destination names → DB destination_id (e.g. "D001").
+      final destRepo = ItineraryDestinationRepositoryImpl();
+      final destIdByName = <String, String>{};
+      try {
+        final allDest = await DestinationRepositoryImpl().getAllDestinations();
+        for (final d in allDest) {
+          destIdByName[d.destinationName.trim().toLowerCase()] = d.destinationId;
+        }
+      } catch (e) {
+        debugPrint('[STEP 5 - PERSIST] Destination ID resolution failed: $e');
+      }
+      for (final destName in draft.destinations) {
+        final destId = destIdByName[destName.trim().toLowerCase()] ?? destName;
+        final allocated =
+            draft.daySplit[destName] ?? (draft.totalDays / draft.destinations.length).ceil();
+        try {
+          await destRepo.addDestination(ItineraryDestination(
+            itineraryId: saved.itineraryId,
+            destinationId: destId,
+            allocatedDays: allocated,
+            createdAt: now,
+            updatedAt: now,
+          ));
+        } catch (e) {
+          debugPrint('[STEP 5 - PERSIST] Destination save failed: $e');
+        }
+      }
+
+      // Persist must-visits (itinerary_must_visits).
+      final mustVisitRepo = ItineraryMustVisitRepositoryImpl();
+      for (final mvId in draft.mustVisitPlaceIds) {
+        final mvName = generated.placeRegistry?.byId(mvId)?.placeName ?? 'Must visit $mvId';
+        try {
+          await mustVisitRepo.addMustVisit(ItineraryMustVisit(
+            mustVisitId: 0,
+            itineraryId: saved.itineraryId,
+            placeId: mvId,
+            placeName: mvName,
+            source: 'GOOGLE_SEARCH',
+            isVerified: true,
+            createdAt: now,
+          ));
+        } catch (e) {
+          debugPrint('[STEP 5 - PERSIST] Must-visit save failed: $e');
+        }
+      }
+      debugPrint('[STEP 5 - PERSIST] Saved ${draft.mustVisitPlaceIds.length} '
+          'must-visits for ${saved.itineraryId}');
     } catch (e) {
       debugPrint('[STEP 5 - PERSIST] Persistence failed: $e');
     }
@@ -166,7 +304,7 @@ class Step5GenerationVM extends ChangeNotifier {
   /// Places search. If a destination is missing coordinates (e.g. the
   /// database row has null lat/lng), we resolve them dynamically by
   /// geocoding the destination name — never a hardcoded coordinate map.
-  Future<TripRequest> _buildTripRequest() async {
+  Future<TripDraft> _buildTripDraft() async {
     final startDate = draft.startDate ?? DateTime.now();
     final endDate = draft.endDate ?? startDate.add(const Duration(days: 1));
 
@@ -187,20 +325,20 @@ class Step5GenerationVM extends ChangeNotifier {
       }
     }
 
-    return TripRequest(
+    return TripDraft(
       destinations: List.of(draft.destinations),
       destinationCoordinates: coords,
-      title: draft.tripName,
+      title: draft.title,
       startDate: startDate,
       endDate: endDate,
       explorationTime: draft.explorationTime ?? 'Standard',
       travelPace: draft.travelPace ?? 'Standard',
       interests: List.of(draft.interests),
       additionalNotes: draft.additionalNotes,
-      mustVisitIds: List.of(draft.mustVisitIds),
+      mustVisitPlaceIds: List.of(draft.mustVisitPlaceIds),
       daySplit: Map.of(draft.daySplit),
-      transportMode: draft.transportMode,
-      tripLocation: _tripHub(),
+      transportation: draft.transportation,
+      travelType: draft.travelType
     );
   }
 
