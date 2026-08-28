@@ -8,7 +8,6 @@
 //
 // NEW field (not in the original entity):
 //   - placeTotalReviews  (int?) – populated from Google's user_ratings_total
-//   - businessStatus     (String?) – Google's business_status (e.g. OPERATIONAL)
 
 import 'coordinates.dart';
 import 'openning_hours.dart';
@@ -22,7 +21,6 @@ class Place {
   final double placeLongitude;
   final double placeRating;
   final int? placeTotalReviews;
-  final String? businessStatus;       // 'OPERATIONAL', 'CLOSED_TEMPORARILY', …
   final List<String> placeTypes;
   final String? placePhotoRef;
   final String? placePhone;
@@ -34,10 +32,6 @@ class Place {
   final int? visitDurationMinutes;
   final String? category;
   final String? bestTimeSuggestion;
-
-  // ── Source identity (assigned during candidate retrieval) ─────
-  final String? destinationId;  // e.g. "D001"
-  final String? hotspotId;      // e.g. "H_KL_01"
 
   // ── Local DB ID (optional) ───────────────────────────────────
   final String id;
@@ -52,7 +46,6 @@ class Place {
     required this.placeLongitude,
     required this.placeRating,
     this.placeTotalReviews,
-    this.businessStatus,
     required this.placeTypes,
     this.placePhotoRef,
     this.placePhone,
@@ -62,8 +55,6 @@ class Place {
     this.visitDurationMinutes,
     this.category,
     this.bestTimeSuggestion,
-    this.destinationId,
-    this.hotspotId,
   });
 
   // ── Backward-compatible getters (delegate to canonical fields) ─
@@ -110,7 +101,6 @@ class Place {
       placeLongitude: (geometry['lng'] as num).toDouble(),
       placeRating: (json['rating'] as num?)?.toDouble() ?? 3.5,
       placeTotalReviews: json['user_ratings_total'] as int?,
-      businessStatus: json['business_status'] as String?,
       placeTypes: types,
       placePhotoRef: json['photos'] != null && (json['photos'] as List).isNotEmpty
           ? json['photos'][0]['photo_reference'] as String?
@@ -137,7 +127,6 @@ class Place {
     double? placeLongitude,
     double? placeRating,
     int? placeTotalReviews,
-    String? businessStatus,
     List<String>? placeTypes,
     String? placePhotoRef,
     String? placePhone,
@@ -147,8 +136,6 @@ class Place {
     int? visitDurationMinutes,
     String? category,
     String? bestTimeSuggestion,
-    String? destinationId,
-    String? hotspotId,
   }) {
     return Place(
       id: id ?? this.id,
@@ -159,7 +146,6 @@ class Place {
       placeLongitude: placeLongitude ?? this.placeLongitude,
       placeRating: placeRating ?? this.placeRating,
       placeTotalReviews: placeTotalReviews ?? this.placeTotalReviews,
-      businessStatus: businessStatus ?? this.businessStatus,
       placeTypes: placeTypes ?? this.placeTypes,
       placePhotoRef: placePhotoRef ?? this.placePhotoRef,
       placePhone: placePhone ?? this.placePhone,
@@ -170,8 +156,6 @@ class Place {
       visitDurationMinutes: visitDurationMinutes ?? this.visitDurationMinutes,
       category: category ?? this.category,
       bestTimeSuggestion: bestTimeSuggestion ?? this.bestTimeSuggestion,
-      destinationId: destinationId ?? this.destinationId,
-      hotspotId: hotspotId ?? this.hotspotId,
     );
   }
 
@@ -185,7 +169,6 @@ class Place {
     'longitude': placeLongitude,
     'rating': placeRating,
     'user_ratings_total': placeTotalReviews,
-    'business_status': businessStatus,
     'types': placeTypes,
     'photoRef': placePhotoRef,
     'phone': placePhone,
@@ -194,8 +177,6 @@ class Place {
     'visitDurationMinutes': visitDurationMinutes,
     'category': category,
     'bestTimeSuggestion': bestTimeSuggestion,
-    'destinationId': destinationId,
-    'hotspotId': hotspotId,
   };
 
   // ── Equality (keyed on placeId) ──────────────────────────────
@@ -271,5 +252,4 @@ class Place {
     };
     return bestTimeMap[category] ?? 'Check opening hours';
   }
-
 }

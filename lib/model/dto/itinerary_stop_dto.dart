@@ -4,7 +4,6 @@ class ItineraryStopDTO {
   final int stopId;
   final String itineraryId;
   final String placeId;
-  final String? destinationId;
   final int dayIndex;
   final int stopOrder;
   final DateTime startTime;
@@ -21,7 +20,6 @@ class ItineraryStopDTO {
     required this.stopId,
     required this.itineraryId,
     required this.placeId,
-    this.destinationId,
     required this.dayIndex,
     required this.stopOrder,
     required this.startTime,
@@ -60,7 +58,6 @@ class ItineraryStopDTO {
       stopId: map['stop_id'] as int,
       itineraryId: map['itinerary_id'] as String,
       placeId: map['place_id'] as String,
-      destinationId: map['destination_id'] as String?,
       dayIndex: map['day_index'] as int,
       stopOrder: map['stop_order'] as int,
       startTime: _parseTime(map['start_time'] as String?),
@@ -85,7 +82,6 @@ class ItineraryStopDTO {
       'stop_id': stopId,
       'itinerary_id': itineraryId,
       'place_id': placeId,
-      'destination_id': destinationId,
       'day_index': dayIndex,
       'stop_order': stopOrder,
       'start_time': _formatTime(startTime),
@@ -106,7 +102,6 @@ class ItineraryStopDTO {
       stopId: stopId,
       itineraryId: itineraryId,
       placeId: placeId,
-      destinationId: destinationId,
       dayIndex: dayIndex,
       stopOrder: stopOrder,
       startTime: startTime,          // ✅ already DateTime
@@ -127,7 +122,6 @@ class ItineraryStopDTO {
       stopId: entity.stopId,
       itineraryId: entity.itineraryId,
       placeId: entity.placeId,
-      destinationId: entity.destinationId,
       dayIndex: entity.dayIndex,
       stopOrder: entity.stopOrder,
       startTime: entity.startTime,

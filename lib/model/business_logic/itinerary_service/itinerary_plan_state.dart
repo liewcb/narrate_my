@@ -1,6 +1,5 @@
 // lib/model/business_logic/itinerary_service/itinerary_plan_state.dart
 
-import 'package:flutter/foundation.dart';
 import '../../entities/place.dart';
 import 'candidate_retrieval_service.dart';
 import 'clustering_service.dart'; // <-- IMPORT CLUSTERING
@@ -25,14 +24,6 @@ class ItineraryPlanState {
   final Map<String, CandidatePool> destinationPools;
 
   // ==========================================================
-  // DAY-BY-DAY HOTSPOT GROUPS (NEW ARCHITECTURE)
-  // ==========================================================
-  /// Pre-grouped, day-by-day hotspot candidates produced by
-  /// CandidateRetrievalService (one hotspot = one day).  Kept alongside the
-  /// flattened [destinationPools] for backward compatibility.
-  final List<DailyCandidateGroup>? dailyCandidateGroups;
-
-  // ==========================================================
   // GENERATED PLAN & RICH DATA
   // ==========================================================
   List<List<Place>> dailyStops;
@@ -47,6 +38,8 @@ class ItineraryPlanState {
   int version;
   bool isValid;
   List<String> validationIssues;
+  final Map<int, String> routeReasoning;
+  final Map<int, String> scheduleReasoning;
 
   ItineraryPlanState({
     required this.itineraryId,
@@ -58,13 +51,15 @@ class ItineraryPlanState {
     required this.mustVisitPlaceIds,
     required this.destinationPools,
     required this.dailyStops,
-    this.dailyCandidateGroups,
     this.dailyClusters, // <-- NEW
     this.aiDaySchedules, // <-- NEW
     this.version = 1,
     this.isValid = false,
     this.validationIssues = const [],
-  });
+    Map<int, String>? routeReasoning,
+    Map<int, String>? scheduleReasoning,
+  })  : routeReasoning = routeReasoning ?? {},
+        scheduleReasoning = scheduleReasoning ?? {};
 
   // ==========================================================
   // AGGREGATED CANDIDATE GETTERS
@@ -81,21 +76,6 @@ class ItineraryPlanState {
   /// Flattens all destination pools into a single list of food candidates.
   List<Place> get foodCandidates =>
       destinationPools.values.expand((pool) => pool.food).toList();
-
-  /// Per-day candidate totals derived from the day-by-day hotspot groups.
-  ///
-  /// Returns a map of 1-based day index → (attractions, food) counts.  When
-  /// no day groups exist (legacy flat pool) an empty map is returned.
-  Map<int, (int, int)> get dayCandidateTotals {
-    final groups = dailyCandidateGroups;
-    if (groups == null) return const {};
-
-    final result = <int, (int, int)>{};
-    for (final group in groups) {
-      result[group.dayIndex] = (group.attractionCount, group.foodCount);
-    }
-    return result;
-  }
 
   // ==========================================================
   // CURRENTLY USED PLACES
@@ -207,50 +187,38 @@ class ItineraryPlanState {
   // DEBUG
   // ==========================================================
   void debugPrintState() {
-    debugPrint('════════════════════════════════════');
-    debugPrint('📦 ITINERARY PLAN STATE');
-    debugPrint('Itinerary ID: $itineraryId');
+    print('════════════════════════════════════');
+    print('📦 ITINERARY PLAN STATE');
+    print('Itinerary ID: $itineraryId');
 
     destinationPools.forEach((destName, pool) {
-      debugPrint('--- Candidates for $destName ---');
-      debugPrint('  Attractions: ${pool.attractionCount}');
-      debugPrint('  Food: ${pool.foodCount}');
+      print('--- Candidates for $destName ---');
+      print('  Attractions: ${pool.attractionCount}');
+      print('  Food: ${pool.foodCount}');
     });
 
-    // Report per-day hotspot candidates when the day-by-day groups exist.
-    final dayTotals = dayCandidateTotals;
-    if (dayTotals.isNotEmpty) {
-      debugPrint('--- Day-by-Day Hotspot Candidates ---');
-      for (final entry in dayTotals.entries) {
-        debugPrint(
-          '  Day ${entry.key}: ${entry.value.$1} attr, '
-          '${entry.value.$2} food',
-        );
-      }
-    }
-
     // FIXED: Removed the () from unusedCandidates
-    debugPrint('Total unused candidates: ${unusedCandidates.length}');
-    debugPrint('Validation: ${isValid ? "VALID" : "INVALID"}');
+    print('Total unused candidates: ${unusedCandidates.length}');
+    print('Validation: ${isValid ? "VALID" : "INVALID"}');
 
-    debugPrint('--- FINAL GENERATED SCHEDULE ---');
+    print('--- FINAL GENERATED SCHEDULE ---');
     if (aiDaySchedules != null && aiDaySchedules!.isNotEmpty) {
       for (final day in aiDaySchedules!) {
         // dayIndex is 0-based internally; display as Day 1/2/3.
-        debugPrint('DAY ${day.dayIndex + 1} (${day.date}):');
+        print('DAY ${day.dayIndex + 1} (${day.date}):');
         for (final stop in day.schedule) {
           final placeName = findPlace(stop.placeId)?.placeName ?? 'Unknown Place';
-          debugPrint('  [${stop.startTime} - ${stop.endTime}] $placeName');
-          debugPrint('    ↳ Duration: ${stop.visitDurationMinutes}m | Travel from prev: ${stop.travelFromPreviousMinutes}m');
-          debugPrint('    ↳ Weather Note: ${stop.weatherNote}');
+          print('  [${stop.startTime} - ${stop.endTime}] $placeName');
+          print('    ↳ Duration: ${stop.visitDurationMinutes}m | Travel from prev: ${stop.travelFromPreviousMinutes}m');
+          print('    ↳ Weather Note: ${stop.weatherNote}');
         }
       }
     } else {
       // Fallback if AI schedule is missing
       for (int i = 0; i < dailyStops.length; i++) {
-        debugPrint('Day ${i + 1}: ${dailyStops[i].map((p) => p.placeName).join(" → ")}');
+        print('Day ${i + 1}: ${dailyStops[i].map((p) => p.placeName).join(" → ")}');
       }
     }
-    debugPrint('════════════════════════════════════');
+    print('════════════════════════════════════');
   }
 }

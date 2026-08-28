@@ -42,25 +42,18 @@ class DestinationDto {
     return DestinationDto(
       destinationId: map['destination_id'] as String,
       destinationName: map['destination_name'] as String,
-      imageUrl: (map['image_url'] as String?) ?? '',
+      imageUrl: map['image_url'] as String,
       latitude: (map['latitude'] as num?)?.toDouble(),
       longitude: (map['longitude'] as num?)?.toDouble(),
     );
   }
 
   // ---------- Supabase (remote) ----------
-  //
-  // The remote "destinations" table declares its primary-key column as
-  // `destination_id`. Older snapshots may use `destinationId` or `id`,
-  // so parsing tolerates all three spellings.
   factory DestinationDto.fromJson(Map<String, dynamic> json) {
-    final rawId = json['destination_id'] ??
-        json['destinationId'] ??
-        json['id'];
     return DestinationDto(
-      destinationId: rawId?.toString() ?? '',
-      destinationName: json['destination_name']?.toString() ?? '',
-      imageUrl: (json['image_url'] as String?) ?? '',
+      destinationId: json['destination_id'] as String,
+      destinationName: json['destination_name'] as String,
+      imageUrl: json['image_url'] as String,
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
     );

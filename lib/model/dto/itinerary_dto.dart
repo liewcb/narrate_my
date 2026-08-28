@@ -13,8 +13,6 @@ class ItineraryDTO {
   final int totalDays;
   final String explorationTime;
   final String travelPace;
-  final String travelType;
-  final String transportationMode;
   final List<String> interests;
   final String? coverImageUrl;
   final String status;
@@ -34,8 +32,6 @@ class ItineraryDTO {
     required this.totalDays,
     required this.explorationTime,
     required this.travelPace,
-    this.travelType = 'Solo',
-    this.transportationMode = 'walking',
     required this.interests,
     this.coverImageUrl,
     this.status = 'UPCOMING',
@@ -58,8 +54,6 @@ class ItineraryDTO {
       totalDays: entity.totalDays,
       explorationTime: entity.explorationTime,
       travelPace: entity.travelPace,
-      travelType: entity.travelType,
-      transportationMode: entity.transportationMode,
       interests: entity.interests,
       coverImageUrl: entity.coverImageUrl,
       status: entity.status,
@@ -82,8 +76,6 @@ class ItineraryDTO {
       totalDays: totalDays,
       explorationTime: explorationTime,
       travelPace: travelPace,
-      travelType: travelType,
-      transportationMode: transportationMode,
       interests: interests,
       coverImageUrl: coverImageUrl,
       status: status,
@@ -154,10 +146,6 @@ class ItineraryDTO {
       map['exploration_time']?.toString() ?? '',
       travelPace:
       map['travel_pace']?.toString() ?? '',
-      travelType:
-      map['travel_type']?.toString() ?? 'Solo',
-      transportationMode:
-      map['transportation_mode']?.toString() ?? 'walking',
       interests: interests,
       coverImageUrl:
       map['cover_image_url']?.toString(),
@@ -193,8 +181,6 @@ class ItineraryDTO {
       'total_days': totalDays,
       'exploration_time': explorationTime,
       'travel_pace': travelPace,
-      'travel_type': travelType,
-      'transportation_mode': transportationMode,
       'interests': interests, // ✅ List – Supabase array
       'cover_image_url': coverImageUrl,
       'status': status,
@@ -220,8 +206,6 @@ class ItineraryDTO {
       'total_days': totalDays,
       'exploration_time': explorationTime,
       'travel_pace': travelPace,
-      'travel_type': travelType,
-      'transportation_mode': transportationMode,
       'interests': jsonEncode(interests), // ✅ JSON string
       'cover_image_url': coverImageUrl,
       'status': status,

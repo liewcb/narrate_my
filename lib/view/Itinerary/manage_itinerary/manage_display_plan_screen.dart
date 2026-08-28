@@ -1,13 +1,14 @@
 // lib/view/Itinerary/manage_itinerary/manage_display_plan_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:narrate_my/view/Itinerary/itinerary_theme_tokens.dart';
+import '../../../model/entities/bookmark.dart';
 import '../../../model/entities/itinerary_stop.dart';
 import '../../../viewmodel/ItineraryModel/manage_display_plan_vm.dart';
+import 'add_custom_place_screen.dart';
 import 'package:narrate_my/view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 import 'add_from_bookmark.dart';
 import 'edit_stop_screen.dart';
-import 'manage_edit_itinerary_screen.dart';
 
 class ManageDisplayPlanScreen extends StatefulWidget {
   final String itineraryId;
@@ -46,37 +47,37 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
           backgroundColor: AppColors.bg,
           appBar: AppBar(
             backgroundColor: Colors.transparent,
-            elevation: 0,
+            elevation: 0, // Simplification: No app bar shadow
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: AppColors.ink),
+              icon: const Icon(Icons.arrow_back),
               onPressed: () => Navigator.pop(context),
-            ),
-            title: Text(
-              itinerary?.title ?? 'Trip Details',
-              style: AppTextStyles.pageTitle.copyWith(fontSize: 18),
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.more_vert, color: AppColors.ink),
+                icon: const Icon(Icons.more_vert),
                 onPressed: () {},
               ),
             ],
           ),
           body: Stack(
             children: [
+              // Main Scrollable Canvas
               ListView(
+                // Spacing: Enforcing 24px margins on the scrollable area (8px grid)
                 padding: const EdgeInsets.only(
-                  left: 20.0,
-                  right: 20.0,
+                  left: 24.0,
+                  right: 24.0,
                   top: 8.0,
                   bottom: 160.0,
                 ),
                 children: [
                   _buildHeroSection(itinerary),
-                  const SizedBox(height: 20.0),
-                  _buildStopFilterChips(),
                   const SizedBox(height: 24.0),
+                  _buildStopFilterChips(),
+                  // Spacing: 32px strict margin between major sections
+                  const SizedBox(height: 32.0),
                   ..._buildDayCards(),
+                  const SizedBox(height: 32.0),
                 ],
               ),
               _buildStickyBottomBar(context),
@@ -91,12 +92,13 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
 
   Widget _buildHeroSection(dynamic itinerary) {
     return Column(
+      // Alignment: Align all text left strictly
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(AppRadius.card),
           child: Container(
-            height: 180,
+            height: 200,
             width: double.infinity,
             color: AppColors.accent.withOpacity(0.15),
             child: itinerary?.coverImageUrl != null
@@ -113,7 +115,8 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 16.0),
+        const SizedBox(height: 24.0), // Spacing: 8px grid
+        // Hierarchy: Main header strictly 24px bold
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -127,10 +130,11 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
             _buildStatusBadge(),
           ],
         ),
-        const SizedBox(height: 6.0),
+        const SizedBox(height: 8.0), // Spacing: 8px grid
+        // Hierarchy: Secondary text strictly 14px regular muted color
         Text(
           itinerary != null
-              ? '${itinerary.totalDays} Days • ${DateFormat('d MMM').format(itinerary.startDate)} – ${DateFormat('d MMM').format(itinerary.endDate)}'
+              ? '${itinerary.totalDays} Days • ${DateFormat('d MMM').format(itinerary.startDate)}-${DateFormat('d MMM').format(itinerary.endDate)}'
               : '',
           style: AppTextStyles.bodySm.copyWith(color: AppColors.inkFaint),
         ),
@@ -162,7 +166,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -170,14 +174,13 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: fg),
+          Icon(icon, size: 14, color: fg),
           const SizedBox(width: 4),
           Text(
             label,
             style: AppTextStyles.labelSm.copyWith(
               color: fg,
               fontWeight: FontWeight.w600,
-              fontSize: 11,
             ),
           ),
         ],
@@ -207,18 +210,25 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
             child: GestureDetector(
               onTap: () => _viewModel.setStopStatusFilter(value),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: isActive ? AppColors.green : AppColors.surface,
+                  color: isActive
+                      ? AppColors.green
+                      : AppColors.surface,
                   borderRadius: BorderRadius.circular(AppRadius.pill),
                   border: Border.all(
-                    color: isActive ? AppColors.green : AppColors.moduleBorder,
+                    color: isActive
+                        ? AppColors.green
+                        : AppColors.moduleBorder,
                   ),
                 ),
                 child: Text(
                   label,
                   style: AppTextStyles.labelSm.copyWith(
-                    color: isActive ? AppColors.surface : AppColors.ink,
+                    color: isActive
+                        ? AppColors.surface
+                        : AppColors.ink,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -230,7 +240,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     );
   }
 
-  // ─── Day Cards & Timeline ──────────────────────────────────────
+  // ─── Day Cards ────────────────────────────────────────────────
 
   List<Widget> _buildDayCards() {
     final grouped = <int, List<ItineraryStop>>{};
@@ -244,7 +254,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
           padding: const EdgeInsets.symmetric(vertical: 48),
           child: Center(
             child: Text(
-              'No stops found for this itinerary.',
+              'No stops yet for this itinerary.',
               style: AppTextStyles.bodySm.copyWith(color: AppColors.inkFaint),
             ),
           ),
@@ -265,7 +275,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
           : '${stops.length} stops';
 
       cards.add(
-        _buildDaySection(
+        _buildDayCard(
           dayTitle: dayTitle,
           dayMeta: dayMeta,
           stops: stops,
@@ -273,172 +283,78 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
           dayDate: date ?? DateTime.now(),
         ),
       );
-      cards.add(const SizedBox(height: 28.0));
+      // Spacing: 32px between grouped section cards
+      cards.add(const SizedBox(height: 32.0));
     }
 
     return cards;
   }
 
-  Widget _buildDaySection({
+  Widget _buildDayCard({
     required String dayTitle,
     required String dayMeta,
     required List<ItineraryStop> stops,
     required int dayIndex,
     required DateTime dayDate,
   }) {
+    // Simplification: Replaced Material Card with a flat Container.
+    // Removed unnecessary borders/shadows and used subtle background shades.
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x05000000),
-            offset: Offset(0, 2),
-            blurRadius: 8,
-          ),
-        ],
       ),
-      padding: const EdgeInsets.all(20.0),
+      // Spacing: Strict 24px padding inside the container
+      padding: const EdgeInsets.all(24.0),
       child: Column(
+        // Alignment: Align all text left
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Day Header Row
-          GestureDetector(
-            onTap: _viewModel.canCustomize ? () => _openEditDay(dayIndex) : null,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(dayTitle, style: AppTextStyles.pageTitle.copyWith(fontSize: 20)),
-                      const SizedBox(height: 2.0),
-                      Text(
-                        dayMeta,
-                        style: AppTextStyles.bodySm.copyWith(color: AppColors.inkFaint),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_viewModel.canCustomize)
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: AppColors.surface2,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: AppColors.ink,
-                    ),
-                  ),
-              ],
-            ),
+          // Hierarchy: Main header 24px bold
+          Text(dayTitle, style: AppTextStyles.pageTitle),
+          const SizedBox(height: 8.0),
+          // Hierarchy: Secondary text 14px regular muted color
+          Text(
+            dayMeta,
+            style: AppTextStyles.bodySm.copyWith(color: AppColors.inkFaint),
           ),
-          const SizedBox(height: 20.0),
-
-          // Timeline Section matching Edit Plan timeline pattern
-          const Text(
-            'STOPS',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
-              color: AppColors.inkFaint,
-            ),
-          ),
-          const SizedBox(height: 12.0),
-
-          Stack(
-            children: [
-              // Dashed line background
-              Positioned(
-                left: 17,
-                top: 20,
-                bottom: 20,
-                child: SizedBox(
-                  width: 2,
-                  child: CustomPaint(
-                    painter: _DashedLinePainter(color: AppColors.moduleBorder),
-                  ),
-                ),
-              ),
-              // Stop items
-              Column(
-                children: List.generate(stops.length, (index) {
-                  final stop = stops[index];
-                  return _buildStopItem(
-                    stop: stop,
-                    number: index + 1,
-                    isFirst: index == 0,
-                    isLast: index == stops.length - 1,
-                  );
-                }),
-              ),
-            ],
-          ),
-
-          // Add Place Actions
+          const SizedBox(height: 24.0),
+          ...stops.map((stop) => Padding(
+            padding: const EdgeInsets.only(bottom: 16.0), // Spacing: 8px grid
+            child: _buildStopRow(stop),
+          )),
+          const SizedBox(height: 8.0),
+          // Add custom place button (Ongoing only)
           if (_viewModel.canCustomize) ...[
-            const SizedBox(height: 12.0),
-            GestureDetector(
-              onTap: () => _openAddPlace(dayIndex, dayDate),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.accent, width: 2),
-                        color: AppColors.surface,
-                      ),
-                      child: const Icon(Icons.add, size: 18, color: AppColors.accent),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Add custom place to ${dayTitle.toLowerCase()}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.accent,
-                      ),
-                    ),
-                  ],
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: () => _openAddPlace(dayIndex, dayDate),
+                icon: const Icon(Icons.add_circle_outline, size: 18),
+                label: Text(
+                  'Add custom place to ${dayTitle.toLowerCase()}',
+                  style: AppTextStyles.button.copyWith(
+                    color: AppColors.accent,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
             ),
-            const SizedBox(height: 6.0),
-            GestureDetector(
-              onTap: () => _openAddBookmarks(dayIndex),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.green, width: 2),
-                        color: AppColors.surface,
-                      ),
-                      child: const Icon(Icons.bookmark_add_outlined, size: 16, color: AppColors.green),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Add from bookmarks to ${dayTitle.toLowerCase()}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.green,
-                      ),
-                    ),
-                  ],
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: () => _openAddBookmarks(dayIndex),
+                icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+                label: Text(
+                  'Add from bookmarks to ${dayTitle.toLowerCase()}',
+                  style: AppTextStyles.button.copyWith(
+                    color: AppColors.green,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
             ),
@@ -448,160 +364,94 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     );
   }
 
-  Widget _buildStopItem({
-    required ItineraryStop stop,
-    required int number,
-    required bool isFirst,
-    required bool isLast,
-  }) {
-    final statusColor = _statusColor(stop.stopStatus);
-    final statusIcon = _statusIcon(stop.stopStatus);
-    final statusLabel = _statusLabel(stop.stopStatus);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Number indicator
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isFirst ? AppColors.accent : AppColors.surface2,
-              border: isFirst ? null : Border.all(color: AppColors.moduleBorder),
-            ),
-            child: Center(
-              child: Text(
-                '$number',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: isFirst ? AppColors.surface : AppColors.ink,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-
-          // Stop Card
-          Expanded(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => _openStop(stop),
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.moduleBorder.withOpacity(0.8)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x08000000),
-                        offset: Offset(0, 2),
-                        blurRadius: 6,
+  Widget _buildStopRow(ItineraryStop stop) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openStop(stop),
+        borderRadius: BorderRadius.circular(AppRadius.iconSm),
+        // Spacing: Internal padding for clickable area aligned to 8px grid
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  // Alignment: Text left
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      stop.place?.name ?? stop.placeId,
+                      style: AppTextStyles.bodyLg.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  stop.place?.name ?? stop.placeId,
-                                  style: AppTextStyles.bodyLg.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.access_time,
-                                      size: 14,
-                                      color: AppColors.inkFaint,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '${DateFormat('HH:mm').format(stop.startTime)} – ${DateFormat('HH:mm').format(stop.endTime)}',
-                                      style: AppTextStyles.bodySm.copyWith(
-                                        color: AppColors.inkFaint,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(
-                            Icons.chevron_right,
+                    ),
+                    const SizedBox(height: 8.0), // Spacing: 8px grid
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.access_time,
+                          size: 16,
+                          color: AppColors.inkFaint,
+                        ),
+                        const SizedBox(width: 8.0),
+                        // Hierarchy: Secondary text 14px regular muted
+                        Text(
+                          '${DateFormat('HH:mm').format(stop.startTime)} – '
+                              '${DateFormat('HH:mm').format(stop.endTime)}',
+                          style: AppTextStyles.bodySm.copyWith(
                             color: AppColors.inkFaint,
-                            size: 20,
                           ),
-                        ],
-                      ),
-                      if (stop.place?.address != null || stop.place?.address != null) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.location_on_outlined,
-                              size: 16,
-                              color: AppColors.accent,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                stop.place?.address ?? stop.place?.address ?? '',
-                                style: AppTextStyles.bodySm.copyWith(
-                                  color: AppColors.inkFaint,
-                                  fontSize: 12,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
                         ),
                       ],
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(
-                            statusIcon,
-                            size: 14,
-                            color: statusColor,
+                    ),
+                    const SizedBox(height: 8.0), // Spacing: 8px grid
+                    Row(
+                      children: [
+                        Icon(
+                          _statusIcon(stop.stopStatus),
+                          size: 16,
+                          color: _statusColor(stop.stopStatus),
+                        ),
+                        const SizedBox(width: 8.0),
+                        Text(
+                          _statusLabel(stop.stopStatus),
+                          style: AppTextStyles.bodySm.copyWith(
+                            color: _statusColor(stop.stopStatus),
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            statusLabel,
-                            style: AppTextStyles.bodySm.copyWith(
-                              color: statusColor,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ),
+              if (stop.place?.photoReference != null) ...[
+                const SizedBox(width: 16.0),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8.0),
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    color: AppColors.accent.withOpacity(0.12),
+                    child: const Icon(
+                      Icons.image_outlined,
+                      color: AppColors.inkFaint,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(width: 16.0), // Spacing: 8px grid
+              const Align(
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.chevron_right,
+                  color: AppColors.inkFaint,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -612,7 +462,8 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
       MaterialPageRoute(
         builder: (_) => EditStopScreen(
           stop: stop,
-          itineraryStartDate: _viewModel.itinerary?.startDate ?? DateTime.now(),
+          itineraryStartDate: _viewModel.itinerary?.startDate ??
+              DateTime.now(),
           isReadOnly: _viewModel.isReadOnly,
         ),
       ),
@@ -623,13 +474,17 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     }
   }
 
-  Future<void> _openEditDay(int dayIndex) async {
+  Future<void> _openAddPlace(int dayIndex, DateTime dayDate) async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => ManageEditItineraryScreen(
+        builder: (_) => AddCustomPlaceScreen(
           itineraryId: widget.itineraryId,
-          dayNumber: dayIndex,
+          dayIndex: dayIndex,
+          dayDate: dayDate,
+          explorationTime: _viewModel.itinerary?.explorationTime ?? 'Standard',
+          travelPace: _viewModel.itinerary?.travelPace ?? 'Standard',
+          interests: _viewModel.itinerary?.interests ?? const [],
         ),
       ),
     );
@@ -639,28 +494,27 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     }
   }
 
-  Future<void> _openAddPlace(int dayIndex, DateTime dayDate) async {
-    // Navigate to Add Custom Place Screen
-  }
-
   Future<void> _openAddBookmarks(int dayIndex) async {
     final selectedIds = await Navigator.push<List<String>>(
       context,
       MaterialPageRoute(
-        builder: (_) => AddFromBookmarksScreen(
-          userId: _viewModel.itinerary?.userId ?? '',
-        ),
+        builder: (_) => const AddFromBookmarksScreen(),
       ),
     );
 
     if (selectedIds != null && selectedIds.isNotEmpty && mounted) {
-      final added = await _viewModel.addBookmarkedPlaces(
+      // Bookmarks are loaded from a repository in a future step; for now
+      // the screen returns an empty selection, so nothing is added.
+      final selected = <Bookmark>[];
+      final ok = await _viewModel.addBookmarkedPlaces(
         dayIndex: dayIndex,
-        placeIds: selectedIds,
+        bookmarks: selected,
       );
-      if (added > 0) {
+      if (ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added $added bookmark(s).')),
+          SnackBar(
+            content: Text('Added ${selected.length} bookmark(s).'),
+          ),
         );
         await _viewModel.load();
       }
@@ -681,11 +535,11 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
   Color _statusColor(String status) {
     switch (status) {
       case 'COMPLETED':
-        return AppColors.green;
+        return AppColors.accent;
       case 'SKIPPED':
         return AppColors.inkFaint;
       default:
-        return AppColors.accent;
+        return AppColors.inkSoft;
     }
   }
 
@@ -703,6 +557,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
   // ─── Sticky Bottom Bar ──────────────────────────────────────
 
   Widget _buildStickyBottomBar(BuildContext context) {
+    // Past itineraries are read-only — no save/discard actions.
     if (!_viewModel.canCustomize) {
       return Positioned(
         bottom: 0,
@@ -710,19 +565,19 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
         right: 0,
         child: Container(
           padding: EdgeInsets.only(
-            left: 20.0,
-            right: 20.0,
-            top: 16.0,
-            bottom: MediaQuery.of(context).padding.bottom + 16.0,
+            left: 24.0,
+            right: 24.0,
+            top: 24.0,
+            bottom: MediaQuery.of(context).padding.bottom + 24.0,
           ),
           decoration: BoxDecoration(
             color: AppColors.bg.withOpacity(0.95),
-            border: Border(top: BorderSide(color: AppColors.moduleBorder)),
           ),
           child: Text(
             _viewModel.isReadOnly
                 ? 'This itinerary is in the past and is read-only.'
-                : 'This itinerary is upcoming — you can view it but progress cannot be recorded yet.',
+                : 'This itinerary is upcoming — you can view it but '
+                'progress cannot be recorded yet.',
             style: AppTextStyles.bodySm.copyWith(color: AppColors.inkFaint),
             textAlign: TextAlign.center,
           ),
@@ -736,10 +591,10 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
       right: 0,
       child: Container(
         padding: EdgeInsets.only(
-          left: 20.0,
-          right: 20.0,
-          top: 14.0,
-          bottom: MediaQuery.of(context).padding.bottom + 14.0,
+          left: 24.0,
+          right: 24.0,
+          top: 16.0,
+          bottom: MediaQuery.of(context).padding.bottom + 16.0,
         ),
         decoration: BoxDecoration(
           color: AppColors.bg.withOpacity(0.95),
@@ -751,7 +606,9 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
           children: [
             Expanded(
               child: OutlinedButton(
-                onPressed: _viewModel.isSaving ? null : () => _discardChanges(context),
+                onPressed: _viewModel.isSaving
+                    ? null
+                    : () => _discardChanges(context),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.ink,
                   side: BorderSide(color: AppColors.moduleBorder),
@@ -767,7 +624,9 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
             Expanded(
               flex: 2,
               child: ElevatedButton(
-                onPressed: _viewModel.isSaving ? null : () => _saveChanges(context),
+                onPressed: _viewModel.isSaving
+                    ? null
+                    : () => _saveChanges(context),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.accent,
                   foregroundColor: AppColors.bg,
@@ -804,7 +663,9 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Discard changes?'),
-        content: const Text('Unsaved customization changes will be lost.'),
+        content: const Text(
+          'Unsaved customization changes will be lost.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -818,43 +679,11 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
       ),
     );
     if (confirmed == true && mounted) {
+      // Reload from the repository to restore the persisted state.
       await _viewModel.load();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Changes discarded.')),
       );
     }
   }
-}
-
-// ─── Dashed Line Custom Painter ────────────────────────────────
-
-class _DashedLinePainter extends CustomPainter {
-  final Color color;
-
-  _DashedLinePainter({this.color = AppColors.moduleBorder});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    const dashHeight = 6.0;
-    const dashSpace = 6.0;
-    double startY = 0;
-
-    while (startY < size.height) {
-      canvas.drawLine(
-        Offset(0, startY),
-        Offset(0, (startY + dashHeight).clamp(0, size.height)),
-        paint,
-      );
-      startY += dashHeight + dashSpace;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -1,99 +1,53 @@
-import 'package:flutter/foundation.dart';
-import '../../data_sources/local/itinerary_selected_destination_local_data_source.dart';
-import '../../data_sources/remote/itinerary_selected_destination_remote_data_source.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../dto/itinerary_selected_destination_dto.dart';
 import '../interfaces/itinerary_selected_destination_repository.dart';
 
-class ItinerarySelectedDestinationRepositoryImpl
-    implements ItinerarySelectedDestinationRepository {
-  final ItinerarySelectedDestinationLocalSource _local;
-  final ItinerarySelectedDestinationRemoteSource _remote;
 
-  ItinerarySelectedDestinationRepositoryImpl({
-    ItinerarySelectedDestinationLocalSource? local,
-    ItinerarySelectedDestinationRemoteSource? remote,
-  })  : _local = local ?? ItinerarySelectedDestinationLocalSource(),
-        _remote = remote ?? ItinerarySelectedDestinationRemoteSource();
+class ItinerarySelectedDestinationRepositoryImpl implements ItinerarySelectedDestinationRepository {
+  final SupabaseClient _client;
+
+  ItinerarySelectedDestinationRepositoryImpl({SupabaseClient? client})
+      : _client = client ?? Supabase.instance.client;
 
   @override
-  Future<List<ItinerarySelectedDestinationDTO>> getSelectedDestinations(
-      String itineraryId,
-      ) async {
-    // Local-first
-    try {
-      final localList = await _local.getForItinerary(itineraryId);
-      if (localList.isNotEmpty) {
-        return localList;
-      }
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Local read failed: $e');
-    }
+  Future<List<ItinerarySelectedDestinationDTO>> getSelectedDestinations(String itineraryId) async {
+    final response = await _client
+        .from('itinerary_selected_destinations')
+        .select('*, destinations(*)') // Join with destinations table to get image/name if needed
+        .eq('itinerary_id', itineraryId);
 
-    // Remote fallback
-    try {
-      final remoteList = await _remote.fetchForItinerary(itineraryId);
-      if (remoteList.isNotEmpty) {
-        await _local.cacheAll(remoteList);
-      }
-      return remoteList;
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Remote fetch failed: $e');
-      return [];
-    }
+    return (response as List)
+        .map((json) => ItinerarySelectedDestinationDTO.fromMap(json))
+        .toList();
   }
 
   @override
   Future<void> addSelectedDestination(ItinerarySelectedDestinationDTO destination) async {
-    // Insert locally
-    try {
-      await _local.insert(destination);
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Local insert failed: $e');
-    }
-    // Insert remotely
-    try {
-      await _remote.insert(destination);
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Remote insert failed: $e');
-    }
+    await _client
+        .from('itinerary_selected_destinations')
+        .insert(destination.toMap());
   }
 
   @override
-  Future<void> updateAllocatedDays(
-      String itineraryId,
-      String destinationId,
-      int allocatedDays,
-      ) async {
-    // Update locally
-    try {
-      await _local.updateAllocatedDays(itineraryId, destinationId, allocatedDays);
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Local update failed: $e');
-    }
-    // Update remotely
-    try {
-      await _remote.updateAllocatedDays(itineraryId, destinationId, allocatedDays);
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Remote update failed: $e');
-    }
+  Future<void> updateAllocatedDays(String itineraryId, String destinationId, int allocatedDays) async {
+    await _client
+        .from('itinerary_selected_destinations')
+        .update({'allocated_days': allocatedDays, 'updated_at': DateTime.now().toIso8601String()})
+        .match({
+      'itinerary_id': itineraryId,
+      'destination_id': destinationId,
+    });
   }
 
   @override
-  Future<void> removeSelectedDestination(
-      String itineraryId,
-      String destinationId,
-      ) async {
-    // Delete locally
-    try {
-      await _local.delete(itineraryId, destinationId);
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Local delete failed: $e');
-    }
-    // Delete remotely
-    try {
-      await _remote.delete(itineraryId, destinationId);
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Remote delete failed: $e');
-    }
+  Future<void> removeSelectedDestination(String itineraryId, String destinationId) async {
+    await _client
+        .from('itinerary_selected_destinations')
+        .delete()
+        .match({
+      'itinerary_id': itineraryId,
+      'destination_id': destinationId,
+    });
   }
 }
