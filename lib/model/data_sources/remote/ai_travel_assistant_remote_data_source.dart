@@ -1,24 +1,20 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+import '../../../core/services/database_manager.dart';
 import '../../entities/ai_attraction_context.dart';
 import '../../entities/ai_chat_message.dart';
 
-/// Thin Supabase Functions client for the AI assistant.
-///
-/// Flutter never contacts Gemini directly. The Edge Function keeps Gemini's
-/// API key in Supabase Secrets and returns only a safe text response.
 class AiTravelAssistantRemoteDataSource {
-  AiTravelAssistantRemoteDataSource({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+  AiTravelAssistantRemoteDataSource({
+    DatabaseManager? databaseManager,
+  }) : _databaseManager = databaseManager ?? DatabaseManager();
 
-  final SupabaseClient _client;
+  final DatabaseManager _databaseManager;
 
   Future<String> askQuestion({
     required String question,
     required List<AiChatMessage> conversationHistory,
     AiAttractionContext? attractionContext,
   }) async {
-    final response = await _client.functions.invoke(
+    final response = await _databaseManager.remote.client.functions.invoke(
       'ai-travel-assistant',
       body: {
         'question': question,

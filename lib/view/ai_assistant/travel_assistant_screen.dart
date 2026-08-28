@@ -111,6 +111,19 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
     });
   }
 
+  void _openSummary(AiTravelAssistantViewModel vm) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ChangeNotifierProvider.value(
+        value: vm,
+        child: const _ConversationSummarySheet(),
+      ),
+    );
+    vm.generateSummary();
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<AiTravelAssistantViewModel>();
@@ -121,77 +134,91 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(vm.messages),
+            _buildHeader(vm),
             if (attractionName != null && attractionName.isNotEmpty)
               _buildAttractionContext(attractionName),
             Expanded(child: _buildMessageList(vm)),
-            _buildInputBar(vm.isSending),
+            _buildInputBar(vm.isSending || vm.isSummarizing),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader(List<AiChatMessage> messages) {
+  Widget _buildHeader(AiTravelAssistantViewModel vm) {
     return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-    decoration: const BoxDecoration(
-    border: Border(bottom: BorderSide(color: AppColors.moduleBorder)),
-    ),
-    child: Row(
-    children: [
-    IconButton(
-    tooltip: 'Back',
-    icon: const Icon(Icons.chevron_left, size: 28),
-    onPressed: () => Navigator.of(context).maybePop(),
-    ),
-    Expanded(
-    child: Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-    Container(
-    width: 36,
-    height: 36,
-    decoration: const BoxDecoration(
-    color: AppColors.primary,
-    shape: BoxShape.circle,
-    ),
-    child: const Icon(
-    Icons.chat_bubble_outline,
-    color: AppColors.surface,
-    size: 18,
-    ),
-    ),
-    const SizedBox(width: 10),
-    const Text(
-    'Travel Assistant',
-    style: TextStyle(
-    color: AppColors.primary,
-    fontSize: 22,
-    fontWeight: FontWeight.bold,
-    ),
-    ),
-    ],
-    ),
-    ),
-    IconButton(
-    tooltip: 'Search conversation',
-    icon: const Icon(Icons.search),
-    onPressed: () => _searchConversation(messages),
-    ),
-    Container(
-    decoration: BoxDecoration(
-    color: AppColors.primary,
-    borderRadius: BorderRadius.circular(10),
-    ),
-    child: IconButton(
-    tooltip: 'Reset conversation',
-    icon: const Icon(Icons.refresh, color: AppColors.surface),
-    onPressed: _resetConversation,
-    ),
-    ),
-    ],
-    ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.moduleBorder)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Back',
+            icon: const Icon(Icons.chevron_left, size: 28),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          Expanded(
+            child: Semantics(
+              button: true,
+              label: 'Show conversation summary',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: vm.isSending || vm.isSummarizing
+                    ? null
+                    : () => _openSummary(vm),
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: const BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.chat_bubble_outline,
+                            color: AppColors.surface,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          'Travel Assistant',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Search conversation',
+            icon: const Icon(Icons.search),
+            onPressed: () => _searchConversation(vm.messages),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: IconButton(
+              tooltip: 'Reset conversation',
+              icon: const Icon(Icons.refresh, color: AppColors.surface),
+              onPressed: _resetConversation,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -306,6 +333,115 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Read-only overlay. It displays Gemini's recap but has no editable field,
+/// save action, or edit action.
+class _ConversationSummarySheet extends StatelessWidget {
+  const _ConversationSummarySheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = context.watch<AiTravelAssistantViewModel>();
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        height: screenHeight * 0.58,
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+        decoration: const BoxDecoration(
+          color: AppColors.bg,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: AppColors.inkFaint,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Summary',
+                    style: TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close summary',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Expanded(child: _buildSummaryContent(context, vm)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryContent(
+      BuildContext context,
+      AiTravelAssistantViewModel vm,
+      ) {
+    if (vm.isSummarizing) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (vm.summaryErrorMessage != null) {
+      return Center(
+        child: Text(
+          vm.summaryErrorMessage!,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: AppColors.accentDark, fontSize: 16),
+        ),
+      );
+    }
+
+    final summary = vm.conversationSummary;
+    if (summary == null || summary.isEmpty) {
+      return const Center(
+        child: Text(
+          'No conversation summary is available yet.',
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: SingleChildScrollView(
+        child: Text(
+          summary,
+          style: const TextStyle(
+            color: AppColors.inkSoft,
+            fontSize: 17,
+            height: 1.5,
+          ),
+        ),
       ),
     );
   }
