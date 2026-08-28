@@ -1,7 +1,7 @@
-import 'dart:ui' as ui;
+﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:narrate_my/view/Itinerary/itinerary_theme_tokens.dart';
+import '../../../core/theme/app_theme.dart';
 
 // ─── Data Models ─────────────────────────────────────────────
 class StopData {

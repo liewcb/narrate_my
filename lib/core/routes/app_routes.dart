@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../view/Itinerary/edit_plan_screen.dart';
 import '../../view/Itinerary/my_itineraries_screen.dart';
 import '../../view/ai_assistant/travel_assistant_screen.dart';
 import '../../view/ar_screen.dart';
-import '../../view/recommendation/nearby_recommendation_screen.dart';
+import '../../view/nearby_recommendation_screen.dart';
 import '../../view/profile_screen.dart';
 import '../widgets/app_bottom_navigation.dart';
 
@@ -24,7 +25,7 @@ class _AppRoutesState extends State<AppRoutes> {
   int _index = 0;
 
   static const _screens = [
-    ARScreen(),
+    //EditItineraryScreen(),
     MyItinerariesScreen(),
     NearbyRecommendationScreen(),
     ProfileScreen(),

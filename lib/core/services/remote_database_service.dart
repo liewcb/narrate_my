@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../config/app_config.dart';
+import '../../../core/config/app_config.dart';
 
 class RemoteDatabaseService {
   static final RemoteDatabaseService _instance = RemoteDatabaseService._internal();
