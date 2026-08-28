@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Generated from android/local.properties for Flutter REST API calls.
+/android/dart_defines.local.env
