@@ -1,21 +1,22 @@
 import 'dart:math' as math;
 
-import '../../../core/services/google_maps_service.dart';
 import '../../data_sources/remote/recommendation_data_source.dart';
+import '../../data_sources/remote/recommendation_places_remote_data_source.dart';
+import '../../DTO/recommendation_place_dto.dart';
 import '../../dto/recommendation_dto.dart';
 import '../../entities/coordinates.dart';
-import '../../entities/place.dart';
 import '../../entities/recommendation.dart';
 import '../interfaces/recommendation_repository.dart';
 
 class RecommendationRepositoryAdapter implements RecommendationRepository {
   final RecommendationRemoteDataSource _remoteDataSource;
-  final GoogleMapsService _mapsService;
+  final RecommendationPlacesRemoteDataSource _placesDataSource;
 
   RecommendationRepositoryAdapter(
     this._remoteDataSource, {
-    GoogleMapsService? mapsService,
-  }) : _mapsService = mapsService ?? GoogleMapsService();
+    RecommendationPlacesRemoteDataSource? placesDataSource,
+  }) : _placesDataSource =
+           placesDataSource ?? RecommendationPlacesRemoteDataSource();
 
   @override
   Future<List<Recommendation>> getNearbyRecommendations({
@@ -53,17 +54,17 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
     RecommendationDto dto,
     Coordinates origin,
   ) async {
-    Place? place;
+    RecommendationPlaceDto? place;
     try {
       final query = [
         dto.name,
         if (dto.address != null) dto.address!,
       ].join(', ');
-      final places = await _mapsService.searchTextPlaces(
+      final places = await _placesDataSource.searchText(
         query: query,
         latitude: origin.latitude,
         longitude: origin.longitude,
-        radius: 50000,
+        radiusMeters: 50000,
       );
       place = _bestPlaceMatch(dto.name, places);
     } catch (_) {
@@ -80,7 +81,6 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
       longitude: resolvedLongitude,
     );
     final distanceKm = origin.distanceTo(destination);
-    final photoReference = dto.photoReference ?? place?.photoReference;
 
     return dto.toEntity(
       resolvedPlaceId:
@@ -89,14 +89,19 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
       resolvedLongitude: resolvedLongitude,
       resolvedAddress: dto.address ?? place?.address ?? 'Address unavailable',
       resolvedImageUrl:
-          dto.imageUrl ?? _mapsService.getPlacePhotoUrl(photoReference),
+          dto.imageUrl ??
+          _placesDataSource.buildPhotoUrl(dto.photoReference) ??
+          _placesDataSource.buildPhotoUrl(place?.photoResourceName),
       resolvedRating: dto.rating ?? place?.rating,
       distanceKm: distanceKm,
       estimatedTravelMinutes: math.max(1, (distanceKm / 35 * 60).round()),
     );
   }
 
-  Place? _bestPlaceMatch(String recommendationName, List<Place> places) {
+  RecommendationPlaceDto? _bestPlaceMatch(
+    String recommendationName,
+    List<RecommendationPlaceDto> places,
+  ) {
     if (places.isEmpty) return null;
     final target = _normaliseName(recommendationName);
     for (final place in places) {
