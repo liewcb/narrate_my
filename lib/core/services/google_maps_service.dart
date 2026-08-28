@@ -24,11 +24,11 @@ class GoogleMapsService {
     required List<String> types,
   }) async {
     final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
-            '?location=$latitude,$longitude'
-            '&radius=$radius'
-            '&types=${types.join('|')}'
-            '&key=$googleMapsApiKey'
+      'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+      '?location=$latitude,$longitude'
+      '&radius=$radius'
+      '&types=${types.join('|')}'
+      '&key=$googleMapsApiKey',
     );
 
     final response = await http.get(url);
@@ -62,21 +62,49 @@ class GoogleMapsService {
     params.write('&key=$googleMapsApiKey');
 
     final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/textsearch/json?$params');
+      'https://maps.googleapis.com/maps/api/place/textsearch/json?$params',
+    );
 
     final response = await http.get(url);
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final results = data['results'] as List;
-      return results.map((json) => Place.fromGooglePlacesJson(json)).toList();
-    } else {
-      throw Exception('Failed to search places');
+    if (response.statusCode != 200) {
+      throw Exception('Google Places request failed (${response.statusCode})');
     }
+
+    final data = json.decode(response.body) as Map<String, dynamic>;
+    final status = data['status']?.toString();
+    if (status == 'ZERO_RESULTS') return [];
+    if (status != 'OK') {
+      final details = data['error_message']?.toString();
+      throw Exception(
+        'Google Places API error: $status'
+        '${details == null ? '' : ' - $details'}',
+      );
+    }
+
+    final results = data['results'] as List? ?? const [];
+    return results
+        .map(
+          (item) => Place.fromGooglePlacesJson(
+            Map<String, dynamic>.from(item as Map),
+          ),
+        )
+        .toList();
   }
 
   /// Compute the great-circle distance in km between two coordinates.
   double distanceKm(Coordinates a, Coordinates b) => _calculateDistance(a, b);
+
+  /// Build a Google Places photo URL for a photo reference returned by a
+  /// Places search. Returns null when the place has no photo.
+  String? getPlacePhotoUrl(String? photoReference, {int maxWidth = 1200}) {
+    if (photoReference == null || photoReference.trim().isEmpty) return null;
+    return Uri.https('maps.googleapis.com', '/maps/api/place/photo', {
+      'maxwidth': maxWidth.toString(),
+      'photo_reference': photoReference,
+      'key': googleMapsApiKey,
+    }).toString();
+  }
 
   // ==================== GEOCODING API ====================
 
@@ -87,9 +115,9 @@ class GoogleMapsService {
     if (query.trim().isEmpty) return null;
 
     final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/geocode/json'
-            '?address=${Uri.encodeQueryComponent(query)}'
-            '&key=$googleMapsApiKey'
+      'https://maps.googleapis.com/maps/api/geocode/json'
+      '?address=${Uri.encodeQueryComponent(query)}'
+      '&key=$googleMapsApiKey',
     );
 
     try {
@@ -102,8 +130,7 @@ class GoogleMapsService {
       final results = data['results'] as List?;
       if (results == null || results.isEmpty) return null;
 
-      final location =
-          (results.first as Map)['geometry']['location'] as Map;
+      final location = (results.first as Map)['geometry']['location'] as Map;
       final lat = (location['lat'] as num).toDouble();
       final lng = (location['lng'] as num).toDouble();
       return Coordinates(latitude: lat, longitude: lng);
@@ -115,9 +142,9 @@ class GoogleMapsService {
   /// Get detailed place information by Google Place ID.
   Future<Place> getPlaceDetails(String placeId) async {
     final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/details/json'
-            '?place_id=$placeId'
-            '&key=$googleMapsApiKey'
+      'https://maps.googleapis.com/maps/api/place/details/json'
+      '?place_id=$placeId'
+      '&key=$googleMapsApiKey',
     );
 
     final response = await http.get(url);
@@ -141,11 +168,11 @@ class GoogleMapsService {
     required String mode, // 'walking' or 'driving'
   }) async {
     final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json'
-            '?origin=${origin.latitude},${origin.longitude}'
-            '&destination=${destination.latitude},${destination.longitude}'
-            '&mode=$mode'
-            '&key=$googleMapsApiKey'
+      'https://maps.googleapis.com/maps/api/directions/json'
+      '?origin=${origin.latitude},${origin.longitude}'
+      '&destination=${destination.latitude},${destination.longitude}'
+      '&mode=$mode'
+      '&key=$googleMapsApiKey',
     );
 
     final response = await http.get(url);
@@ -164,7 +191,8 @@ class GoogleMapsService {
       return TravelInfo(
         distanceKm: _calculateDistance(origin, destination),
         durationMinutes: _estimateTravelTime(origin, destination, mode),
-        durationText: '${_estimateTravelTime(origin, destination, mode).toInt()} min',
+        durationText:
+            '${_estimateTravelTime(origin, destination, mode).toInt()} min',
       );
     }
   }
@@ -182,8 +210,10 @@ class GoogleMapsService {
 
     final double aVal =
         math.sin(dLat / 2) * math.sin(dLat / 2) +
-            math.sin(dLon / 2) * math.sin(dLon / 2) *
-                math.cos(lat1) * math.cos(lat2);
+        math.sin(dLon / 2) *
+            math.sin(dLon / 2) *
+            math.cos(lat1) *
+            math.cos(lat2);
 
     final double c = 2 * math.atan2(math.sqrt(aVal), math.sqrt(1 - aVal));
 
