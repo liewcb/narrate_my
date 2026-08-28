@@ -1,6 +1,6 @@
 class ItineraryDestination {
   final String itineraryId;
-  final String destinationId;
+  final String destinationId;   // references destinations(destination_id)
   final int allocatedDays;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -12,4 +12,13 @@ class ItineraryDestination {
     required this.createdAt,
     required this.updatedAt,
   });
+
+  @override
+  List<Object?> get props => [
+    itineraryId,
+    destinationId,
+    allocatedDays,
+    createdAt,
+    updatedAt,
+  ];
 }

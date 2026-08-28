@@ -1,25 +1,28 @@
-// lib/view/Itinerary/step3_add_place_screen.dart
+// lib/view/Itinerary/must_visit_selection_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../viewmodel/ItineraryModel/step3_add_place_vm.dart';
-import 'step4_split_screen.dart';
+import '../../viewmodel/ItineraryModel/must_visit_selection_vm.dart';
+import 'day_allocation_screen.dart';
 
-class Step3AddPlaceScreen extends StatefulWidget {
+class MustVisitSelectionScreen extends StatefulWidget {
   final TripDraft draft;
-  const Step3AddPlaceScreen({super.key, required this.draft});
+  const MustVisitSelectionScreen({super.key, required this.draft});
 
   @override
-  State<Step3AddPlaceScreen> createState() => _Step3AddPlaceScreenState();
+  State<MustVisitSelectionScreen> createState() => _MustVisitSelectionScreenState();
 }
 
-class _Step3AddPlaceScreenState extends State<Step3AddPlaceScreen> {
+class _MustVisitSelectionScreenState extends State<MustVisitSelectionScreen> {
+  static const String _userId = '252f0924-192c-42fe-8643-881da7bbf285';
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<Step3AddPlaceVM>(
-      create: (_) => Step3AddPlaceVM(widget.draft),
+      create: (_) => Step3AddPlaceVM(widget.draft, userId: _userId),
       child: const _Step3AddPlaceBody(),
     );
   }
@@ -38,82 +41,132 @@ class _Step3AddPlaceBody extends StatelessWidget {
         child: Stack(
           children: [
             SingleChildScrollView(
-              // Spacing: Bottom padding for sticky bar overhang
               padding: const EdgeInsets.only(bottom: 160),
               child: Column(
-                // Alignment: Strict left alignment across all children
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 16),
-                  const _AppBar(),
-                  // Spacing: 32px section margin (8px grid)
-                  const SizedBox(height: 32),
+                  WizardAppBar(step: 3),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24),
+                    child: WizardProgressBar(activeSteps: 3),
+                  ),
+                  const SizedBox(height: 8),
                   const _Title(),
                   const SizedBox(height: 24),
                   _TabToggle(
                     selectedIndex: vm.selectedTab,
                     onChanged: vm.setTab,
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 10),
                   _SelectedChips(
                     selectedNames: vm.mustVisitPlaces,
                     onRemove: vm.togglePlace,
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 14),
                   _SearchBar(onChanged: vm.searchPlaces),
-                  // Spacing: 32px section margin before main content list
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 22),
+                  // ... rest of the content unchanged ...
                   if (vm.isLoading)
                     const Padding(
                       padding: EdgeInsets.only(top: 48),
                       child: Center(child: CircularProgressIndicator()),
                     )
-                  else if (vm.errorMessage != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
-                      child: Center(
-                        child: Column(
-                          children: [
-                            const Icon(Icons.cloud_off,
-                                color: AppColors.outline, size: 40),
-                            const SizedBox(height: 8),
-                            // Hierarchy: 14px regular muted text
-                            Text(
-                              vm.errorMessage!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: AppColors.outline,
-                                fontSize: 14,
-                                fontWeight: FontWeight.normal,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                  else if (vm.selectedTab == 0 && vm.isLoadingBookmarks)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 48),
+                      child: Center(child: CircularProgressIndicator()),
                     )
-                  else if (vm.availablePlaces.isEmpty)
+                  else if (vm.errorMessage != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
                         child: Center(
-                          // Hierarchy: 14px regular muted text
-                          child: Text(
-                            vm.selectedTab == 1
-                                ? 'No places found in the selected destination.'
-                                : 'No places found.',
-                            style: const TextStyle(
-                              color: AppColors.outline,
-                              fontSize: 14,
-                              fontWeight: FontWeight.normal,
-                            ),
+                          child: Column(
+                            children: [
+                              const Icon(Icons.cloud_off, color: AppColors.outline, size: 40),
+                              const SizedBox(height: 8),
+                              Text(
+                                vm.errorMessage!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: AppColors.outline, fontSize: 14),
+                              ),
+                            ],
                           ),
                         ),
                       )
-                    else
-                      _PlaceList(
-                        places: vm.availablePlaces,
-                        isAdded: vm.isPlaceAdded,
-                        onToggle: vm.togglePlace,
-                      ),
+                    else if (vm.selectedTab == 1 && vm.availablePlaces.isEmpty && vm.searchQuery.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
+                          child: Center(
+                            child: Column(
+                              children: [
+                                const Icon(Icons.map_outlined, size: 48, color: AppColors.outline),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Explore top attractions and restaurants nearby',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: AppColors.outline, fontSize: 14),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: vm.loadDefaultPlaces,
+                                  icon: const Icon(Icons.explore_outlined, color: Colors.white),
+                                  label: const Text('Load Recommended Places'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.brandGreen,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else if (vm.selectedTab == 0 && vm.bookmarksError != null && vm.availablePlaces.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
+                            child: Center(
+                              child: Column(
+                                children: [
+                                  const Icon(Icons.bookmark_border, color: AppColors.outline, size: 40),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    vm.bookmarksError!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: AppColors.outline, fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else if (vm.availablePlaces.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
+                              child: Center(
+                                child: Text(
+                                  vm.selectedTab == 1
+                                      ? 'No places found in the selected destination.'
+                                      : 'No bookmarks yet.\nSave places you want to visit!',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: AppColors.outline, fontSize: 14, height: 1.4),
+                                ),
+                              ),
+                            )
+                          else
+                            _PlaceList(
+                              places: vm.selectedTab == 1
+                                  ? vm.pagedDefaultPlaces
+                                  : vm.availablePlaces,
+                              isAdded: vm.isPlaceAdded,
+                              onToggle: vm.togglePlace,
+                              showLoadMore: vm.selectedTab == 1 &&
+                                  vm.searchQuery.isEmpty &&
+                                  vm.hasMoreDefaultPlaces,
+                              onLoadMore: vm.loadMorePlaces,
+                              isLoadingMore: vm.isLoadingMore,
+                            ),
                   const SizedBox(height: 32),
                 ],
               ),
@@ -124,7 +177,7 @@ class _Step3AddPlaceBody extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => Step4SplitScreen(draft: vm.buildDraft()),
+                    builder: (_) => AddAllocationScreen(draft: vm.buildDraft()),
                   ),
                 );
               },
@@ -132,7 +185,7 @@ class _Step3AddPlaceBody extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => Step4SplitScreen(draft: vm.buildDraft()),
+                    builder: (_) => AddAllocationScreen(draft: vm.buildDraft()),
                   ),
                 );
               },
@@ -144,47 +197,7 @@ class _Step3AddPlaceBody extends StatelessWidget {
   }
 }
 
-// ─── Private Sub‑Widgets ──────────────────────────────────────
-
-class _AppBar extends StatelessWidget {
-  const _AppBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      // Alignment: 24px horizontal grid margin
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: AppColors.brandGreen),
-              onPressed: () => Navigator.maybePop(context),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-            ),
-          ),
-          // Hierarchy: 14px secondary text
-          const Text(
-            "Step 3 of 4",
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 1.0,
-              color: AppColors.outline,
-            ),
-          ),
-          const Align(
-            alignment: Alignment.centerRight,
-            child: SizedBox(width: 40),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// ─── Private Sub‑Widgets (unchanged, except _AppBar removed) ─────
 
 class _Title extends StatelessWidget {
   const _Title();
@@ -192,14 +205,12 @@ class _Title extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // Alignment: 24px horizontal grid margin
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Hierarchy: Main header strictly 24px bold
           Text(
-            "Must-go attractions",
+            "Must-visit attractions",
             style: GoogleFonts.playfairDisplay(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -208,7 +219,6 @@ class _Title extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          // Hierarchy: Secondary text strictly 14px regular muted color
           const Text(
             "Select places you want to visit during your trip.",
             style: TextStyle(
@@ -395,11 +405,17 @@ class _PlaceList extends StatelessWidget {
   final List<WizardPlace> places;
   final bool Function(String) isAdded;
   final ValueChanged<String> onToggle;
+  final bool showLoadMore;
+  final VoidCallback? onLoadMore;
+  final bool isLoadingMore;
 
   const _PlaceList({
     required this.places,
     required this.isAdded,
     required this.onToggle,
+    this.showLoadMore = false,
+    this.onLoadMore,
+    this.isLoadingMore = false,
   });
 
   @override
@@ -408,18 +424,41 @@ class _PlaceList extends StatelessWidget {
       // Alignment: Shared 24px vertical grid line
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
-        children: places.map((place) {
-          final added = isAdded(place.name);
-          return Padding(
-            // Spacing: 16px grid margin between cards
-            padding: const EdgeInsets.only(bottom: 16),
-            child: _PlaceCard(
-              place: place,
-              isAdded: added,
-              onToggle: () => onToggle(place.name),
+        children: [
+          ...places.map((place) {
+            final added = isAdded(place.name);
+            return Padding(
+              // Spacing: 16px grid margin between cards
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _PlaceCard(
+                place: place,
+                isAdded: added,
+                onToggle: () => onToggle(place.name),
+              ),
+            );
+          }).toList(),
+          if (showLoadMore)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 8),
+              child: OutlinedButton.icon(
+                onPressed: isLoadingMore ? null : onLoadMore,
+                icon: isLoadingMore
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.expand_more),
+                label: Text(isLoadingMore ? 'Loading...' : 'Load more places'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
             ),
-          );
-        }).toList(),
+        ],
       ),
     );
   }
@@ -438,18 +477,16 @@ class _PlaceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Simplification: Grouped item in a clean borderless card using a soft white background shade
     return Container(
-      // Spacing: Increased inside padding to strict 24px grid standard
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-        // Alignment: Align text left strictly
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Top row: image + name + type (unchanged)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -494,7 +531,6 @@ class _PlaceCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
-                    // Hierarchy: Secondary text 14px regular muted color
                     Text(
                       place.location.isNotEmpty
                           ? '${place.type} · ${place.location}'
@@ -513,8 +549,12 @@ class _PlaceCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+
+          // Bottom row: rating + flexible chips + add button
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // Rating chip – fixed width
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -540,18 +580,28 @@ class _PlaceCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              _infoChip(Icons.directions_walk, place.walkingTime),
-              if (place.duration != null) ...[
-                const SizedBox(width: 16),
-                _infoChip(Icons.hourglass_bottom, place.duration!),
-              ],
-              const Spacer(),
-              // Action button sharing horizontal row
+              const SizedBox(width: 12),
+
+              // Middle section: travel + duration chips that wrap
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.start,
+                  children: [
+                    _infoChip(place.travelIcon, place.travelTime),
+                    if (place.duration != null)
+                      _infoChip(Icons.hourglass_bottom, place.duration!),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // Add button – fixed size
               GestureDetector(
                 onTap: onToggle,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: isAdded ? AppColors.brandGreen : AppColors.outlineLight,
                     borderRadius: BorderRadius.circular(8),
@@ -559,7 +609,7 @@ class _PlaceCard extends StatelessWidget {
                   child: Text(
                     isAdded ? "Added ✓" : "+ Add",
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.bold,
                       color: isAdded ? Colors.white : AppColors.brandCharcoal,
                     ),
@@ -575,14 +625,15 @@ class _PlaceCard extends StatelessWidget {
 
   Widget _infoChip(IconData icon, String label) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 16, color: AppColors.outline),
         const SizedBox(width: 4),
-        // Hierarchy: Secondary text strictly 14px regular muted color
         Text(
           label,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.normal,
             color: AppColors.outline,
           ),
