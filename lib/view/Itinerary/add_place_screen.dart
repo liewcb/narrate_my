@@ -1,7 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../viewmodel/ItineraryModel/add_place_vm.dart';
 import '../../core/theme/colors.dart';
+import '../../viewmodel/Itinerary/add_place_vm.dart';
 
 class AddPlaceScreen extends StatefulWidget {
   final String itineraryId;
