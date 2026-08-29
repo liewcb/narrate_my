@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/destination.dart';
-import '../../viewmodel/ItineraryModel/destination_choice_vm.dart';
+import '../../viewmodel/Itinerary/destination_choice_vm.dart';
 import 'trip_customization_screen.dart';
 
 class DestinationChoiceScreen extends StatefulWidget {

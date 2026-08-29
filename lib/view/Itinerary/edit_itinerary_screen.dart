@@ -7,7 +7,7 @@ import '../../core/theme/colors.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../../model/entities/place.dart';
-import '../../viewmodel/ItineraryModel/edit_itinerary_vm.dart';
+import '../../viewmodel/Itinerary/edit_itinerary_vm.dart';
 
 /// Edits a single day of the generated itinerary during preview/review.
 ///
