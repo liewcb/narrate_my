@@ -6,7 +6,7 @@ import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../model/entities/itinerary_stop.dart';
-import '../../../viewmodel/ItineraryModel/edit_stop_vm.dart';
+import '../../../viewmodel/Itinerary/edit_stop_vm.dart';
 
 /// Edits the traveler's progress for a single stop.
 ///

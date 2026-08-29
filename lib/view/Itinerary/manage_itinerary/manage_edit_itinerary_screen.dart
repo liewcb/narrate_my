@@ -6,7 +6,7 @@
 
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../viewmodel/ItineraryModel/manage_edit_itinerary_vm.dart';
+import '../../../viewmodel/Itinerary/manage_edit_itinerary_vm.dart';
 import 'add_from_bookmark.dart';
 import 'edit_stop_screen.dart';
 

@@ -9,8 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/entities/itinerary_stop.dart';
-import '../../../viewmodel/ItineraryModel/manage_display_plan_vm.dart';
 import 'package:narrate_my/view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
+import '../../../viewmodel/Itinerary/manage_display_plan_vm.dart';
 import 'edit_stop_screen.dart';
 import 'add_from_bookmark.dart';
 
