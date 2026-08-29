@@ -176,7 +176,7 @@ class _AttractionImage extends StatelessWidget {
                 fit: BoxFit.cover,
                 loadingBuilder: (context, child, progress) =>
                     progress == null ? child : placeholder,
-                errorBuilder: (_, _, _) => placeholder,
+                errorBuilder: (context, error, stackTrace) => placeholder,
               ),
       ),
     );

@@ -47,7 +47,7 @@ class _BookmarksView extends StatelessWidget {
                     child: ListView.separated(
                       padding: const EdgeInsets.all(20),
                       itemCount: vm.bookmarks.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      separatorBuilder: (context, index) => const SizedBox(height: 10),
                       itemBuilder: (context, i) {
                         final Bookmark b = vm.bookmarks[i];
                         return Card(
