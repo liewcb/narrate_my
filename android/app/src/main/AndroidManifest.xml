@@ -20,9 +20,9 @@
             android:value="required"
             tools:replace="android:value" />
 
-<!--        <meta-data-->
-<!--            android:name="com.google.android.geo.API_KEY"-->
-<!--            android:value="AIzaSyCLg1gBrQOjcfJrg2YCbrLAiGoX602LMIQ" />-->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyCLg1gBrQOjcfJrg2YCbrLAiGoX602LMIQ" />
 
         <activity
             android:name=".MainActivity"

@@ -13,19 +13,38 @@ import 'widgets/ar_notification_banner.dart';
 /// [ARMarkerOverlay] still renders every nearby marker (not just the
 /// primary one) so "detect the nearby marker" is still visible on screen.
 class ARExplorationView extends StatelessWidget {
-  const ARExplorationView({super.key});
+  /// Whether the AR tab is the one currently selected in the bottom nav.
+  ///
+  /// [AppRoutes] keeps all four tabs alive at once via `IndexedStack` (so
+  /// switching tabs doesn't lose AR scanning state) — but that means this
+  /// widget is built immediately at app launch and never disposed just
+  /// by switching away from it. Without this flag, the camera/GPS/
+  /// compass/accelerometer used to start the instant the app opened and
+  /// never stop for the rest of the app's life, regardless of which tab
+  /// was visible — the real cause of crashes/freezes that showed up on
+  /// completely unrelated screens (e.g. right after opening Profile).
+  final bool isActive;
+
+  const ARExplorationView({super.key, required this.isActive});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => ARExplorationViewModel()..init(),
-      child: const _ARExplorationScaffold(),
+      // Deliberately NOT calling `..init()` here — that would start the
+      // camera/GPS/compass immediately at app launch (IndexedStack
+      // builds this the moment the app opens, tab selected or not).
+      // `_ARExplorationScaffold` below calls `init()` itself, once, the
+      // first time `isActive` actually becomes true.
+      create: (_) => ARExplorationViewModel(),
+      child: _ARExplorationScaffold(isActive: isActive),
     );
   }
 }
 
 class _ARExplorationScaffold extends StatefulWidget {
-  const _ARExplorationScaffold();
+  final bool isActive;
+
+  const _ARExplorationScaffold({required this.isActive});
 
   @override
   State<_ARExplorationScaffold> createState() => _ARExplorationScaffoldState();
@@ -33,12 +52,61 @@ class _ARExplorationScaffold extends StatefulWidget {
 
 class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
   bool _showDebugHud = true; // default ON while you're diagnosing; flip to false later
+  bool _hasInitialized = false;
 
   /// Whether ARCameraView is allowed to hold the physical camera open.
-  /// Flipped off right before navigating into AR Placement — see
-  /// ARCameraView's doc comment for why two camera clients on the same
-  /// hardware at once causes the freeze loop.
-  bool _cameraActive = true;
+  /// False by default — only turned on once this tab is actually
+  /// selected (see [didUpdateWidget]/[initState]), and flipped off again
+  /// both when leaving this tab and right before navigating into AR
+  /// Placement (see ARCameraView's doc comment for why two camera
+  /// clients on the same hardware at once causes the freeze loop).
+  bool _cameraActive = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isActive) {
+      // Set fields directly rather than going through `_activate()`'s
+      // setState() call — calling setState() synchronously inside
+      // initState() trips Flutter's "setState() called during build"
+      // assertion. The very first build already reads these fields
+      // fresh, so no setState() is needed for it.
+      _hasInitialized = true;
+      _cameraActive = true;
+      // Defer the actual ViewModel kickoff to right after the first
+      // frame, so this widget finishes mounting cleanly first.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.read<ARExplorationViewModel>().init();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ARExplorationScaffold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _activate();
+    } else if (!widget.isActive && oldWidget.isActive) {
+      _deactivate();
+    }
+  }
+
+  void _activate() {
+    final vm = context.read<ARExplorationViewModel>();
+    if (!_hasInitialized) {
+      _hasInitialized = true;
+      vm.init();
+    } else {
+      vm.resume();
+    }
+    setState(() => _cameraActive = true);
+  }
+
+  void _deactivate() {
+    if (!_hasInitialized) return; // never started — nothing to stop
+    context.read<ARExplorationViewModel>().pause();
+    setState(() => _cameraActive = false);
+  }
 
   @override
   Widget build(BuildContext context) {
