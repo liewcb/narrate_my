@@ -139,6 +139,10 @@ class PlayNarrationService {
   /// Starts or resumes playing narration with TTS voice in user's preferred language
   Future<void> play() async {
     if (_currentScript == null) return;
+    if (_playbackState == StoryPlaybackState.completed) {
+      _currentParagraphIndex = 0;
+      _currentSpokenWordIndex = 0;
+    }
     _playbackState = StoryPlaybackState.playing;
     _emitState(_playbackState);
 
@@ -151,7 +155,7 @@ class PlayNarrationService {
     if (_currentScript == null) return;
     final paragraphs = _currentScript!.narrationParagraphs;
     if (paragraphs.isEmpty || _currentParagraphIndex >= paragraphs.length) {
-      stop();
+      await _onAllParagraphsFinished();
       return;
     }
 
@@ -178,26 +182,20 @@ class PlayNarrationService {
     // Internal word tracker for devices without native setProgressHandler
     final segmentWords = textToSpeak.split(RegExp(r'\s+'));
     int relativeWordIdx = 0;
-
-    void stepWordTimer() {
-      if (_playbackState != StoryPlaybackState.playing || relativeWordIdx >= segmentWords.length) {
+    void stepWordTimer(Timer t) {
+      if (_playbackState != StoryPlaybackState.playing) {
+        t.cancel();
         return;
       }
-      final currentWord = segmentWords[relativeWordIdx];
       relativeWordIdx++;
-      _currentSpokenWordIndex = baseWordIndex + relativeWordIdx;
-
-      final wordLen = currentWord.length;
-      final durationMs = (wordLen * 45 + 190).clamp(230, 520);
-
-      _wordProgressTimer = Timer(Duration(milliseconds: durationMs), () {
-        if (_playbackState == StoryPlaybackState.playing) {
-          stepWordTimer();
-        }
-      });
+      final totalWords = baseWordIndex + relativeWordIdx;
+      if (totalWords <= allWords.length) {
+        _currentSpokenWordIndex = totalWords;
+      } else {
+        t.cancel();
+      }
     }
-
-    _wordProgressTimer = Timer(const Duration(milliseconds: 150), stepWordTimer);
+    _wordProgressTimer = Timer.periodic(const Duration(milliseconds: 320), stepWordTimer);
 
     final estimatedSeconds = (segmentWords.length / 2.0).clamp(3.0, 18.0).toInt();
 
@@ -237,9 +235,22 @@ class PlayNarrationService {
         }
       });
     } else {
-      // Finished all paragraphs
-      stop();
+      // Finished all paragraphs -> Transition to completed!
+      _onAllParagraphsFinished();
     }
+  }
+
+  /// Handles landmark narration completion with closing message and Replay state
+  Future<void> _onAllParagraphsFinished() async {
+    _playbackState = StoryPlaybackState.completed;
+    _fallbackTimer?.cancel();
+    _wordProgressTimer?.cancel();
+    await _safeStopTts();
+    _currentParagraphIndex = 0;
+    _currentSpokenWordIndex = 0;
+    _emitState(_playbackState);
+    final name = _currentScript?.landmarkName ?? 'this landmark';
+    _emitSubtitle("🎉 You've completed the story of $name! Hope you enjoyed the journey!");
   }
 
   /// Pauses narration and saves exact playback checkpoint position

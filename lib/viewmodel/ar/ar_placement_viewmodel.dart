@@ -192,7 +192,7 @@ class ARPlacementViewModel extends ChangeNotifier {
   void openStorytellingMenu() {
     _hasStartedStorytelling = true;
     _playbackState = StoryPlaybackState.stopped;
-    _show3DLandmarkModel = false;
+    _show3DLandmarkModel = false; 
     _currentSubtitle = _placementService.narrationService.currentScript?.initialGreeting ??
         "Hello! I'm Manja! (Tap Play below to begin)";
     notifyListeners();

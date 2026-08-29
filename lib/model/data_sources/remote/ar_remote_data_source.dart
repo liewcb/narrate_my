@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/remote_database_service.dart';
-import '../../dto/heritage_site_dto.dart';
+import '../../dto/ar_object_dto.dart';
+import '../../dto/attraction_dto.dart';
 
 /// Talks to Supabase for AR Exploration & Heritage data (UC100, BF-4).
 ///
@@ -19,7 +20,8 @@ class ARRemoteDataSource {
   ARRemoteDataSource({SupabaseClient? client})
       : _client = client ?? RemoteDatabaseService().client;
 
-  Future<List<HeritageSiteDto>> fetchNearbyMarkers({
+  /// Fetch nearby markers from `Marker` table joined with `Attraction`
+  Future<List<ARMarkerDto>> fetchNearbyMarkers({
     required double latitude,
     required double longitude,
     required double radiusMeters,
@@ -36,24 +38,12 @@ class ARRemoteDataSource {
 
     return (rows as List)
         .cast<Map<String, dynamic>>()
-        .map(HeritageSiteDto.fromJson)
+        .map(ARMarkerDto.fromJson)
         .toList();
   }
 
-  /// Fetch attraction and marker data by [markerId] (e.g. 'MK001')
-  Future<HeritageSiteDto?> fetchAttractionByMarkerId(String markerId) async {
-    // 1. Try querying Marker joined with Attraction
-    final markerRow = await _client
-        .from('Marker')
-        .select('*, Attraction(*)')
-        .eq('marker_id', markerId)
-        .maybeSingle();
-
-    if (markerRow != null) {
-      return HeritageSiteDto.fromJson(Map<String, dynamic>.from(markerRow));
-    }
-
-    // 2. Fallback: Query Attraction table directly by marker_id
+  /// Fetch single [AttractionDTO] by [markerId] (e.g. 'MK001')
+  Future<AttractionDTO?> fetchAttractionDtoByMarkerId(String markerId) async {
     final attractionRow = await _client
         .from('Attraction')
         .select('*')
@@ -61,32 +51,13 @@ class ARRemoteDataSource {
         .maybeSingle();
 
     if (attractionRow != null) {
-      return HeritageSiteDto.fromAttractionJson(
-        Map<String, dynamic>.from(attractionRow),
-      );
-    }
-
-    return null;
-  }
-
-  /// Fetch attraction by attraction_id (e.g. 'AD001')
-  Future<HeritageSiteDto?> fetchAttractionById(String attractionId) async {
-    final row = await _client
-        .from('Attraction')
-        .select('*, Marker(*)')
-        .eq('attraction_id', attractionId)
-        .maybeSingle();
-
-    if (row != null) {
-      return HeritageSiteDto.fromAttractionJson(
-        Map<String, dynamic>.from(row),
-      );
+      return AttractionDTO.fromJson(Map<String, dynamic>.from(attractionRow));
     }
     return null;
   }
 
   /// Fetch single marker by [markerId]
-  Future<HeritageSiteDto?> fetchMarkerById(String markerId) async {
+  Future<ARMarkerDto?> fetchMarkerById(String markerId) async {
     final row = await _client
         .from('Marker')
         .select('*, Attraction(*)')
@@ -94,7 +65,7 @@ class ARRemoteDataSource {
         .maybeSingle();
 
     if (row != null) {
-      return HeritageSiteDto.fromJson(Map<String, dynamic>.from(row));
+      return ARMarkerDto.fromJson(Map<String, dynamic>.from(row));
     }
     return null;
   }
@@ -104,8 +75,6 @@ class ARRemoteDataSource {
     final metersPerDegreeLng = 111320.0 * math.cos(lat * math.pi / 180.0);
 
     final dLat = radiusMeters / metersPerDegreeLat;
-    // Guard against divide-by-~0 near the poles (irrelevant for this app,
-    // but keeps the math safe).
     final dLng = radiusMeters / (metersPerDegreeLng.abs() < 1 ? 1 : metersPerDegreeLng);
 
     return _BoundingBox(
