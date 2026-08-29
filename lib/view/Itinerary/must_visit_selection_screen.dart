@@ -5,7 +5,7 @@ import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../viewmodel/ItineraryModel/must_visit_selection_vm.dart';
+import '../../viewmodel/Itinerary/must_visit_selection_vm.dart';
 import 'day_allocation_screen.dart';
 
 class MustVisitSelectionScreen extends StatefulWidget {

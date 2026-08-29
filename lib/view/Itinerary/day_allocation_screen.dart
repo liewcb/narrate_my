@@ -4,7 +4,7 @@ import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../viewmodel/ItineraryModel/day_allocation_vm.dart';
+import '../../viewmodel/Itinerary/day_allocation_vm.dart';
 import 'itinerary_generation_screen.dart';
 
 class AddAllocationScreen extends StatefulWidget {

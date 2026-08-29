@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../viewmodel/ItineraryModel/my_itineraries_vm.dart';
+import '../../viewmodel/Itinerary/my_itineraries_vm.dart';
 import 'manage_itinerary/manage_display_plan_screen.dart';
 import 'destination_choice_screen.dart';  // for the FAB
 import 'widgets/itinerary_card.dart';

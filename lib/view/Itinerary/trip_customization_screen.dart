@@ -6,7 +6,7 @@ import '../../core/config/interest_mapping.dart';
 import '../../core/theme/colors.dart';
 import '../../model/business_logic/itinerary_service/itinerary_validation_service.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../viewmodel/ItineraryModel/trip_customization_vm.dart';
+import '../../viewmodel/Itinerary/trip_customization_vm.dart';
 import 'must_visit_selection_screen.dart';
 
 class TripCustomizationScreen extends StatefulWidget {
