@@ -1,6 +1,7 @@
 ﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/colors.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
@@ -38,6 +39,7 @@ class EditItineraryScreen extends StatefulWidget {
 class _EditItineraryScreenState extends State<EditItineraryScreen> {
   late EditItineraryViewModel _vm;
   bool _changesApplied = false;
+  GoogleMapController? _mapController;
 
   @override
   void initState() {
@@ -61,6 +63,79 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   void dispose() {
     _vm.dispose();
     super.dispose();
+  }
+
+  /// Builds map markers labeled dynamically based on the current stops order
+  Set<Marker> _buildMarkers() {
+    final markers = <Marker>{};
+    for (int i = 0; i < _vm.stops.length; i++) {
+      final stop = _vm.stops[i];
+      markers.add(
+        Marker(
+          markerId: MarkerId(stop.placeId),
+          position: LatLng(stop.place.latitude, stop.place.longitude),
+          infoWindow: InfoWindow(
+            title: 'Stop ${i + 1}: ${stop.name}',
+            snippet: '${_fmt(stop.startTime)} – ${_fmt(stop.endTime)}',
+          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            i == 0 ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueRed,
+          ),
+        ),
+      );
+    }
+    return markers;
+  }
+
+  /// Builds direct straight-line paths connecting stops sequentially
+  Set<Polyline> _buildPolylines() {
+    if (_vm.stops.length < 2) return {};
+    return {
+      Polyline(
+        polylineId: const PolylineId('itinerary_route'),
+        points: _vm.stops
+            .map((s) => LatLng(s.place.latitude, s.place.longitude))
+            .toList(),
+        color: AppColors.tealGreen,
+        width: 4,
+      ),
+    };
+  }
+
+  /// Adjusts camera view to fit all stop markers dynamically on load
+  void _fitMapBounds() {
+    if (_mapController == null || _vm.stops.isEmpty) return;
+    if (_vm.stops.length == 1) {
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(_vm.stops.first.place.latitude, _vm.stops.first.place.longitude),
+          14,
+        ),
+      );
+      return;
+    }
+
+    double minLat = _vm.stops.first.place.latitude;
+    double maxLat = _vm.stops.first.place.latitude;
+    double minLng = _vm.stops.first.place.longitude;
+    double maxLng = _vm.stops.first.place.longitude;
+
+    for (final stop in _vm.stops) {
+      if (stop.place.latitude < minLat) minLat = stop.place.latitude;
+      if (stop.place.latitude > maxLat) maxLat = stop.place.latitude;
+      if (stop.place.longitude < minLng) minLng = stop.place.longitude;
+      if (stop.place.longitude > maxLng) maxLng = stop.place.longitude;
+    }
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        48.0,
+      ),
+    );
   }
 
   Future<void> _handleBack() async {
@@ -135,17 +210,18 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               ),
             ),
             ...candidates.map((p) => ListTile(
-                  leading: const Icon(Icons.place),
-                  title: Text(p.placeName),
-                  subtitle: Text(p.category ?? ''),
-                  onTap: () => Navigator.pop(ctx, p),
-                )),
+              leading: const Icon(Icons.place),
+              title: Text(p.placeName),
+              subtitle: Text(p.category ?? ''),
+              onTap: () => Navigator.pop(ctx, p),
+            )),
           ],
         ),
       ),
     );
     if (selected != null) {
       _vm.addCandidate(selected);
+      _fitMapBounds();
     }
   }
 
@@ -173,17 +249,18 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               ),
             ),
             ...candidates.map((p) => ListTile(
-                  leading: const Icon(Icons.swap_horiz),
-                  title: Text(p.placeName),
-                  subtitle: Text(p.category ?? ''),
-                  onTap: () => Navigator.pop(ctx, p),
-                )),
+              leading: const Icon(Icons.swap_horiz),
+              title: Text(p.placeName),
+              subtitle: Text(p.category ?? ''),
+              onTap: () => Navigator.pop(ctx, p),
+            )),
           ],
         ),
       ),
     );
     if (selected != null) {
       _vm.replaceStop(index, selected);
+      _fitMapBounds();
     }
   }
 
@@ -197,6 +274,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(_vm.error ?? 'Cannot remove this stop.')));
+    } else {
+      _fitMapBounds();
     }
   }
 
@@ -304,8 +383,12 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 
   Widget _buildMapPreview() {
+    final initialPos = _vm.stops.isNotEmpty
+        ? LatLng(_vm.stops.first.place.latitude, _vm.stops.first.place.longitude)
+        : const LatLng(3.1390, 101.6869);
+
     return Container(
-      height: 180,
+      height: 240,
       width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
@@ -321,37 +404,31 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
-            Container(
-              color: AppColors.grayWarm,
-              child: const Icon(Icons.map, color: AppColors.taupe),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.2),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.0, 0.4],
-                ),
-              ),
+            GoogleMap(
+              initialCameraPosition: CameraPosition(target: initialPos, zoom: 11),
+              markers: _buildMarkers(),
+              polylines: _buildPolylines(),
+              onMapCreated: (controller) {
+                _mapController = controller;
+                _fitMapBounds();
+              },
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
             ),
             Positioned(
-              top: 16,
-              left: 16,
+              top: 12,
+              left: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: AppColors.pineDark.withOpacity(0.9),
                   borderRadius: BorderRadius.circular(30),
                 ),
                 child: Text(
-                  'Day ${_vm.dayNumber} · ${_vm.stops.length} stops',
+                  '${_vm.stops.length} Stops Planned',
                   style: const TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w400,
+                    fontWeight: FontWeight.w500,
                     color: Colors.white,
                   ),
                 ),
@@ -395,9 +472,9 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _vm.stops.length,
               onReorder: (oldIndex, newIndex) {
-                debugPrint('[EDIT] Stop reordered: '
-                    '${oldIndex + 1} → $newIndex');
+                debugPrint('[EDIT] Stop reordered: ${oldIndex + 1} → $newIndex');
                 _vm.reorder(oldIndex, newIndex);
+                _fitMapBounds();
               },
               itemBuilder: (context, index) {
                 final stop = _vm.stops[index];
@@ -531,8 +608,8 @@ class _StopItem extends StatelessWidget {
     final durationLabel = h > 0 && m > 0
         ? '${h}h ${m}m'
         : h > 0
-            ? '${h}h'
-            : '${m}m';
+        ? '${h}h'
+        : '${m}m';
     final timeLabel = '${_fmt(stop.startTime)} – ${_fmt(stop.endTime)}';
 
     return Padding(

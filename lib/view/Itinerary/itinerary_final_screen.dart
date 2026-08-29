@@ -6,8 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
-import '../../viewmodel/ItineraryModel/itinerary_final_vm.dart';
-
+import '../../viewmodel/Itinerary/itinerary_final_vm.dart';
 import 'add_place_screen.dart';
 import 'edit_itinerary_screen.dart';
 import 'my_itineraries_screen.dart';

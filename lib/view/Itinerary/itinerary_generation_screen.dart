@@ -5,7 +5,7 @@ import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../viewmodel/ItineraryModel/itinerary_generation_vm.dart';
+import '../../viewmodel/Itinerary/itinerary_generation_vm.dart';
 import 'itinerary_final_screen.dart';
 
 
