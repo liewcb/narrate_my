@@ -23,20 +23,23 @@ class OtpScreen extends StatelessWidget {
   final OtpFlow flow;
   final String e164Phone;
   final String? pendingUsername;
+  final bool returnOnSuccess;
 
   const OtpScreen({
     super.key,
     required this.flow,
     required this.e164Phone,
     this.pendingUsername,
+    this.returnOnSuccess = false,
   });
 
   String get _sentMessage => switch (flow) {
-        OtpFlow.registerPhone || OtpFlow.registerUsername => RegisterMessages.m2OtpSent,
-        OtpFlow.loginPhone => LoginMessages.m2OtpSent,
-        OtpFlow.resetPassword => PasswordResetMessages.m2OtpSent,
-        OtpFlow.changePhone => ProfileMessages.m11OtpSent,
-      };
+    OtpFlow.registerPhone ||
+    OtpFlow.registerUsername => RegisterMessages.m2OtpSent,
+    OtpFlow.loginPhone => LoginMessages.m2OtpSent,
+    OtpFlow.resetPassword => PasswordResetMessages.m2OtpSent,
+    OtpFlow.changePhone => ProfileMessages.m11OtpSent,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -50,14 +53,19 @@ class OtpScreen extends StatelessWidget {
         e164Phone: e164Phone,
         pendingUsername: pendingUsername,
       ),
-      child: _OtpView(sentMessage: _sentMessage),
+      child: _OtpView(
+        sentMessage: _sentMessage,
+        returnOnSuccess: returnOnSuccess,
+      ),
     );
   }
 }
 
 class _OtpView extends StatefulWidget {
   final String sentMessage;
-  const _OtpView({required this.sentMessage});
+  final bool returnOnSuccess;
+
+  const _OtpView({required this.sentMessage, required this.returnOnSuccess});
 
   @override
   State<_OtpView> createState() => _OtpViewState();
@@ -82,7 +90,8 @@ class _OtpViewState extends State<_OtpView> {
         // UC402 A9 step 9: return to Personal Info with the change applied
         // — the caller re-fetches the profile to pick up the new phone.
         Navigator.of(context).pop(true);
-      } else if (vm.flow == OtpFlow.registerPhone || vm.flow == OtpFlow.registerUsername) {
+      } else if (vm.flow == OtpFlow.registerPhone ||
+          vm.flow == OtpFlow.registerUsername) {
         // A brand-new account gets the non-skippable Mandatory Details step
         // (name + DOB, added at Foo's request) first, which itself hands
         // off to the skippable "Personalize your journey" preferences
@@ -92,6 +101,8 @@ class _OtpViewState extends State<_OtpView> {
           MaterialPageRoute(builder: (_) => const MandatoryDetailsScreen()),
           (route) => false,
         );
+      } else if (widget.returnOnSuccess) {
+        Navigator.of(context).pop(true);
       } else {
         // Login lands straight on the main shell, clearing the whole auth
         // stack behind it — onboarding only makes sense once, at signup.
@@ -122,12 +133,19 @@ class _OtpViewState extends State<_OtpView> {
               const SizedBox(height: 12),
               Text(
                 widget.sentMessage,
-                style: const TextStyle(fontSize: 14.5, color: AppColors.inkSoft, height: 1.4),
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  color: AppColors.inkSoft,
+                  height: 1.4,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 vm.e164Phone,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 32),
               OtpBoxRow(
@@ -143,7 +161,10 @@ class _OtpViewState extends State<_OtpView> {
                 const SizedBox(height: 14),
                 Text(
                   vm.errorMessage!,
-                  style: const TextStyle(color: AppColors.error, fontSize: 13.5),
+                  style: const TextStyle(
+                    color: AppColors.error,
+                    fontSize: 13.5,
+                  ),
                 ),
               ],
               const SizedBox(height: 28),
@@ -174,14 +195,22 @@ class _OtpViewState extends State<_OtpView> {
                         final ok = await vm.verifyCaptcha(token);
                         if (ok && context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Verified — you can request a new code now.')),
+                            const SnackBar(
+                              content: Text(
+                                'Verified — you can request a new code now.',
+                              ),
+                            ),
                           );
                         }
                       },
                       onError: () {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Verification failed. Please try again.')),
+                            const SnackBar(
+                              content: Text(
+                                'Verification failed. Please try again.',
+                              ),
+                            ),
                           );
                         }
                       },
@@ -191,13 +220,15 @@ class _OtpViewState extends State<_OtpView> {
               else
                 Center(
                   child: TextButton(
-                    onPressed: vm.canResend && !vm.isResending ? () => vm.resend() : null,
+                    onPressed: vm.canResend && !vm.isResending
+                        ? () => vm.resend()
+                        : null,
                     child: Text(
                       vm.canResend
                           ? "Didn't get a code? Resend"
                           : 'Resend available in '
-                              '${(vm.resendCooldownSeconds ~/ 60).toString().padLeft(2, '0')}:'
-                              '${(vm.resendCooldownSeconds % 60).toString().padLeft(2, '0')}',
+                                '${(vm.resendCooldownSeconds ~/ 60).toString().padLeft(2, '0')}:'
+                                '${(vm.resendCooldownSeconds % 60).toString().padLeft(2, '0')}',
                     ),
                   ),
                 ),

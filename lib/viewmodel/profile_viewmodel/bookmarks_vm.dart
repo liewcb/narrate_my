@@ -1,20 +1,17 @@
 import 'package:flutter/foundation.dart';
 
-import '../../core/errors/failures.dart';
-import '../../model/entities/bookmark.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/dto/bookmark_with_place_dto.dart';
+import '../../model/repositories/adapters/bookmark_repository_adapter.dart';
+import '../../model/repositories/interfaces/bookmark_repository.dart';
 
 /// Backs UC402 A22 (View and Delete Bookmarks, REQ_503_21/22).
 class BookmarksVm extends ChangeNotifier {
-  final ProfileRepository _profileRepository;
+  final BookmarkRepository _bookmarkRepository;
 
-  BookmarksVm({ProfileRepository? profileRepository})
-      : _profileRepository = profileRepository ?? SupabaseProfileRepositoryAdapter() {
-    //load();
-  }
+  BookmarksVm({BookmarkRepository? bookmarkRepository})
+    : _bookmarkRepository = bookmarkRepository ?? BookmarkRepositoryImpl();
 
-  List<Bookmark> bookmarks = [];
+  List<BookmarkWithPlaceDTO> bookmarks = [];
   bool isLoading = false;
   String? errorMessage;
 
@@ -23,9 +20,16 @@ class BookmarksVm extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
     try {
-      bookmarks = await _profileRepository.fetchBookmarks();
-    } on AuthFailure catch (e) {
-      errorMessage = e.message;
+      final userId = _bookmarkRepository.currentUserId;
+      if (userId == null) {
+        bookmarks = [];
+        errorMessage = 'Log in to view your bookmarks.';
+        return;
+      }
+      bookmarks = await _bookmarkRepository.getBookmarksWithPlaces(userId);
+    } catch (error) {
+      debugPrint('Unable to load bookmarks: $error');
+      errorMessage = 'Unable to load bookmarks. Please try again.';
     } finally {
       isLoading = false;
       notifyListeners();
@@ -35,11 +39,14 @@ class BookmarksVm extends ChangeNotifier {
   /// A22 steps 5–7: remove, then refresh the list.
   Future<void> remove(String bookmarkId) async {
     try {
-      await _profileRepository.removeBookmark(bookmarkId);
-      bookmarks = bookmarks.where((b) => b.id != bookmarkId).toList();
+      await _bookmarkRepository.removeBookmark(bookmarkId);
+      bookmarks = bookmarks
+          .where((entry) => entry.bookmark.id != bookmarkId)
+          .toList();
       notifyListeners();
-    } on AuthFailure catch (e) {
-      errorMessage = e.message;
+    } catch (error) {
+      debugPrint('Unable to remove bookmark: $error');
+      errorMessage = 'Unable to remove this bookmark. Please try again.';
       notifyListeners();
     }
   }

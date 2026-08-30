@@ -7,12 +7,12 @@ import '../../model/entities/coordinates.dart';
 import '../../model/entities/recommendation.dart';
 import '../../model/repositories/interfaces/recommendation_repository.dart';
 
-class NearbyRecommendationViewModel extends ChangeNotifier {
+class NearbyRecommendationVm extends ChangeNotifier {
   final RecommendationRepository _repository;
   final LocationService _locationService;
   final PermissionService _permissionService;
 
-  NearbyRecommendationViewModel(
+  NearbyRecommendationVm(
     this._repository, {
     LocationService? locationService,
     PermissionService? permissionService,
@@ -32,7 +32,7 @@ class NearbyRecommendationViewModel extends ChangeNotifier {
   Coordinates? get currentLocation => _currentLocation;
   bool get hasLocationPermission => _hasLocationPermission;
 
-  Future<void> loadRecommendations() async {
+  Future<void> loadRecommendations({bool forceRefresh = false}) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -64,21 +64,24 @@ class NearbyRecommendationViewModel extends ChangeNotifier {
       _recommendations = await _repository.getNearbyRecommendations(
         latitude: position.latitude,
         longitude: position.longitude,
+        forceRefresh: forceRefresh,
       );
     } catch (e) {
       _errorMessage = e is _NearbyLocationException
           ? e.message
           : e is RecommendationResolutionException
           ? e.message
+          : e is RecommendationUnavailableException
+          ? e.message
           : 'Unable to load nearby attractions. Please try again.';
-      _recommendations = [];
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  Future<void> refreshRecommendations() => loadRecommendations();
+  Future<void> refreshRecommendations() =>
+      loadRecommendations(forceRefresh: true);
 }
 
 class _NearbyLocationException implements Exception {

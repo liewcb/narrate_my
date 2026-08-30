@@ -7,7 +7,7 @@ import '../../model/data_sources/remote/recommendation_data_source.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/recommendation.dart';
 import '../../model/repositories/adapters/recommendation_repository_adapter.dart';
-import '../../viewmodel/recommendation/nearby_recommendation_viewmodel.dart';
+import '../../viewmodel/recommendation/nearby_recommendation_vm.dart';
 import 'nearby_recommendation_details_screen.dart';
 
 class NearbyRecommendationScreen extends StatelessWidget {
@@ -19,7 +19,7 @@ class NearbyRecommendationScreen extends StatelessWidget {
       create: (_) {
         final dataSource = RecommendationRemoteDataSource();
         final repository = RecommendationRepositoryAdapter(dataSource);
-        return NearbyRecommendationViewModel(repository)..loadRecommendations();
+        return NearbyRecommendationVm(repository)..loadRecommendations();
       },
       child: const _NearbyRecommendationMap(),
     );
@@ -46,7 +46,7 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.watch<NearbyRecommendationViewModel>();
+    final viewModel = context.watch<NearbyRecommendationVm>();
     final location = viewModel.currentLocation;
 
     if (location == null) {
