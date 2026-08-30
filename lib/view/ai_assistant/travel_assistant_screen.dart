@@ -561,7 +561,7 @@ class _ConversationSearchDelegate extends SearchDelegate<void> {
     }
     return ListView.separated(
       itemCount: matches.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
+      separatorBuilder: (context, index) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final message = matches[index];
         return ListTile(
