@@ -148,7 +148,6 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
               ),
             ),
             // Testing for Marker
-            /*
             Positioned(
               bottom: 25,
               left: 20,
@@ -188,7 +187,6 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
                 ),
               ),
             ),
-            */
             if (_showDebugHud) _DebugHud(vm: vm),
           ],
         ),
@@ -211,11 +209,12 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
     // actually close the Camera2 session before ARCore tries to open
     // its own on the same physical camera.
     await Future.delayed(const Duration(milliseconds: 300));
+    if (!context.mounted) return;
 
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ARPlacementScreen(selectedMarker: marker),
+        builder: (context) => ARPlacementScreen(selectedMarker: marker),
       ),
     );
 

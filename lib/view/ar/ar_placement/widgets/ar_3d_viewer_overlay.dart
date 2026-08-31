@@ -43,11 +43,11 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
       String landmarkName,
       String? modelPath,
     })>(
-      selector: (_, vm) => (
+      selector: (context, vm) => (
         landmarkName: vm.landmarkName,
         modelPath: vm.model3dPath,
       ),
-      builder: (context, data, _) {
+      builder: (context, data, child) {
         final modelPath = data.modelPath;
         final landmarkName = data.landmarkName;
         final hasModel = modelPath != null && modelPath.trim().isNotEmpty;

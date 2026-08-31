@@ -11,8 +11,8 @@ class ARScanningGuide extends StatelessWidget {
     final topPadding = MediaQuery.of(context).padding.top + 90;
 
     return Selector<ARPlacementViewModel, bool>(
-      selector: (_, vm) => vm.isAvatarPlaced,
-      builder: (context, isPlaced, _) {
+      selector: (context, vm) => vm.isAvatarPlaced,
+      builder: (context, isPlaced, child) {
         if (isPlaced) return const SizedBox.shrink();
 
         return Positioned(

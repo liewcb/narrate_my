@@ -12,13 +12,13 @@ class ARActionMenu extends StatelessWidget {
     const primaryTeal = Color(0xFF2E656A);
 
     return Selector<ARPlacementViewModel, ({bool isPlaced, bool hasStarted, String? videoUrl, String landmarkName})>(
-      selector: (_, vm) => (
+      selector: (context, vm) => (
         isPlaced: vm.isAvatarPlaced,
         hasStarted: vm.hasStartedStorytelling,
         videoUrl: vm.videoUrl,
         landmarkName: vm.landmarkName,
       ),
-      builder: (context, data, _) {
+      builder: (context, data, child) {
         if (!data.isPlaced || data.hasStarted) return const SizedBox.shrink();
 
         return Stack(

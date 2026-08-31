@@ -74,6 +74,11 @@ class ARPlacementViewModel extends ChangeNotifier {
   Future<void> init(ARMarker? marker) async {
     _selectedMarker = marker;
     _placementState = PlacementState.initializing;
+    _isAvatarPlaced = false;
+    _show3DLandmarkModel = false;
+    _showVideoPlayer = false;
+    _hasStartedStorytelling = false;
+    _playbackState = StoryPlaybackState.stopped;
     notifyListeners();
 
     // 1. Prepare/cache avatar GLB config in parallel
