@@ -333,7 +333,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 Image.network(
                   thumbUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFF0F1A1B)),
+                  errorBuilder: (context, error, stackTrace) =>
+                      const ColoredBox(color: Color(0xFF0F1A1B)),
                 )
               else
                 const ColoredBox(color: Color(0xFF0F1A1B)),

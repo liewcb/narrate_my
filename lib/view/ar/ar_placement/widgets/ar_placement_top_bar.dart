@@ -16,11 +16,11 @@ class ARPlacementTopBar extends StatelessWidget {
       left: 16,
       right: 16,
       child: Selector<ARPlacementViewModel, ({String landmarkName, bool isPlaying})>(
-        selector: (_, vm) => (
+        selector: (context, vm) => (
           landmarkName: vm.landmarkName,
           isPlaying: vm.isPlaying,
         ),
-        builder: (context, data, _) {
+        builder: (context, data, child) {
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

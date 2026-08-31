@@ -8,7 +8,7 @@ import '../entities/bookmark.dart';
 class BookmarkDTO {
   final String id;
   final String userId;
-  final String itemId;
+  final String? itemId;
   final String itemType;
   final String? placeId;
   final DateTime? createdAt;
@@ -16,7 +16,7 @@ class BookmarkDTO {
   const BookmarkDTO({
     required this.id,
     required this.userId,
-    required this.itemId,
+    this.itemId,
     required this.itemType,
     this.placeId,
     this.createdAt,
@@ -27,7 +27,7 @@ class BookmarkDTO {
     return BookmarkDTO(
       id: json['id'].toString(),
       userId: json['user_id'].toString(),
-      itemId: json['item_id'].toString(),
+      itemId: json['item_id']?.toString(),
       itemType: json['item_type'].toString(),
       placeId: json['place_id']?.toString(),
       createdAt: json['created_at'] != null
@@ -46,7 +46,7 @@ class BookmarkDTO {
     return BookmarkDTO(
       id: map['id'].toString(),
       userId: map['user_id'].toString(),
-      itemId: map['item_id'].toString(),
+      itemId: map['item_id']?.toString(),
       itemType: map['item_type'].toString(),
       placeId: map['place_id']?.toString(),
       createdAt: map['created_at'] != null
@@ -64,6 +64,19 @@ class BookmarkDTO {
       'item_type': itemType,
       'place_id': placeId,
       'created_at': createdAt?.toIso8601String(),
+    };
+  }
+
+  /// Supabase insert/update payload. Database-generated values are omitted
+  /// when empty so their defaults can run.
+  Map<String, dynamic> toRemoteMap() {
+    return {
+      if (id.isNotEmpty) 'id': id,
+      'user_id': userId,
+      if (itemId != null) 'item_id': itemId,
+      'item_type': itemType,
+      if (placeId != null) 'place_id': placeId,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
     };
   }
 

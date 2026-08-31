@@ -17,25 +17,33 @@ import 'register_screen.dart';
 /// UC401 Login Account. Google (A1) up top, then a Phone-OTP / Username &
 /// Password tab switch for A2 vs A3.
 class LoginScreen extends StatelessWidget {
-  const LoginScreen({super.key});
+  /// When true, a successful login pops `true` to the caller instead of
+  /// replacing the app with a new shell. Shared actions such as Bookmark can
+  /// then retry the pending operation automatically.
+  final bool returnOnSuccess;
+
+  const LoginScreen({super.key, this.returnOnSuccess = false});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => LoginVm(),
-      child: const _LoginView(),
+      child: _LoginView(returnOnSuccess: returnOnSuccess),
     );
   }
 }
 
 class _LoginView extends StatefulWidget {
-  const _LoginView();
+  final bool returnOnSuccess;
+
+  const _LoginView({required this.returnOnSuccess});
 
   @override
   State<_LoginView> createState() => _LoginViewState();
 }
 
-class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMixin {
+class _LoginViewState extends State<_LoginView>
+    with SingleTickerProviderStateMixin {
   late final _tabController = TabController(length: 2, vsync: this);
 
   final _phoneController = TextEditingController();
@@ -53,7 +61,11 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
     super.dispose();
   }
 
-  void _goToShell() {
+  void _completeLogin() {
+    if (widget.returnOnSuccess) {
+      Navigator.of(context).pop(true);
+      return;
+    }
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const AppRoutes()),
       (route) => false,
@@ -62,17 +74,24 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
 
   Future<void> _handleGoogle(LoginVm vm) async {
     final profile = await vm.signInWithGoogle();
-    if (profile != null && mounted) _goToShell();
+    if (profile != null && mounted) _completeLogin();
   }
 
   Future<void> _handlePhoneSubmit(LoginVm vm) async {
     final ok = await vm.sendPhoneOtp(_phoneE164);
     if (ok && mounted) {
-      Navigator.of(context).push(
+      final loggedIn = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (_) => OtpScreen(flow: OtpFlow.loginPhone, e164Phone: _phoneE164),
+          builder: (_) => OtpScreen(
+            flow: OtpFlow.loginPhone,
+            e164Phone: _phoneE164,
+            returnOnSuccess: widget.returnOnSuccess,
+          ),
         ),
       );
+      if (loggedIn == true && mounted && widget.returnOnSuccess) {
+        Navigator.of(context).pop(true);
+      }
     }
   }
 
@@ -81,7 +100,7 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
       username: _usernameController.text.trim(),
       password: _passwordController.text,
     );
-    if (profile != null && mounted) _goToShell();
+    if (profile != null && mounted) _completeLogin();
   }
 
   @override
@@ -106,7 +125,10 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Center(
-                child: Image.asset('assets/images/branding/logo.png', height: 96),
+                child: Image.asset(
+                  'assets/images/branding/logo.png',
+                  height: 96,
+                ),
               ),
               const SizedBox(height: 16),
               SecondaryButton(
@@ -120,7 +142,10 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
                   Expanded(child: Divider()),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('or', style: TextStyle(color: AppColors.inkFaint)),
+                    child: Text(
+                      'or',
+                      style: TextStyle(color: AppColors.inkFaint),
+                    ),
                   ),
                   Expanded(child: Divider()),
                 ],
@@ -131,7 +156,10 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
                 labelColor: AppColors.accent,
                 unselectedLabelColor: AppColors.inkFaint,
                 indicatorColor: AppColors.accent,
-                tabs: const [Tab(text: 'Phone'), Tab(text: 'Username')],
+                tabs: const [
+                  Tab(text: 'Phone'),
+                  Tab(text: 'Username'),
+                ],
               ),
               const SizedBox(height: 20),
               SizedBox(
@@ -160,8 +188,9 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           UnderlineField(
-                              label: AppLocalizations.t('ui.username'),
-                              controller: _usernameController),
+                            label: AppLocalizations.t('ui.username'),
+                            controller: _usernameController,
+                          ),
                           const SizedBox(height: 16),
                           UnderlineField(
                             label: AppLocalizations.t('ui.password'),
@@ -176,14 +205,19 @@ class _LoginViewState extends State<_LoginView> with SingleTickerProviderStateMi
                                   builder: (_) => const ForgotPasswordScreen(),
                                 ),
                               ),
-                              child: Text(AppLocalizations.t('ui.forgotPassword')),
+                              child: Text(
+                                AppLocalizations.t('ui.forgotPassword'),
+                              ),
                             ),
                           ),
                           if (vm.errorMessage != null) ...[
                             const SizedBox(height: 4),
                             Text(
                               vm.errorMessage!,
-                              style: const TextStyle(color: AppColors.error, fontSize: 13),
+                              style: const TextStyle(
+                                color: AppColors.error,
+                                fontSize: 13,
+                              ),
                             ),
                           ],
                           const SizedBox(height: 12),

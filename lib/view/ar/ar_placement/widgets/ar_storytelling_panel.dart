@@ -20,19 +20,20 @@ class ARStorytellingPanel extends StatelessWidget {
       StoryPlaybackState playbackState,
       bool show3d,
     })>(
-      selector: (_, vm) => (
+      selector: (context, vm) => (
         isPlaced: vm.isAvatarPlaced,
         hasStarted: vm.hasStartedStorytelling,
         subtitle: vm.currentSubtitle,
         playbackState: vm.playbackState,
         show3d: vm.show3DLandmarkModel,
       ),
-      builder: (context, data, _) {
+      builder: (context, data, child) {
         if (!data.isPlaced) return const SizedBox.shrink();
 
         final isPlaying = data.playbackState == StoryPlaybackState.playing;
         final isPaused = data.playbackState == StoryPlaybackState.paused;
         final isCompleted = data.playbackState == StoryPlaybackState.completed;
+        final bool show3DModel = data.show3d && (isPlaying || isPaused || isCompleted);
 
         final String actionLabel = isPlaying
             ? "Pause"
@@ -64,18 +65,13 @@ class ARStorytellingPanel extends StatelessWidget {
 
                   const SizedBox(height: 10),
 
-                  // 2. 3D Model Viewport (Pre-compiled in background for instant display)
-                  Expanded(
-                    child: Visibility(
-                      visible: data.show3d,
-                      maintainState: true,
-                      maintainAnimation: true,
-                      maintainSize: false,
-                      maintainSemantics: false,
-                      maintainInteractivity: false,
-                      child: const AR3DViewerOverlay(),
-                    ),
-                  ),
+                  // 2. 3D Model Viewport (Only rendered when story playback has started)
+                  if (show3DModel)
+                    const Expanded(
+                      child: AR3DViewerOverlay(),
+                    )
+                  else
+                    const Spacer(),
 
                   const SizedBox(height: 12),
 
@@ -169,17 +165,18 @@ class ARStorytellingPanel extends StatelessWidget {
                     fontSize: 12,
                   ),
                 ),
-              IconButton(
-                icon: Icon(
-                  (data.show3d as bool) ? Icons.view_in_ar : Icons.view_in_ar_outlined,
-                  color: (data.show3d as bool) ? accentOrange : Colors.white70,
-                  size: 22,
+              if (isPlaying || isPaused || isCompleted)
+                IconButton(
+                  icon: Icon(
+                    (data.show3d as bool) ? Icons.view_in_ar : Icons.view_in_ar_outlined,
+                    color: (data.show3d as bool) ? accentOrange : Colors.white70,
+                    size: 22,
+                  ),
+                  tooltip: 'Toggle 3D Model',
+                  onPressed: () {
+                    context.read<ARPlacementViewModel>().toggle3DModelViewer();
+                  },
                 ),
-                tooltip: 'Toggle 3D Model',
-                onPressed: () {
-                  context.read<ARPlacementViewModel>().toggle3DModelViewer();
-                },
-              ),
             ],
           ),
         ],

@@ -22,7 +22,7 @@ class ARPlacementScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<ARPlacementViewModel>(
-      create: (_) => ARPlacementViewModel()..init(selectedMarker),
+      create: (context) => ARPlacementViewModel()..init(selectedMarker),
       child: const _ARPlacementContent(),
     );
   }
@@ -75,22 +75,10 @@ class _ARPlacementContentState extends State<_ARPlacementContent> with WidgetsBi
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (!mounted) return;
-    final vm = context.read<ARPlacementViewModel>();
-
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      // 1. Pause active narration audio when app goes to background
-      vm.pauseStorytelling();
-      // 2. Prepare native camera surface for clean recycling
+    if (state == AppLifecycleState.resumed) {
+      setState(() => _isNativeViewReady = true);
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       setState(() => _isNativeViewReady = false);
-    } else if (state == AppLifecycleState.resumed) {
-      // 3. Re-mount native AR surface cleanly upon returning from background (prevents black screen)
-      Future.delayed(const Duration(milliseconds: 150), () {
-        if (mounted) {
-          setState(() => _isNativeViewReady = true);
-        }
-      });
     }
   }
 
@@ -116,8 +104,8 @@ class _ARPlacementContentState extends State<_ARPlacementContent> with WidgetsBi
 
           // 1.5 AR Performance Shield: When 3D Model is active, occlude background AR surface to save GPU
           Selector<ARPlacementViewModel, bool>(
-            selector: (_, model) => model.show3DLandmarkModel,
-            builder: (context, show3d, _) {
+            selector: (context, model) => model.show3DLandmarkModel,
+            builder: (context, show3d, child) {
               return IgnorePointer(
                 child: AnimatedOpacity(
                   opacity: show3d ? 0.82 : 0.0,
@@ -136,8 +124,8 @@ class _ARPlacementContentState extends State<_ARPlacementContent> with WidgetsBi
 
           // 5. Lightweight Non-blocking Model Placement Indicator
           Selector<ARPlacementViewModel, bool>(
-            selector: (_, model) => model.isModelLoading,
-            builder: (context, isLoading, _) {
+            selector: (context, model) => model.isModelLoading,
+            builder: (context, isLoading, child) {
               if (!isLoading) return const SizedBox.shrink();
               return Positioned(
                 bottom: 120,
