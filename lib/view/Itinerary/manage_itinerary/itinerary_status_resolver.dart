@@ -1,27 +1,23 @@
-// lib/view/Itinerary/manage_itinerary/itinerary_status_resolver.dart
-//
-// Determines the temporal status of an itinerary (Past / Ongoing / Upcoming)
-// from its start and end dates, without relying on a stored status field.
-
-/// The three temporal states an itinerary can be in.
 enum ItineraryTemporalStatus {
   past,
   ongoing,
   upcoming;
 
   bool get isReadOnly => this == past;
-  bool get isEditable => this == ongoing;
+  // Editable for both ongoing and upcoming
+  bool get isEditable => this == ongoing || this == upcoming;
   bool get allowsProgressRecording => this == ongoing;
   bool get isUpcoming => this == upcoming;
   bool get isPast => this == past;
   bool get isOngoing => this == ongoing;
 }
 
-/// Resolves the temporal status from itinerary dates and the current time.
+/// Resolves the temporal status from itinerary dates, comparing only the
+/// calendar day (year-month-day) so stored time-of-day never affects
+/// whether a trip is upcoming / ongoing / past.
 class ItineraryStatusResolver {
   ItineraryStatusResolver._();
 
-  /// Determine the [ItineraryTemporalStatus] for the given dates.
   static ItineraryTemporalStatus resolve({
     required DateTime startDate,
     required DateTime endDate,
@@ -29,19 +25,20 @@ class ItineraryStatusResolver {
   }) {
     final current = now ?? DateTime.now();
 
-    if (current.isBefore(startDate) &&
-        !_isSameDay(current, startDate)) {
+    // Normalise to calendar-day boundaries so time-of-day stored in
+    // startDate / endDate never causes misclassification.
+    final today = DateTime(current.year, current.month, current.day);
+    final startDay = DateTime(startDate.year, startDate.month, startDate.day);
+    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+
+    if (today.isBefore(startDay)) {
       return ItineraryTemporalStatus.upcoming;
     }
 
-    if (current.isAfter(endDate) && !_isSameDay(current, endDate)) {
+    if (today.isAfter(endDay)) {
       return ItineraryTemporalStatus.past;
     }
 
-    // current is within [startDate, endDate] (inclusive of both boundaries).
     return ItineraryTemporalStatus.ongoing;
   }
-
-  static bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 }

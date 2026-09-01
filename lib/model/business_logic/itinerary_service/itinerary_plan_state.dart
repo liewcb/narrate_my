@@ -1,5 +1,3 @@
-// lib/model/business_logic/itinerary_service/itinerary_plan_state.dart
-
 import 'package:flutter/foundation.dart';
 import '../../entities/place.dart';
 import 'candidate_retrieval_service.dart';

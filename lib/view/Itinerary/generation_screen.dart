@@ -8,9 +8,9 @@ import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_generation_vm.dart';
 
-
 class GenerationScreen extends StatefulWidget {
   final TripDraft draft;
+
   const GenerationScreen({super.key, required this.draft});
 
   @override
@@ -36,6 +36,7 @@ class _GenerationScreenState extends State<GenerationScreen> {
 
 class _GenerationBody extends StatelessWidget {
   final List<Offset> planePositions;
+
   const _GenerationBody({required this.planePositions});
 
   @override
@@ -58,13 +59,21 @@ class _GenerationBody extends StatelessWidget {
               explorationTime: vm.draft.explorationTime ?? 'Standard',
               mustVisitPlaceIds: List.of(vm.draft.mustVisitPlaceIds),
               tripStartDate: vm.draft.startDate ?? DateTime.now(),
-              onRegenerate: () => vm.regenerate(),
-              onSave: () => vm.saveItinerary(),
+              // 👇 Regenerate navigates back to a fresh generation screen
+              onRegenerate: () async {
+                await Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GenerationScreen(draft: vm.draft),
+                  ),
+                );
+              },
+              userId: vm.userId,
+              draft: vm.draft,
             ),
           ),
         );
       });
-      // Return a placeholder while navigation happens
       return const SizedBox.shrink();
     }
 
@@ -116,22 +125,26 @@ class _GenerationBody extends StatelessWidget {
   }
 }
 
-
 class _MapHero extends StatefulWidget {
   final Offset planeOffset;
+
   const _MapHero({required this.planeOffset});
 
   @override
   State<_MapHero> createState() => __MapHeroState();
 }
 
-class __MapHeroState extends State<_MapHero> with SingleTickerProviderStateMixin {
+class __MapHeroState extends State<_MapHero>
+    with SingleTickerProviderStateMixin {
   late AnimationController _pulse;
 
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(duration: const Duration(seconds: 2), vsync: this)..repeat();
+    _pulse = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
   }
 
   @override
@@ -145,9 +158,7 @@ class __MapHeroState extends State<_MapHero> with SingleTickerProviderStateMixin
     return Container(
       height: 280,
       // Simplification: Clean corner radius 16px, shadows removed
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: Stack(
@@ -171,11 +182,25 @@ class __MapHeroState extends State<_MapHero> with SingleTickerProviderStateMixin
               ),
             ),
             CustomPaint(painter: _RoutePainter()),
-            _buildPin(left: 0.08, bottom: 0.72, color: AppColors.brandGreen, label: 'KL · 3d'),
-            _buildPin(left: 0.75, bottom: 0.32, color: AppColors.brandTerracotta, label: 'Penang · 2d'),
+            _buildPin(
+              left: 0.08,
+              bottom: 0.72,
+              color: AppColors.brandGreen,
+              label: 'KL · 3d',
+            ),
+            _buildPin(
+              left: 0.75,
+              bottom: 0.32,
+              color: AppColors.brandTerracotta,
+              label: 'Penang · 2d',
+            ),
             AnimatedPositioned(
-              left: widget.planeOffset.dx * (MediaQuery.of(context).size.width - 48),
-              bottom: widget.planeOffset.dy * (MediaQuery.of(context).size.height - 48),
+              left:
+                  widget.planeOffset.dx *
+                  (MediaQuery.of(context).size.width - 48),
+              bottom:
+                  widget.planeOffset.dy *
+                  (MediaQuery.of(context).size.height - 48),
               duration: const Duration(milliseconds: 1300),
               curve: Curves.easeInOut,
               child: Container(
@@ -185,7 +210,11 @@ class __MapHeroState extends State<_MapHero> with SingleTickerProviderStateMixin
                   color: AppColors.white,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.flight, color: AppColors.brandGreen, size: 18),
+                child: const Icon(
+                  Icons.flight,
+                  color: AppColors.brandGreen,
+                  size: 18,
+                ),
               ),
             ),
             Positioned(
@@ -194,7 +223,10 @@ class __MapHeroState extends State<_MapHero> with SingleTickerProviderStateMixin
               right: 0,
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.white.withOpacity(0.95),
                     borderRadius: BorderRadius.circular(8),
@@ -205,7 +237,10 @@ class __MapHeroState extends State<_MapHero> with SingleTickerProviderStateMixin
                       Container(
                         width: 8,
                         height: 8,
-                        decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+                        decoration: const BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       // Hierarchy: 14px status label
@@ -228,7 +263,12 @@ class __MapHeroState extends State<_MapHero> with SingleTickerProviderStateMixin
     );
   }
 
-  Widget _buildPin({required double left, required double bottom, required Color color, required String label}) {
+  Widget _buildPin({
+    required double left,
+    required double bottom,
+    required Color color,
+    required String label,
+  }) {
     return Positioned(
       left: left * (MediaQuery.of(context).size.width - 48),
       bottom: bottom * (MediaQuery.of(context).size.height - 48),
@@ -250,11 +290,12 @@ class __MapHeroState extends State<_MapHero> with SingleTickerProviderStateMixin
             child: Container(
               width: 40,
               height: 40,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: const Icon(
+                Icons.location_on,
+                color: Colors.white,
+                size: 20,
               ),
-              child: const Icon(Icons.location_on, color: Colors.white, size: 20),
             ),
           ),
           const SizedBox(height: 4),
@@ -285,7 +326,12 @@ class _RoutePainter extends CustomPainter {
 
     final path = Path()
       ..moveTo(size.width * 0.08, size.height * 0.72)
-      ..quadraticBezierTo(size.width * 0.45, size.height * 0.4, size.width * 0.75, size.height * 0.32);
+      ..quadraticBezierTo(
+        size.width * 0.45,
+        size.height * 0.4,
+        size.width * 0.75,
+        size.height * 0.32,
+      );
 
     const double dashWidth = 8.0;
     const double dashSpace = 8.0;
@@ -314,6 +360,7 @@ class _RoutePainter extends CustomPainter {
 class _LoadingContent extends StatelessWidget {
   final String stage;
   final int currentStep;
+
   const _LoadingContent({required this.stage, required this.currentStep});
 
   @override
@@ -353,6 +400,7 @@ class _LoadingContent extends StatelessWidget {
 
 class _StepList extends StatelessWidget {
   final int currentStep;
+
   const _StepList({required this.currentStep});
 
   @override
@@ -371,7 +419,9 @@ class _StepList extends StatelessWidget {
           final isDone = index < currentStep;
           final isActive = index == currentStep;
           return Padding(
-            padding: EdgeInsets.only(bottom: index == stages.length - 1 ? 0 : 16),
+            padding: EdgeInsets.only(
+              bottom: index == stages.length - 1 ? 0 : 16,
+            ),
             child: Row(
               children: [
                 Container(
@@ -397,14 +447,20 @@ class _StepList extends StatelessWidget {
                       ? const Icon(Icons.check, color: Colors.white, size: 16)
                       : isActive
                       ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(AppColors.brandGreen),
-                    ),
-                  )
-                      : const Icon(Icons.radio_button_unchecked, size: 16, color: AppColors.outline),
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(
+                              AppColors.brandGreen,
+                            ),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.radio_button_unchecked,
+                          size: 16,
+                          color: AppColors.outline,
+                        ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -413,8 +469,12 @@ class _StepList extends StatelessWidget {
                     stages[index],
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: isDone || isActive ? FontWeight.bold : FontWeight.normal,
-                      color: isDone || isActive ? AppColors.brandGreen : AppColors.black,
+                      fontWeight: isDone || isActive
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: isDone || isActive
+                          ? AppColors.brandGreen
+                          : AppColors.black,
                     ),
                   ),
                 ),
@@ -459,8 +519,13 @@ class _FunFact extends StatelessWidget {
           Container(
             width: 32,
             height: 32,
-            decoration: const BoxDecoration(color: AppColors.white, shape: BoxShape.circle),
-            child: const Center(child: Text('💡', style: TextStyle(fontSize: 16))),
+            decoration: const BoxDecoration(
+              color: AppColors.white,
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Text('💡', style: TextStyle(fontSize: 16)),
+            ),
           ),
           const SizedBox(width: 16),
           // Hierarchy: Paragraph text 14px
@@ -475,7 +540,8 @@ class _FunFact extends StatelessWidget {
                 ),
                 children: const [
                   TextSpan(
-                    text: "Penang's George Town has over 12,000 heritage buildings - we'll route you through the best street art alleys.",
+                    text:
+                        "Penang's George Town has over 12,000 heritage buildings - we'll route you through the best street art alleys.",
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.normal,
@@ -494,6 +560,7 @@ class _FunFact extends StatelessWidget {
 
 class _ErrorView extends StatelessWidget {
   final String message;
+
   const _ErrorView({required this.message});
 
   @override

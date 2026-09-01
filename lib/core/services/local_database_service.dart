@@ -18,7 +18,7 @@ class LocalDatabaseService {
     final path = join(await getDatabasesPath(), 'narratemy.db');
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onConfigure: (db) async {
         // Enforce Foreign Key constraints in SQLite
         await db.execute('PRAGMA foreign_keys = ON');
@@ -31,7 +31,7 @@ class LocalDatabaseService {
   /// Migrate older databases (created before the itinerary tables existed)
   /// so they gain the same schema as a fresh install.
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
+    if (oldVersion < 2) {      // --- Existing tables from version 1 ---
       await db.execute('''
         CREATE TABLE IF NOT EXISTS destinations (
           destination_id TEXT PRIMARY KEY,
@@ -68,6 +68,8 @@ class LocalDatabaseService {
           total_days INTEGER NOT NULL,
           exploration_time TEXT NOT NULL,
           travel_pace TEXT NOT NULL,
+          travel_type TEXT DEFAULT 'Solo',
+          transportation_mode TEXT DEFAULT 'walking',
           interests TEXT NOT NULL,
           cover_image_url TEXT,
           status TEXT DEFAULT 'UPCOMING',
@@ -99,6 +101,38 @@ class LocalDatabaseService {
           FOREIGN KEY (place_id) REFERENCES places (id) ON DELETE CASCADE
         )
       ''');
+
+      // --- NEW TABLE added in version 2 (for hotspot caching) ---
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS destination_hotspots (
+          id TEXT PRIMARY KEY,
+          destination_id TEXT NOT NULL,
+          hotspot_name TEXT NOT NULL,
+          latitude REAL NOT NULL,
+          longitude REAL NOT NULL,
+          suggested_radius_km REAL DEFAULT 2.0,
+          primary_theme TEXT NOT NULL,
+          tags TEXT NOT NULL
+        )
+      ''');
+    }
+
+    // Version 3: add the itinerary header columns that ItineraryDTO maps
+    // (travel_type, transportation_mode). Existing databases created at
+    // version 2 are missing them, which made local inserts fail.
+    if (oldVersion < 3) {
+      final cols = await db.rawQuery('PRAGMA table_info(itineraries)');
+      final existing = cols.map((c) => c['name'].toString()).toSet();
+      if (!existing.contains('travel_type')) {
+        await db.execute(
+          "ALTER TABLE itineraries ADD COLUMN travel_type TEXT DEFAULT 'Solo'",
+        );
+      }
+      if (!existing.contains('transportation_mode')) {
+        await db.execute(
+          "ALTER TABLE itineraries ADD COLUMN transportation_mode TEXT DEFAULT 'walking'",
+        );
+      }
     }
   }
 
@@ -172,6 +206,20 @@ class LocalDatabaseService {
         updated_at TEXT NOT NULL,
         FOREIGN KEY (itinerary_id) REFERENCES itineraries (itinerary_id) ON DELETE CASCADE,
         FOREIGN KEY (place_id) REFERENCES places (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // 5. Destination Hotspots Table (NEW – for caching hotspots locally)
+    await db.execute('''
+      CREATE TABLE destination_hotspots (
+        id TEXT PRIMARY KEY,
+        destination_id TEXT NOT NULL,
+        hotspot_name TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        suggested_radius_km REAL DEFAULT 2.0,
+        primary_theme TEXT NOT NULL,
+        tags TEXT NOT NULL
       )
     ''');
   }

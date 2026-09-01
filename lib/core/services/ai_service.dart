@@ -6,9 +6,31 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_keys.dart';
 import '../config/itinerary_constants.dart';
+import '../../model/business_logic/itinerary_service/ai_prompt_builder.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_repair_service.dart';
 import '../../model/entities/place.dart';
+
+/// Raised when an AI provider returned a structurally invalid, empty, or
+/// truncated model output. This is a MODEL-OUTPUT failure, NOT an
+/// API/request failure — it must never be "solved" by silently downgrading
+/// the structured JSON request to an unstructured one.
+class AiModelOutputException implements Exception {
+  final String message;
+  const AiModelOutputException(this.message);
+  @override
+  String toString() => message;
+}
+
+/// Raised for HTTP-level / request-level failures (non-200 status, gateway
+/// rejection, etc.). These MAY justify a provider fallback.
+class AiApiException implements Exception {
+  final String message;
+  final int? statusCode;
+  const AiApiException(this.message, {this.statusCode});
+  @override
+  String toString() => message;
+}
 
 /// Unified AI service using:
 /// - Primary: B.AI Gateway (DeepSeek V4 Flash/Pro)
@@ -41,8 +63,9 @@ class AIService {
   /// flooding the console). The prompt SIZE is always printed.
   static const bool debugAiPrompt = false;
 
-  /// Maximum regeneration attempts for a single failed AI planning day.
-  static const int maxAiRegenerationAttempts = 2;
+  /// Print the per-candidate dynamic durations produced by the candidate
+  /// evaluation stage (off by default).
+  static const bool debugAiEvaluationDurations = false;
 
   AIService({
     String? baiApiKey,
@@ -75,9 +98,18 @@ Return ONLY a number. Examples: 120, 60, 90.
     return match != null ? int.parse(match.group(0)!) : 120;
   }
 
-  /// Public wrapper to generate raw text from a custom prompt
+  /// Public wrapper to generate raw text from a custom prompt.
+  ///
+  /// The pipeline uses this as the sole AI entry point for both planning and
+  /// scheduling phases. The returned text is normalised (code fences removed,
+  /// JSON extracted) and ready for parsing by the caller.
   Future<String> generateRawContent(String prompt) async {
-    return await _callAi(prompt, timeout: aiRequestTimeout);
+    debugPrint('[AI INPUT]');
+    debugPrint('Prompt characters: ${prompt.length}');
+    final response = await _callAi(prompt, timeout: aiRequestTimeout);
+    debugPrint('[AI OUTPUT]');
+    debugPrint('Response characters: ${response.length}');
+    return response;
   }
 
   // ============================================================
@@ -225,15 +257,11 @@ Return ONLY a number. Examples: 120, 60, 90.
         'placeId': c.placeId,
         'name': c.name,
         'destinationId': c.destinationId,
-        'destinationName': c.destinationName,
         'clusterId': c.clusterId,
         'latitude': c.latitude,
         'longitude': c.longitude,
         'category': c.category,
-        'types': c.types,
         'rating': c.rating,
-        'interestScore': c.interestScore,
-        'finalScore': c.finalScore,
         'isMustVisit': c.isMustVisit,
         'visitDurationMinutes': c.visitDurationMinutes,
         'openingHours': c.openingHours,
@@ -277,9 +305,10 @@ Return ONLY a number. Examples: 120, 60, 90.
         'reasonable.');
     buffer.writeln('- Must-visits must appear exactly once and may not be '
         'replaced by invented alternatives.');
-    buffer.writeln('- For each day, you MUST assign a unique, sequential '
-        '"stopOrder" starting from 1. '
-        'Example: "stopOrder": 1, "stopOrder": 2, ...');
+    buffer.writeln('- Return each day\'s stops in the intended chronological '
+        'sequence (stop 1 first, stop 2 second, ...). Do NOT emit a '
+        '"stopOrder" field — the ordering of the array IS the stop order and '
+        'will be assigned by the system.');
     buffer.writeln('');
 
     // ── OUTPUT CONTRACT ─────────────────────────────────────────
@@ -317,7 +346,6 @@ Return ONLY a number. Examples: 120, 60, 90.
       "reasoning": "Short explanation of why these places work well together.",
       "stops": [
         {
-          "stopOrder": 1,
           "placeId": "EXACT_CANDIDATE_PLACE_ID",
           "startTime": "09:30",
           "endTime": "11:00",
@@ -333,6 +361,10 @@ Return ONLY a number. Examples: 120, 60, 90.
   }
 
   /// Parses the raw planner JSON into a list of [AIDaySchedule].
+  ///
+  /// The model returns stops in chronological order; this method assigns
+  /// the sequential `stopOrder` (1, 2, 3, ...) so the final ordering is
+  /// deterministic and owned by Dart.
   List<AIDaySchedule> _parsePlannerDays(String rawJson) {
     final cleaned = _normaliseModelText(rawJson);
     final data = jsonDecode(cleaned) as Map<String, dynamic>;
@@ -346,11 +378,12 @@ Return ONLY a number. Examples: 120, 60, 90.
       final map = rawDay as Map<String, dynamic>;
       final rawStops = map['stops'] ?? map['schedule'];
       final schedule = <AIScheduleStop>[];
+      var order = 1;
       if (rawStops is List) {
         for (final rawStop in rawStops) {
           final s = rawStop as Map<String, dynamic>;
           schedule.add(AIScheduleStop(
-            stopOrder: (s['stopOrder'] as num?)?.toInt() ?? 0,
+            stopOrder: order++,
             placeId: s['placeId'] as String? ?? '',
             startTime: s['startTime'] as String? ?? '',
             endTime: s['endTime'] as String? ?? '',
@@ -373,6 +406,194 @@ Return ONLY a number. Examples: 120, 60, 90.
       ));
     }
     return days;
+  }
+
+  // ============================================================
+  // 1b. DEEPSEEK CANDIDATE EVALUATION
+  //
+  // DeepSeek estimates a dynamic visit duration for EACH candidate place,
+  // plus its relevance to the traveler's interests and a planning priority.
+  // The result is candidate METADATA only — the deterministic
+  // scheduler/validator remain the final authority on the schedule.
+  // ============================================================
+
+  Future<AICandidateEvaluationResult> evaluateCandidates({
+    required List<AiCandidateContext> candidates,
+    required List<String> interests,
+    required List<String> mustVisitIds,
+    required int totalDays,
+    required String explorationTime,
+    String? destinationName,
+  }) async {
+    if (candidates.isEmpty) {
+      return const AICandidateEvaluationResult(success: true);
+    }
+
+    final knownIds = candidates.map((c) => c.placeId).toSet();
+    final prompt = _buildCandidateEvaluationPrompt(
+      candidates: candidates,
+      interests: interests,
+      mustVisitIds: mustVisitIds,
+      totalDays: totalDays,
+      explorationTime: explorationTime,
+      destinationName: destinationName,
+    );
+
+    debugPrint('[STAGE 14 - DEEPSEEK CANDIDATE EVALUATION]');
+    debugPrint('Candidates entering: ${candidates.length}');
+    debugPrint('Prompt characters: ${prompt.length}');
+    if (debugAiPrompt) {
+      debugPrint('─── FULL EVALUATION PROMPT ───\n$prompt\n─── END PROMPT ───');
+    }
+
+    try {
+      final raw = await _callAi(prompt, timeout: aiRequestTimeout);
+      debugPrint('[AI EVALUATION RESPONSE]');
+      debugPrint('Status: ok');
+      debugPrint('Response characters: ${raw.length}');
+      return _parseCandidateEvaluations(raw, knownIds: knownIds);
+    } catch (e) {
+      debugPrint('❌ [AI CANDIDATE EVALUATION] Failed: $e');
+      return AICandidateEvaluationResult(
+        success: false,
+        errorMessage: 'AI candidate evaluation failed: $e',
+      );
+    }
+  }
+
+  /// Builds the concise candidate-evaluation prompt. Only the fields needed
+  /// to estimate a visit duration are sent (place id, name, destination,
+  /// cluster, category, rating, score, must-visit flag, opening hours).
+  String _buildCandidateEvaluationPrompt({
+    required List<AiCandidateContext> candidates,
+    required List<String> interests,
+    required List<String> mustVisitIds,
+    required int totalDays,
+    required String explorationTime,
+    String? destinationName,
+  }) {
+    final window = ItineraryConstants.explorationWindows[explorationTime] ??
+        ItineraryConstants.explorationWindows['Standard']!;
+    final winStart = '${window.startHour.toString().padLeft(2, '0')}:'
+        '${window.startMinute.toString().padLeft(2, '0')}';
+    final winEnd = '${window.endHour.toString().padLeft(2, '0')}:'
+        '${window.endMinute.toString().padLeft(2, '0')}';
+
+    final buffer = StringBuffer();
+    buffer.writeln('You are an expert travel-time ESTIMATOR. For EACH '
+        'candidate place below, estimate how long a typical traveler would '
+        'reasonably spend there, how relevant it is to the traveler\'s '
+        'interests, and a planning priority.');
+    buffer.writeln('');
+    buffer.writeln('TRIP');
+    buffer.writeln('Total days: $totalDays');
+    buffer.writeln('Daily exploration window: $winStart to $winEnd');
+    buffer.writeln('Traveler interests: '
+        '${interests.isEmpty ? 'none' : interests.join(', ')}');
+    buffer.writeln('Destination: ${destinationName ?? 'Unknown'}');
+    buffer.writeln('');
+    buffer.writeln('DURATION GUIDANCE (rough ranges only — choose the most '
+        'reasonable value for each place based on its category, scale and '
+        'context; do NOT apply one fixed value to a category):');
+    buffer.writeln('- Viewpoint / lookout: 30-60 min');
+    buffer.writeln('- Temple / place of worship: 45-75 min');
+    buffer.writeln('- Museum / gallery: 90-120 min');
+    buffer.writeln('- Park / garden / natural feature: 60-90 min');
+    buffer.writeln('- Zoo / aquarium / amusement park: 120-180 min');
+    buffer.writeln('- Shopping area / mall: 90-120 min');
+    buffer.writeln('- Restaurant / cafe: 45-90 min');
+    buffer.writeln('- Generic attraction: 45-90 min');
+    buffer.writeln('Choose any reasonable value between 30 and 240 minutes.');
+    buffer.writeln('');
+    buffer.writeln('CANDIDATES (evaluate every one — NEVER invent a place):');
+    for (final c in candidates) {
+      buffer.writeln(jsonEncode({
+        'place_id': c.placeId,
+        'name': c.name,
+        'destination': c.destination,
+        'cluster_id': c.clusterId,
+        'category': c.category,
+        'rating': c.rating,
+        'score': c.finalScore,
+        'is_must_visit': c.isMustVisit,
+        'opening_hours': c.openingHours ?? 'unknown',
+      }));
+    }
+    buffer.writeln('');
+    buffer.writeln('Return STRICT JSON ONLY (no Markdown fences) with exactly '
+        'this structure, one entry per candidate:');
+    buffer.writeln(r'''
+{
+  "evaluations": [
+    {
+      "place_id": "EXACT_PLACE_ID_FROM_CANDIDATES",
+      "estimated_visit_minutes": 90,
+      "relevance_score": 0.92,
+      "planning_priority": "high"
+    }
+  ]
+}
+''');
+    buffer.writeln('Rules:');
+    buffer.writeln('- "place_id" MUST be one of the candidate place_ids '
+        'exactly. Never invent a place_id.');
+    buffer.writeln('- Every candidate place_id must appear exactly once.');
+    buffer.writeln('- estimated_visit_minutes between 30 and 240.');
+    buffer.writeln('- planning_priority is "high", "medium" or "low".');
+    buffer.writeln('- Do NOT add fields other than those shown.');
+    return buffer.toString();
+  }
+
+  /// Parses the candidate-evaluation JSON. Unknown (invented) place IDs are
+  /// rejected and reported, never silently accepted. Durations are clamped to
+  /// the project's valid range.
+  AICandidateEvaluationResult _parseCandidateEvaluations(
+    String rawJson, {
+    required Set<String> knownIds,
+  }) {
+    final cleaned = _normaliseModelText(rawJson);
+    final data = jsonDecode(cleaned) as Map<String, dynamic>;
+    final rawEvaluations = data['evaluations'];
+    if (rawEvaluations is! List) {
+      throw const FormatException(
+        'AI evaluation output has no "evaluations" array.',
+      );
+    }
+
+    final evaluations = <String, AICandidateEvaluation>{};
+    final rejected = <String>[];
+
+    for (final raw in rawEvaluations) {
+      final m = raw as Map<String, dynamic>;
+      final placeId = m['place_id'] as String? ?? '';
+      if (placeId.isEmpty) continue;
+      if (!knownIds.contains(placeId)) {
+        rejected.add(placeId);
+        continue;
+      }
+      final rawMinutes = (m['estimated_visit_minutes'] as num?)?.toInt() ?? 0;
+      final clamped = rawMinutes.clamp(
+        ItineraryConstants.minimumVisitDurationMinutes,
+        ItineraryConstants.maximumVisitDurationMinutes,
+      );
+      evaluations[placeId] = AICandidateEvaluation(
+        placeId: placeId,
+        estimatedVisitMinutes: clamped,
+        relevanceScore: (m['relevance_score'] as num?)?.toDouble() ?? 0.0,
+        planningPriority: m['planning_priority'] as String? ?? 'medium',
+      );
+    }
+
+    final missing = knownIds
+        .where((id) => !evaluations.containsKey(id))
+        .toList(growable: false);
+
+    return AICandidateEvaluationResult(
+      success: evaluations.isNotEmpty,
+      evaluations: evaluations,
+      rejectedPlaceIds: rejected,
+      missingPlaceIds: missing,
+    );
   }
 
   // ============================================================
@@ -953,10 +1174,19 @@ Return valid JSON only (no Markdown fences):
     debugPrint('Prompt characters: ${prompt.length}');
     debugPrint('Timeout: ${timeout.inSeconds}s');
 
+    // Track whether ANY provider failed because of a timeout so the final
+    // error is user-facing ("did not respond") rather than a raw exception.
+    var sawTimeout = false;
+
     // 1. Try B.AI Gateway (DeepSeek)
     if (baiApiKey.isNotEmpty && baiModel.isNotEmpty) {
       try {
         return await _callBai(prompt, timeout: timeout);
+      } on TimeoutException {
+        sawTimeout = true;
+        debugPrint('[AI FALLBACK]');
+        debugPrint('Primary provider timed out: B.AI');
+        debugPrint('Trying: OpenRouter');
       } catch (error) {
         debugPrint('[AI FALLBACK]');
         debugPrint('Primary provider failed: B.AI — $error');
@@ -969,6 +1199,11 @@ Return valid JSON only (no Markdown fences):
         openRouterApiKey.startsWith('sk-or-v1-')) {
       try {
         return await _callOpenRouter(prompt, timeout: fallbackProviderTimeout);
+      } on TimeoutException {
+        sawTimeout = true;
+        debugPrint('[AI FALLBACK]');
+        debugPrint('OpenRouter timed out.');
+        debugPrint('Trying: Cohere');
       } catch (error) {
         debugPrint('[AI FALLBACK]');
         debugPrint('OpenRouter failed: $error');
@@ -980,9 +1215,18 @@ Return valid JSON only (no Markdown fences):
     if (cohereApiKey.isNotEmpty) {
       try {
         return await _callCohere(prompt, timeout: fallbackProviderTimeout);
+      } on TimeoutException {
+        sawTimeout = true;
+        debugPrint('Cohere timed out.');
       } catch (error) {
         debugPrint('Cohere failed: $error');
       }
+    }
+
+    if (sawTimeout) {
+      throw TimeoutException(
+        'All AI providers did not respond in time.',
+      );
     }
 
     throw Exception(
@@ -994,13 +1238,24 @@ Return valid JSON only (no Markdown fences):
 
   Future<String> _callBai(String prompt, {Duration timeout = aiRequestTimeout}) async {
     try {
-      // Try with structured JSON output first. Some gateways reject
-      // `response_format`, so fall back to a plain request on failure.
+      // Try with structured JSON output first (the itinerary planner
+      // REQUIRES strict JSON). Some gateways reject `response_format` at the
+      // transport level, so we only fall back to a plain request for API /
+      // request failures — NEVER for model-output failures (empty, malformed
+      // or truncated JSON). Those are rethrown so the pipeline can regenerate.
       try {
         return await _postBai(prompt, enforceJson: true, timeout: timeout);
+      } on AiModelOutputException {
+        rethrow;
+      } on FormatException {
+        rethrow;
       } catch (e) {
         debugPrint('⚠️ [B.AI] structured JSON request failed — retrying plain: $e');
-        return await _postBai(prompt, enforceJson: false, timeout: timeout);
+        return await _postBai(
+          prompt,
+          enforceJson: false,
+          timeout: timeout,
+        );
       }
     } catch (e) {
       // 🛑 Catch and print the exact reason for failure before rethrowing
@@ -1030,50 +1285,96 @@ Return valid JSON only (no Markdown fences):
             {'role': 'user', 'content': prompt},
           ],
           'temperature': 0.2,
-          'max_tokens': 8192,
+          'max_tokens': 16384,
           'reasoning': {'effort': 'low'},
           'stream': false,
           if (enforceJson) 'response_format': {'type': 'json_object'},
         }),
       ).timeout(timeout);
 
+      final elapsedMs = sw.elapsedMilliseconds;
+
       debugPrint('[AI RESPONSE]');
       debugPrint('Provider: B.AI (DeepSeek)');
-      debugPrint('Status: ${response.statusCode}');
-      debugPrint('Response characters: ${response.body.length}');
-      debugPrint('Elapsed: ${sw.elapsedMilliseconds}ms');
+      debugPrint('HTTP status: ${response.statusCode}');
+      debugPrint('Response body length: ${response.body.length}');
+      debugPrint('Elapsed: ${elapsedMs}ms');
 
       if (response.statusCode != 200) {
-        throw Exception(
+        throw AiApiException(
           'B.AI error (${response.statusCode}): ${response.body}',
+          statusCode: response.statusCode,
         );
       }
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      // Parse the response metadata safely. Never print the full body by
+      // default (keep `debugAiPrompt` for full prompt debugging).
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } on FormatException catch (e) {
+        throw AiModelOutputException(
+          'B.AI returned a 200 OK response whose body is not valid JSON: $e',
+        );
+      }
+
+      // Inspect choices[0] for finish_reason / message / reasoning_content.
+      String? finishReason;
+      Map<String, dynamic>? message;
       final choices = data['choices'];
       if (choices is List && choices.isNotEmpty && choices.first is Map) {
-        final message = (choices.first as Map)['message'];
-        if (message is Map) {
-          final content = message['content'];
-          if (content is String && content.trim().isNotEmpty) {
-            final normalised = _normaliseModelText(content);
-            if (normalised.trim().isEmpty) {
-              throw const FormatException(
-                'B.AI returned a 200 OK, but the JSON content was entirely empty.',
-              );
-            }
-            debugPrint('[AI RESPONSE] content parsed (${normalised.length} chars)');
-            return normalised;
-          }
-
-          throw const FormatException(
-            'B.AI returned 200 OK but `content` is empty. The model produced '
-            'only reasoning_content — refusing to treat reasoning text as the answer.',
-          );
+        final first = choices.first as Map;
+        finishReason = first['finish_reason']?.toString();
+        final rawMessage = first['message'];
+        if (rawMessage is Map) {
+          message = Map<String, dynamic>.from(rawMessage);
         }
       }
 
-      throw const FormatException('B.AI returned no text content.');
+      final content = message?['content'];
+      final reasoningContent = message?['reasoning_content'];
+      final contentLength = (content is String) ? content.length : 0;
+      final reasoningLength =
+          (reasoningContent is String) ? reasoningContent.length : 0;
+
+      debugPrint('finish_reason: ${finishReason ?? 'n/a'}');
+      debugPrint('message.content length: $contentLength');
+      debugPrint('reasoning_content length: $reasoningLength');
+      if (data['usage'] is Map) {
+        debugPrint('usage: ${jsonEncode(data['usage'])}');
+      }
+
+      // The model stopped because it hit the token limit — the output was
+      // truncated. Report this clearly so the caller can regenerate rather
+      // than treating a half-finished JSON object as a valid answer.
+      if (finishReason == 'length') {
+        debugPrint('⚠️ [B.AI] output truncated by token limit '
+            '(finish_reason=length). content=$contentLength, '
+            'reasoning=$reasoningLength');
+        throw const AiModelOutputException(
+          'B.AI output was truncated by the token limit '
+          '(finish_reason="length"). The model did not complete the response.',
+        );
+      }
+
+      if (content is String && content.trim().isNotEmpty) {
+        final normalised = _normaliseModelText(content);
+        if (normalised.trim().isEmpty) {
+          throw const AiModelOutputException(
+            'B.AI returned a 200 OK, but the JSON content was entirely empty.',
+          );
+        }
+        debugPrint('[AI RESPONSE] content parsed (${normalised.length} chars)');
+        return normalised;
+      }
+
+      throw AiModelOutputException(
+        (reasoningContent is String && reasoningContent.trim().isNotEmpty)
+            ? 'B.AI returned 200 OK but `content` is empty. The model produced '
+                'only reasoning_content — refusing to treat reasoning text as '
+                'the answer.'
+            : 'B.AI returned 200 OK but `content` is empty.',
+      );
     } on TimeoutException {
       debugPrint('[AI TIMEOUT]');
       debugPrint('Provider: B.AI (DeepSeek)');
@@ -1187,25 +1488,90 @@ Return valid JSON only (no Markdown fences):
 
   // ---------- Helpers ----------
 
+  /// Normalises a raw model response into clean text.
+  ///
+  /// Removes Markdown code fences and extracts the first balanced JSON
+  /// object/array from the response, so trailing prose (or text before the
+  /// JSON) never corrupts the JSON the caller parses. Braces inside string
+  /// literals are honoured.
   String _normaliseModelText(String text) {
     var value = text.trim();
 
-    // Remove Markdown code fences
-    if (value.startsWith('```')) {
-      value = value
-          .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
-          .replaceFirst(RegExp(r'\s*```$'), '')
-          .trim();
-    }
+    // Remove Markdown code fences (opening and closing).
+    value = value
+        .replaceFirst(RegExp(r'^```(?:json|dart)?\s*'), '')
+        .replaceFirst(RegExp(r'\s*```$'), '')
+        .trim();
 
-    // For JSON results, extract the actual JSON object.
-    final start = value.indexOf('{');
-    final end = value.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      return value.substring(start, end + 1);
-    }
+    // Extract the first balanced JSON object/array.
+    final extracted = _extractJson(value);
+    if (extracted != null) return extracted;
 
     return value;
+  }
+
+  /// Scans [text] and returns the first balanced JSON object (`{...}`) or
+  /// array (`[...]`) found, honouring string literals so braces inside
+  /// strings do not break the scan. Returns null when no balanced JSON
+  /// container exists.
+  String? _extractJson(String text) {
+    const openers = ['{', '['];
+    const closers = ['}', ']'];
+    bool inString = false;
+    bool escaped = false;
+
+    for (int i = 0; i < text.length; i++) {
+      final ch = text[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch == r'\') {
+          escaped = true;
+        } else if (ch == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch == '"') {
+        inString = true;
+        continue;
+      }
+
+      final openIdx = openers.indexOf(ch);
+      if (openIdx < 0) continue;
+
+      final closer = closers[openIdx];
+      var depth = 1;
+      var j = i + 1;
+      var inStr = false;
+      var esc = false;
+      for (; j < text.length; j++) {
+        final c = text[j];
+        if (inStr) {
+          if (esc) {
+            esc = false;
+          } else if (c == r'\') {
+            esc = true;
+          } else if (c == '"') {
+            inStr = false;
+          }
+          continue;
+        }
+        if (c == '"') {
+          inStr = true;
+          continue;
+        }
+        if (c == ch) {
+          depth++;
+        } else if (c == closer) {
+          depth--;
+          if (depth == 0) {
+            return text.substring(i, j + 1);
+          }
+        }
+      }
+    }
+    return null;
   }
 
   String _formatItinerary(List<ScheduledDay> days) {
@@ -1649,6 +2015,49 @@ class AIItineraryPlanningResult {
     required this.success,
     this.errorMessage,
     this.days,
+  });
+}
+
+// ============================================================
+//  DEEPSEEK CANDIDATE EVALUATION — RESULT TYPES
+// ============================================================
+
+/// DeepSeek's evaluation of a single candidate place (duration, relevance,
+/// priority).
+class AICandidateEvaluation {
+  final String placeId;
+  final int estimatedVisitMinutes;
+  final double relevanceScore;
+  final String planningPriority;
+
+  const AICandidateEvaluation({
+    required this.placeId,
+    required this.estimatedVisitMinutes,
+    this.relevanceScore = 0.0,
+    this.planningPriority = 'medium',
+  });
+}
+
+/// Aggregate result of DeepSeek candidate evaluation for the planning pool.
+class AICandidateEvaluationResult {
+  final bool success;
+  final String? errorMessage;
+
+  /// Keyed by placeId, one entry per successfully evaluated candidate.
+  final Map<String, AICandidateEvaluation> evaluations;
+
+  /// Place IDs that the AI invented (not in the supplied candidate set).
+  final List<String> rejectedPlaceIds;
+
+  /// Place IDs that were in the candidate set but the AI did not evaluate.
+  final List<String> missingPlaceIds;
+
+  const AICandidateEvaluationResult({
+    required this.success,
+    this.errorMessage,
+    this.evaluations = const {},
+    this.rejectedPlaceIds = const [],
+    this.missingPlaceIds = const [],
   });
 }
 

@@ -18,43 +18,62 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
 
   @override
   Future<List<BookmarkWithPlaceDTO>> getBookmarksWithPlaces(String userId) async {
+    // 1. Remote first (source of truth)
+    final remoteResult = await _remoteSource.fetchBookmarksWithPlaces(userId);
+
+    if (remoteResult.isNotEmpty) {
+      // Cache the authoritative remote data.
+      try {
+        await _localSource.cacheBookmarksWithPlaces(remoteResult);
+      } catch (e) {
+        print('[BookmarkRepo] Local cache write failed: $e');
+      }
+      return remoteResult;
+    }
+
+    // 2. Local cache fallback (offline)
     List<BookmarkWithPlaceDTO> localResult = [];
     try {
       localResult = await _localSource.fetchBookmarksWithPlaces(userId);
     } catch (e) {
       print('Local bookmarks not available: $e');
     }
-
-    if (localResult.isNotEmpty) return localResult;
-
-    final remoteResult = await _remoteSource.fetchBookmarksWithPlaces(userId);
-    if (remoteResult.isNotEmpty) {
-      await _localSource.cacheBookmarksWithPlaces(remoteResult);
-    }
-    return remoteResult;
+    return localResult;
   }
 
   @override
   Future<void> addBookmark(Bookmark bookmark) async {
-    // Insert locally first
-    await _localSource.insertBookmark(bookmark);
-    // Sync to remote (best-effort)
+    // 1. Insert remotely first (source of truth)
     try {
       await _remoteSource.addBookmark(bookmark);
     } catch (e) {
-      print('Remote add bookmark failed: $e');
+      print('[BookmarkRepo] Remote add bookmark failed: $e');
+      rethrow;
+    }
+
+    // 2. Cache locally on remote success (best-effort)
+    try {
+      await _localSource.insertBookmark(bookmark);
+    } catch (e) {
+      print('[BookmarkRepo] Local cache insert failed: $e');
     }
   }
 
   @override
   Future<void> removeBookmark(String bookmarkId) async {
-    // Delete locally first
-    await _localSource.deleteBookmark(bookmarkId);
-    // Sync to remote
+    // 1. Delete remotely first (source of truth)
     try {
       await _remoteSource.deleteBookmark(bookmarkId);
     } catch (e) {
-      print('Remote delete bookmark failed: $e');
+      print('[BookmarkRepo] Remote delete bookmark failed: $e');
+      rethrow;
+    }
+
+    // 2. Delete locally on remote success (best-effort)
+    try {
+      await _localSource.deleteBookmark(bookmarkId);
+    } catch (e) {
+      print('[BookmarkRepo] Local delete failed: $e');
     }
   }
 

@@ -53,19 +53,34 @@ class DestinationRepositoryImpl implements DestinationRepository {
 
   @override
   Future<Destination?> getDestinationById(String id) async {
-    final local = await _local.getById(id);
-    if (local != null) return local.toDomain();
-
-    final remote = await _remote.fetchById(id);
-    if (remote != null) {
-      await _local.insertDto(remote);
+    // 1. Remote first (source of truth)
+    try {
+      final remote = await _remote.fetchById(id);
+      if (remote != null) {
+        try {
+          await _local.insertDto(remote);
+        } catch (e) {
+          print('Local cache write failed: $e');
+        }
+        return remote.toDomain();
+      }
+    } catch (e) {
+      print('Remote fetchById failed: $e – falling back to local cache');
     }
-    return remote?.toDomain();
+
+    // 2. Local cache fallback
+    try {
+      final local = await _local.getById(id);
+      if (local != null) return local.toDomain();
+    } catch (e) {
+      print('Local getById failed: $e');
+    }
+    return null;
   }
 
   @override
   Future<List<Destination>> searchDestinations(String query) async {
-    // Local-only search (fast)
+    // Local-only search (fast, over cached reference data)
     final localDtos = await _local.getAll();
     final filtered = localDtos.where((dto) =>
         dto.destinationName.toLowerCase().contains(query.toLowerCase()));
@@ -104,13 +119,27 @@ class DestinationRepositoryImpl implements DestinationRepository {
 
   @override
   Future<bool> exists(String id) async {
-    final local = await _local.getById(id);
-    if (local != null) return true;
+    // 1. Remote first (source of truth)
+    try {
+      final remote = await _remote.fetchById(id);
+      if (remote != null) {
+        try {
+          await _local.insertDto(remote);
+        } catch (e) {
+          print('Local cache write failed: $e');
+        }
+        return true;
+      }
+    } catch (e) {
+      print('Remote fetchById failed: $e – falling back to local cache');
+    }
 
-    final remote = await _remote.fetchById(id);
-    if (remote != null) {
-      await _local.insertDto(remote);
-      return true;
+    // 2. Local cache fallback
+    try {
+      final local = await _local.getById(id);
+      return local != null;
+    } catch (e) {
+      print('Local getById failed: $e');
     }
     return false;
   }

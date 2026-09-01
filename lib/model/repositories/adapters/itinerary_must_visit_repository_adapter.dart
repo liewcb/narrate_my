@@ -20,7 +20,24 @@ class ItineraryMustVisitRepositoryImpl
 
   @override
   Future<List<ItineraryMustVisit>> getMustVisits(String itineraryId) async {
-    // Local-first
+    // 1. Remote first (source of truth)
+    try {
+      final remoteItems = await _remote.fetchForItinerary(itineraryId);
+      if (remoteItems.isNotEmpty) {
+        // Cache on remote success (best-effort)
+        try {
+          await _local.insertAll(remoteItems);
+        } catch (e) {
+          debugPrint('[MustVisitRepo] Local cache write failed: $e');
+        }
+        return remoteItems;
+      }
+    } catch (e) {
+      debugPrint('[MustVisitRepo] Remote read failed: $e');
+    }
+
+    // 2. Local cache fallback (offline)
+    debugPrint('[MustVisitRepo] Attempting local cache fallback');
     try {
       final localItems = await _local.getForItinerary(itineraryId);
       if (localItems.isNotEmpty) {
@@ -30,34 +47,25 @@ class ItineraryMustVisitRepositoryImpl
       debugPrint('[MustVisitRepo] Local read failed: $e');
     }
 
-    // Remote fallback
-    try {
-      final remoteItems = await _remote.fetchForItinerary(itineraryId);
-      if (remoteItems.isNotEmpty) {
-        await _local.insertAll(remoteItems);
-      }
-      return remoteItems;
-    } catch (e) {
-      debugPrint('[MustVisitRepo] Remote read failed: $e');
-      return [];
-    }
+    return [];
   }
 
   @override
   Future<ItineraryMustVisit> addMustVisit(ItineraryMustVisit mustVisit) async {
-    // Insert locally first
-    await _local.insert(mustVisit);
-
-    // Sync to remote (best-effort)
+    // 1. Remote first (source of truth)
     try {
       final created = await _remote.insert(mustVisit);
-      // Update local with server‑generated ID
-      await _local.insert(created);
+
+      // 2. Cache locally on remote success (best-effort)
+      try {
+        await _local.insert(created);
+      } catch (e) {
+        debugPrint('[MustVisitRepo] Local cache write failed: $e');
+      }
       return created;
     } catch (e) {
       debugPrint('[MustVisitRepo] Remote add failed: $e');
-      // Return the locally‑inserted item (with temporary ID)
-      return mustVisit;
+      rethrow;
     }
   }
 
@@ -70,35 +78,37 @@ class ItineraryMustVisitRepositoryImpl
 
   @override
   Future<void> removeMustVisit(int mustVisitId) async {
-    // Delete locally
+    // 1. Delete remotely first (source of truth)
+    try {
+      await _remote.delete(mustVisitId);
+    } catch (e) {
+      debugPrint('[MustVisitRepo] Remote delete failed: $e');
+      rethrow;
+    }
+
+    // 2. Delete locally on remote success (best-effort)
     try {
       await _local.delete(mustVisitId);
     } catch (e) {
       debugPrint('[MustVisitRepo] Local delete failed: $e');
     }
-
-    // Delete remotely
-    try {
-      await _remote.delete(mustVisitId);
-    } catch (e) {
-      debugPrint('[MustVisitRepo] Remote delete failed: $e');
-    }
   }
 
   @override
   Future<void> removeMustVisitsForItinerary(String itineraryId) async {
-    // Clear locally
-    try {
-      await _local.clearForItinerary(itineraryId);
-    } catch (e) {
-      debugPrint('[MustVisitRepo] Local clear failed: $e');
-    }
-
-    // Clear remotely
+    // 1. Clear remotely first (source of truth)
     try {
       await _remote.deleteForItinerary(itineraryId);
     } catch (e) {
       debugPrint('[MustVisitRepo] Remote clear failed: $e');
+      rethrow;
+    }
+
+    // 2. Clear locally on remote success (best-effort)
+    try {
+      await _local.clearForItinerary(itineraryId);
+    } catch (e) {
+      debugPrint('[MustVisitRepo] Local clear failed: $e');
     }
   }
 }

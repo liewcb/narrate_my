@@ -3,13 +3,11 @@ import 'package:narrate_my/model/entities/trip_draft.dart';
 
 import '../../../core/config/interest_mapping.dart';
 import '../../../core/config/itinerary_constants.dart';
+import '../../../core/services/database_manager.dart';
 import '../../data_sources/remote/places_remote_data_source.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/destination_hotspot.dart';
 import '../../entities/place.dart';
-import '../../repositories/adapters/destination_hotspot_repository_adapter.dart';
-import '../../repositories/adapters/destination_repository_adapter.dart';
-import '../../repositories/adapters/place_repository_adapter.dart';
 import '../../repositories/interfaces/destination_hotspot_repository.dart';
 import '../../repositories/interfaces/destination_repository.dart';
 import '../../repositories/interfaces/place_repository.dart';
@@ -33,6 +31,36 @@ class HotspotAnchor {
     this.destinationId,
     this.hotspotId,
   });
+}
+
+/// Geographic relationship of a manually-searched place to the selected
+/// hotspot area.
+///
+/// `suggested_radius_km` is ONLY a nearby-discovery radius — it is never
+/// treated as a transportation time/distance.
+enum HotspotDistanceStatus {
+  /// The place is within the hotspot's `suggested_radius_km`.
+  withinHotspot,
+
+  /// The place is beyond the hotspot radius but still near the destination.
+  outsideHotspot,
+
+  /// The place is very far from the destination.
+  farFromDestination;
+
+  String get label => switch (this) {
+        HotspotDistanceStatus.withinHotspot => 'WITHIN_HOTSPOT',
+        HotspotDistanceStatus.outsideHotspot => 'OUTSIDE_HOTSPOT',
+        HotspotDistanceStatus.farFromDestination => 'FAR_FROM_DESTINATION',
+      };
+}
+
+/// Computes the [HotspotDistanceStatus] of [placeKm] relative to the
+/// hotspot's [radiusKm] (geographic distance only — not travel time).
+HotspotDistanceStatus classifyHotspotDistance(double placeKm, double radiusKm) {
+  if (placeKm <= radiusKm) return HotspotDistanceStatus.withinHotspot;
+  if (placeKm <= 50.0) return HotspotDistanceStatus.outsideHotspot;
+  return HotspotDistanceStatus.farFromDestination;
 }
 
 /// Backward-compatible per-day group (kept so old callers compile).
@@ -172,10 +200,11 @@ class CandidateRetrievalService {
     DestinationRepository? destinationRepository,
     PlaceRepository? placesRepository,
   })  : _placesDataSource = placesDataSource ?? PlacesRemoteDataSource(),
-        _hotspotRepository = hotspotRepository ?? DestinationHotspotRepositoryImpl(),
+        _hotspotRepository =
+            hotspotRepository ?? DatabaseManager().destinationHotspotRepository,
         _destinationRepository =
-            destinationRepository ?? DestinationRepositoryImpl(),
-        _placesRepository = placesRepository ?? PlaceRepositoryAdapter();
+            destinationRepository ?? DatabaseManager().destinationRepository,
+        _placesRepository = placesRepository ?? DatabaseManager().placeRepository;
 
   /// Returns a single merged [CandidatePool] for the whole itinerary.
   ///
@@ -326,6 +355,80 @@ class CandidateRetrievalService {
       attractions: filteredAttractions,
       food: filteredFood,
     );
+  }
+
+  // ------------------------------------------------------------
+  // Single best-hotspot selection (Must-Visit Search Maps)
+  // ------------------------------------------------------------
+
+  /// Deterministically selects the SINGLE most relevant hotspot for a
+  /// destination, ranked by the traveler's interests.
+  ///
+  /// Ranking (highest → lowest):
+  ///   1. `primary_theme` matches an interest tag (strongest signal)
+  ///   2. any entry in `tags` matches an interest tag (secondary)
+  ///   3. no interest match (lowest)
+  ///
+  /// Ties are broken by the hotspot id (lexicographic) so the result never
+  /// depends on arbitrary database ordering.
+  ///
+  /// Returns the selected [DestinationHotspot] with its preserved
+  /// `latitude`, `longitude` and `suggestedRadiusKm` — exactly what the
+  /// Must-Visit Search Maps screen needs for its Google Places search.
+  /// Returns `null` when no hotspot exists for the destination.
+  Future<DestinationHotspot?> selectBestHotspot({
+    required String destinationName,
+    String? destinationId,
+    required List<String> interests,
+  }) async {
+    final id = destinationId ?? await _resolveDestinationIdByName(destinationName);
+    if (id == null || id.isEmpty) return null;
+
+    final List<DestinationHotspot> hotspots;
+    try {
+      hotspots = await _hotspotRepository.getHotspotsForDestination(id);
+    } catch (e) {
+      debugPrint('[HOTSPOT] selectBestHotspot failed for $destinationName: $e');
+      return null;
+    }
+    if (hotspots.isEmpty) return null;
+
+    final normalizedTags = InterestMapping.databaseTagsForInterests(interests)
+        .map((t) => t.trim().toLowerCase())
+        .toSet();
+
+    DestinationHotspot? best;
+    var bestScore = -1;
+    String bestTie = '';
+    for (final h in hotspots) {
+      final themeMatch = normalizedTags.contains(h.primaryTheme.trim().toLowerCase());
+      final tagMatch = h.tags
+          .any((t) => normalizedTags.contains(t.trim().toLowerCase()));
+      final score = themeMatch ? 3 : (tagMatch ? 2 : 1);
+
+      if (score > bestScore || (score == bestScore && h.id.compareTo(bestTie) < 0)) {
+        best = h;
+        bestScore = score;
+        bestTie = h.id;
+      }
+    }
+    return best;
+  }
+
+  /// Resolves a destination display name to its database `destination_id`.
+  Future<String?> _resolveDestinationIdByName(String destinationName) async {
+    try {
+      final all = await _destinationRepository.getAllDestinations();
+      for (final d in all) {
+        if (d.destinationName.trim().toLowerCase() ==
+            destinationName.trim().toLowerCase()) {
+          return d.destinationId;
+        }
+      }
+    } catch (e) {
+      debugPrint('[DEST] Destination ID resolution failed: $e');
+    }
+    return null;
   }
 
   // ------------------------------------------------------------

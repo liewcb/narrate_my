@@ -1,8 +1,9 @@
-// lib/viewmodel/ItineraryModel/my_itineraries_vm.dart
+
 import 'package:flutter/foundation.dart';
+import '../../core/services/database_manager.dart';
 import '../../model/entities/itinerary.dart';
-import '../../model/repositories/adapters/itinerary_repository_adapter.dart';
 import '../../model/repositories/interfaces/itinerary_repository.dart';
+import '../../view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 
 class MyItinerariesVM extends ChangeNotifier {
   final ItineraryRepository _repository;
@@ -21,19 +22,26 @@ class MyItinerariesVM extends ChangeNotifier {
   String get activeFilter => _activeFilter;
 
   MyItinerariesVM({required this.userId})
-      : _repository = ItineraryRepositoryImpl();
+      : _repository = DatabaseManager().itineraryRepository;
 
   void _applyFilters() {
     var filtered = List<Itinerary>.from(_allTrips);
 
-    // Filter by status
     if (_activeFilter != 'All') {
-      filtered = filtered.where((t) => t.status == _activeFilter.toUpperCase()).toList();
+      filtered = filtered.where((itinerary) {
+        final resolvedStatus = ItineraryStatusResolver.resolve(
+          startDate: itinerary.startDate,
+          endDate: itinerary.endDate,
+        );
+
+        return resolvedStatus.name.toUpperCase() ==
+            _activeFilter.toUpperCase();
+      }).toList();
     }
 
-    // Filter by search query
     if (_searchQuery.trim().isNotEmpty) {
       final q = _searchQuery.trim().toLowerCase();
+
       filtered = filtered
           .where((t) => t.title.toLowerCase().contains(q))
           .toList();
@@ -60,8 +68,22 @@ class MyItinerariesVM extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Remote-first: pull from Supabase, then cache locally (best-effort).
-      _allTrips = await _repository.fetchUserItinerariesFromRemote(userId);
+      // Local-first read: returns the local cache (which includes any
+      // itinerary just saved) and falls back to the remote source when
+      // the local cache is empty or unavailable.
+      final trips = await _repository.getUserItineraries(userId);
+
+      _allTrips = trips.map((itinerary) {
+        final resolvedStatus = ItineraryStatusResolver.resolve(
+          startDate: itinerary.startDate,
+          endDate: itinerary.endDate,
+        );
+
+        return itinerary.copyWith(
+          status: resolvedStatus.name.toUpperCase(),
+        );
+      }).toList();
+
       _applyFilters();
     } catch (e) {
       _error = e.toString();

@@ -4,6 +4,7 @@ import '../../core/theme/colors.dart';
 import '../../model/entities/destination.dart';
 import '../../viewmodel/Itinerary/destination_choice_vm.dart';
 import 'trip_customization_screen.dart';
+import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 
 class DestinationChoiceScreen extends StatefulWidget {
   const DestinationChoiceScreen({super.key});
@@ -32,7 +33,8 @@ class _Step1WhereToBody extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.creamBg,
-      appBar: const _AppBar(step: 1),
+      // Replaced internal _AppBar with shared WizardAppBar
+      appBar: const WizardAppBar(step: 1),
       body: Stack(
         children: [
           SingleChildScrollView(
@@ -43,7 +45,8 @@ class _Step1WhereToBody extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 8),
-                  const _ProgressBar(activeSteps: 1),
+                  // Replaced internal _ProgressBar with shared WizardProgressBar
+                  const WizardProgressBar(activeSteps: 1),
                   const SizedBox(height: 32),
                   const _Header(),
                   const SizedBox(height: 24),
@@ -108,89 +111,6 @@ class _Step1WhereToBody extends StatelessWidget {
 }
 
 // ─── Private sub‑widgets ──────────────────────────────────────
-
-class _AppBar extends StatelessWidget implements PreferredSizeWidget {
-  final int step;
-  const _AppBar({required this.step});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      color: AppColors.creamBg.withOpacity(0.9),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppColors.brandCharcoal),
-            onPressed: () => Navigator.maybePop(context),
-            padding: EdgeInsets.zero,
-          ),
-          const Spacer(),
-          Text(
-            'Step $step of 4',
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-              color: AppColors.outline,
-            ),
-          ),
-          const Spacer(),
-          const SizedBox(width: 48),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(56);
-}
-
-class _ProgressBar extends StatelessWidget {
-  final int activeSteps;
-  const _ProgressBar({required this.activeSteps});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 12,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            height: 2,
-            width: double.infinity,
-            color: AppColors.outlineLight.withOpacity(0.6),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(4, (i) {
-              final active = i < activeSteps;
-              return Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: active ? AppColors.brandGreen : AppColors.creamBg,
-                  border: Border.all(
-                    color: active ? AppColors.brandGreen : AppColors.outlineLight,
-                    width: 2,
-                  ),
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.creamBg, width: 2),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _Header extends StatelessWidget {
   const _Header();

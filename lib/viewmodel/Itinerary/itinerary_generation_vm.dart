@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import '../../core/config/api_keys.dart';
+import '../../core/services/database_manager.dart';
 import '../../core/services/google_maps_service.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../../model/business_logic/itinerary_service/itinerary_regeneration_service.dart';
@@ -187,6 +189,7 @@ class Step5GenerationVM extends ChangeNotifier {
         travelType: draft.travelType ?? 'Solo',
         transportationMode: draft.transportation,
         interests: List.of(draft.interests),
+        coverImageUrl: _coverImageUrl(generated),
         lastModifiedAt: now,
         lastValidationResult: generated.errors != null
             ? {'valid': generated.errors!.isEmpty, 'issues': []}
@@ -195,13 +198,13 @@ class Step5GenerationVM extends ChangeNotifier {
       );
 
       debugPrint('[SAVE] Saving itinerary header');
-      final itineraryRepo = ItineraryRepositoryImpl();
+      final itineraryRepo = DatabaseManager().itineraryRepository;
       final saved = await itineraryRepo.createItinerary(itinerary);
       savedItineraryId = saved.itineraryId;
 
       // Build stops + save places so the edit screen can join them.
-      final stopRepo = ItineraryStopRepositoryImpl();
-      final placeRepo = PlaceRepositoryAdapter();
+      final stopRepo = DatabaseManager().itineraryStopRepository;
+      final placeRepo = DatabaseManager().placeRepository;
       final stops = <ItineraryStop>[];
 
       for (final day in scheduledDays) {
@@ -242,10 +245,10 @@ class Step5GenerationVM extends ChangeNotifier {
 
       // Persist selected destinations (itinerary_selected_destinations).
       // Resolve destination names → DB destination_id (e.g. "D001").
-      final destRepo = ItineraryDestinationRepositoryImpl();
+      final destRepo = DatabaseManager().itineraryDestinationRepository;
       final destIdByName = <String, String>{};
       try {
-        final allDest = await DestinationRepositoryImpl().getAllDestinations();
+        final allDest = await DatabaseManager().destinationRepository.getAllDestinations();
         for (final d in allDest) {
           destIdByName[d.destinationName.trim().toLowerCase()] = d.destinationId;
         }
@@ -270,7 +273,7 @@ class Step5GenerationVM extends ChangeNotifier {
       }
 
       // Persist must-visits (itinerary_must_visits).
-      final mustVisitRepo = ItineraryMustVisitRepositoryImpl();
+      final mustVisitRepo = DatabaseManager().itineraryMustVisitRepository;
       for (final mvId in draft.mustVisitPlaceIds) {
         final mvName = generated.placeRegistry?.byId(mvId)?.placeName ?? 'Must visit $mvId';
         try {
@@ -297,6 +300,18 @@ class Step5GenerationVM extends ChangeNotifier {
   /// Generate a stable, locally-unique id (SQLite TEXT PK).
   String _generateId(String prefix) =>
       '${prefix}_${DateTime.now().microsecondsSinceEpoch}_${DateTime.now().millisecond}';
+
+  /// Derive the itinerary cover image URL from the first scheduled stop's
+  /// place photo — identical to `ItineraryFinalViewModel.heroImageUrl`.
+  String? _coverImageUrl(ItineraryResult generated) {
+    final ref = generated.scheduledDays?.firstOrNull?.stops
+        .firstOrNull?.attraction.place.placePhotoRef;
+    if (ref == null) return null;
+    return 'https://maps.googleapis.com/maps/api/place/photo'
+        '?maxwidth=800'
+        '&photoreference=$ref'
+        '&key=${ApiKeys.googleMapsApiKey}';
+  }
 
   /// Build a TripRequest from the traveler's actual inputs.
   ///

@@ -8,16 +8,14 @@ import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../../model/entities/place.dart';
 import '../../viewmodel/Itinerary/edit_itinerary_vm.dart';
+import 'add_custom_stop_screen.dart';
 
 /// Edits a single day of the generated itinerary during preview/review.
-///
-/// Uses temporary editable state — nothing is written to Supabase here.
-/// Changes are validated and the updated [ItineraryResult] is returned to
-/// the final screen via `Navigator.pop`.
+/// Now supports switching between days via a day selector.
 class EditItineraryScreen extends StatefulWidget {
   final ItineraryResult result;
   final String title;
-  final int dayNumber; // 1-based
+  final int dayNumber;
   final DateTime tripStartDate;
   final String explorationTime;
   final List<String> mustVisitPlaceIds;
@@ -41,31 +39,95 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   bool _changesApplied = false;
   GoogleMapController? _mapController;
 
+  // ─── Multi-day state ────────────────────────────────────────
+  late int _selectedDayIndex;
+  late final int _totalDays;
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
+    _totalDays = widget.result.scheduledDays?.length ?? 0;
+    _selectedDayIndex = _totalDays > 0
+        ? (widget.dayNumber - 1).clamp(0, _totalDays - 1)
+        : 0;
+    _initViewModel();
+  }
+
+  void _initViewModel() {
     _vm = EditItineraryViewModel(
       result: widget.result,
-      dayIndex: widget.dayNumber - 1,
+      dayIndex: _selectedDayIndex,
       tripStartDate: widget.tripStartDate,
       explorationTime: widget.explorationTime,
       mustVisitPlaceIds: widget.mustVisitPlaceIds,
       title: widget.title,
     );
-    debugPrint('════════════════════════════════════');
-    debugPrint('[EDIT ITINERARY]');
-    debugPrint('Day: ${widget.dayNumber}');
-    debugPrint('Original stops: ${_vm.stops.length}');
-    debugPrint('════════════════════════════════════');
+    _changesApplied = false;
   }
 
   @override
   void dispose() {
     _vm.dispose();
+    _scrollController.dispose();
+    _mapController?.dispose();
     super.dispose();
   }
 
-  /// Builds map markers labeled dynamically based on the current stops order
+  // ─── Day switching ──────────────────────────────────────────
+  void _selectDay(int index) {
+    if (index == _selectedDayIndex) return;
+
+    try {
+      // 1. Keep a temporary reference to the old VM so we can dispose of it safely later
+      final oldVm = _vm;
+
+      setState(() {
+        _selectedDayIndex = index;
+
+        // 2. Initialize the new VM immediately so the widget tree binds to it on the next frame
+        _vm = EditItineraryViewModel(
+          result: widget.result,
+          dayIndex: index,
+          tripStartDate: widget.tripStartDate,
+          explorationTime: widget.explorationTime,
+          mustVisitPlaceIds: widget.mustVisitPlaceIds,
+          title: widget.title,
+        );
+        _changesApplied = false;
+      });
+
+      // 3. Handle cleanup, maps, and scrolling AFTER the widget tree has rebuilt
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Safely dispose of the old VM now that nothing is listening to it
+        oldVm.dispose();
+
+        // Update map bounds for the new day
+        _fitMapBounds();
+
+        // Smoothly scroll back to the top of the content
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    } catch (e) {
+      debugPrint('[EditItineraryScreen] Day switch failed: $e');
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('Unable to load Day ${index + 1}. Please try again.'),
+          ),
+        );
+    }
+  }
+
+  // ─── Map helpers ──────────────────────────────────────────
+
   Set<Marker> _buildMarkers() {
     final markers = <Marker>{};
     for (int i = 0; i < _vm.stops.length; i++) {
@@ -87,7 +149,6 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     return markers;
   }
 
-  /// Builds direct straight-line paths connecting stops sequentially
   Set<Polyline> _buildPolylines() {
     if (_vm.stops.length < 2) return {};
     return {
@@ -102,7 +163,6 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     };
   }
 
-  /// Adjusts camera view to fit all stop markers dynamically on load
   void _fitMapBounds() {
     if (_mapController == null || _vm.stops.isEmpty) return;
     if (_vm.stops.length == 1) {
@@ -138,6 +198,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
+  // ─── Navigation & Save (unchanged) ─────────────────────────
+
   Future<void> _handleBack() async {
     if (!_vm.hasChanges || _changesApplied) {
       Navigator.pop(context, null);
@@ -163,12 +225,28 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     if (errors.isNotEmpty) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(errors.first)));
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              _friendlyValidationError(errors.first),
+            ),
+          ),
+        );
       return;
     }
     _vm.applyChanges();
     if (_vm.appliedResult != null) {
       _changesApplied = true;
+      // Show the confirmation BEFORE popping: the root ScaffoldMessenger
+      // keeps it visible on the previous screen.
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Your itinerary changes were applied.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
       Navigator.pop(context, _vm.appliedResult);
     }
   }
@@ -180,104 +258,185 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       initialTime: TimeOfDay(hour: stop.startTime.hour, minute: stop.startTime.minute),
     );
     if (picked == null) return;
-    debugPrint('[EDIT] Time changed');
-    debugPrint('[EDIT] Place: ${stop.name}');
-    debugPrint('[EDIT] Original: ${_fmt(stop.startTime)}–${_fmt(stop.endTime)}');
-    _vm.setStartTime(index, picked);
-    final updated = _vm.stops[index];
-    debugPrint('[EDIT] New: ${_fmt(updated.startTime)}–${_fmt(updated.endTime)}');
+    if (!mounted) return;
+    final ok = _vm.setStartTime(index, picked);
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('Time updated for ${stop.name}. '
+                'The rest of your schedule has been adjusted.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+    } else {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              _vm.error ??
+                  'This time does not fit the day\'s schedule. Please pick another time.',
+            ),
+          ),
+        );
+    }
   }
-
   Future<void> _showAddPicker() async {
     final candidates = _vm.availableCandidates;
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('No additional candidates available.')));
+        ..showSnackBar(
+          const SnackBar(content: Text('No additional candidates available.')),
+        );
       return;
     }
-    final selected = await showModalBottomSheet<Place>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Add a place from existing candidates',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-            ...candidates.map((p) => ListTile(
-              leading: const Icon(Icons.place),
-              title: Text(p.placeName),
-              subtitle: Text(p.category ?? ''),
-              onTap: () => Navigator.pop(ctx, p),
-            )),
-          ],
+
+    final selected = await Navigator.push<Place>(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => AddPlaceScreen(
+          candidates: candidates,
+          title: 'Add a Place',
+          subtitle: 'Choose from available candidates',
         ),
       ),
     );
-    if (selected != null) {
-      _vm.addCandidate(selected);
+
+    if (selected != null && mounted) {
+      final ok = _vm.addCandidate(selected);
       _fitMapBounds();
+      if (ok) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('${selected.placeName} added to Day '
+                  '${_vm.dayNumber}.'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+      } else {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                _vm.error ??
+                    'Cannot add ${selected.placeName} because there is not '
+                    'enough time remaining in the day.',
+              ),
+            ),
+          );
+      }
     }
   }
 
   Future<void> _showReplacePicker(int index) async {
+    final currentPlaceId = _vm.stops[index].placeId;
     final candidates = _vm.availableCandidates
-        .where((p) => p.placeId != _vm.stops[index].placeId)
+        .where((p) => p.placeId != currentPlaceId)
         .toList();
+
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('No replacement candidates available.')));
+        ..showSnackBar(
+          const SnackBar(content: Text('No replacement candidates available.')),
+        );
       return;
     }
-    final selected = await showModalBottomSheet<Place>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Replace with an existing candidate',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-            ...candidates.map((p) => ListTile(
-              leading: const Icon(Icons.swap_horiz),
-              title: Text(p.placeName),
-              subtitle: Text(p.category ?? ''),
-              onTap: () => Navigator.pop(ctx, p),
-            )),
-          ],
+
+    final selected = await Navigator.push<Place>(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => AddPlaceScreen(
+          candidates: candidates,
+          title: 'Replace Stop',
+          subtitle: 'Select a replacement from candidates',
         ),
       ),
     );
-    if (selected != null) {
-      _vm.replaceStop(index, selected);
+
+    if (selected != null && mounted) {
+      final ok = _vm.replaceStop(index, selected);
       _fitMapBounds();
+      if (ok) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('Stop replaced with ${selected.placeName}.'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+      } else {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                _vm.error ?? 'Unable to replace this stop. The replacement '
+                    'does not fit the day\'s schedule.',
+              ),
+            ),
+          );
+      }
     }
   }
 
-  void _removeStop(int index) {
+  Future<void> _removeStop(int index) async {
     final stop = _vm.stops[index];
-    debugPrint('[EDIT] Remove requested');
-    debugPrint('[EDIT] Place: ${stop.name}');
-    debugPrint('[EDIT] Must visit: ${stop.isMustVisit}');
-    final ok = _vm.removeStop(index);
-    if (!ok) {
+    if (stop.isMustVisit) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(_vm.error ?? 'Cannot remove this stop.')));
-    } else {
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('This place is a must-visit and cannot be removed.'),
+          ),
+        );
+      return;
+    }
+
+    final confirmed = await showConfirmationDialog(
+      context: context,
+      title: 'Remove "${stop.name}"?',
+      message: 'This stop will be removed from Day ${_vm.dayNumber}.',
+      confirmLabel: 'Remove',
+    );
+    if (confirmed != true || !mounted) return;
+
+    final ok = _vm.removeStop(index);
+    if (!mounted) return;
+    if (ok) {
       _fitMapBounds();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              '${stop.name} removed from Day ${_vm.dayNumber}.',
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+    } else {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              _vm.error ?? 'Cannot remove this stop. Please try again.',
+            ),
+          ),
+        );
     }
   }
+
+  // ─── Build ──────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -287,13 +446,19 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         return Scaffold(
           backgroundColor: AppColors.warmBg,
           appBar: _buildAppBar(),
-          body: Stack(
+          body: _totalDays == 0
+              ? _buildEmptyState()
+              : Stack(
             children: [
               SingleChildScrollView(
+                controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(), // <-- Force scrolling mechanics to remain alive
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _buildDaySelector(),
+                    const SizedBox(height: 12),
                     _buildHeader(),
                     const SizedBox(height: 24),
                     _buildMapPreview(),
@@ -320,6 +485,17 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       },
     );
   }
+
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Text(
+        'No itinerary days available.',
+        style: TextStyle(fontSize: 16, color: AppColors.mutedText),
+      ),
+    );
+  }
+
+  // ─── App Bar (unchanged) ────────────────────────────────────
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -356,6 +532,49 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
+  // ─── Day Selector (improved) ───────────────────────────────
+
+  Widget _buildDaySelector() {
+    if (_totalDays <= 1) return const SizedBox.shrink();
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _totalDays,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final isActive = index == _selectedDayIndex;
+          return GestureDetector(
+            onTap: () => _selectDay(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isActive ? AppColors.terracottaDark : AppColors.surfaceInactive,
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: isActive ? AppColors.terracottaDark : AppColors.taupe.withOpacity(0.3),
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  'Day ${index + 1}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                    color: isActive ? Colors.white : AppColors.charcoal,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ─── Header ─────────────────────────────────────────────────
+
   Widget _buildHeader() {
     final dateFmt = DateFormat('d MMM');
     return Column(
@@ -382,6 +601,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
+  // ─── Map Preview (forces rebuild on day change) ────────────
+
   Widget _buildMapPreview() {
     final initialPos = _vm.stops.isNotEmpty
         ? LatLng(_vm.stops.first.place.latitude, _vm.stops.first.place.longitude)
@@ -405,6 +626,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         child: Stack(
           children: [
             GoogleMap(
+              // 🔑 Force map to rebuild when day changes
+              key: ValueKey('map_$_selectedDayIndex'),
               initialCameraPosition: CameraPosition(target: initialPos, zoom: 11),
               markers: _buildMarkers(),
               polylines: _buildPolylines(),
@@ -440,7 +663,10 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
+  // ─── Stops List (with empty state) ─────────────────────────
+
   Widget _buildStopsList() {
+    final stops = _vm.stops;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -454,77 +680,119 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        Stack(
-          children: [
-            Positioned(
-              left: 17,
-              top: 16,
-              bottom: 16,
-              child: SizedBox(
-                width: 2,
-                child: CustomPaint(
-                  painter: _DashedLinePainter(),
-                ),
+        if (stops.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: Column(
+                children: [
+                  const Icon(Icons.map_outlined, size: 40, color: AppColors.mutedText),
+                  const SizedBox(height: 8),
+                  Text(
+                    'No stops for this day',
+                    style: TextStyle(fontSize: 14, color: AppColors.mutedText),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: _showAddPicker,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add a place'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.terracottaDark,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
               ),
             ),
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _vm.stops.length,
-              onReorder: (oldIndex, newIndex) {
-                debugPrint('[EDIT] Stop reordered: ${oldIndex + 1} → $newIndex');
-                _vm.reorder(oldIndex, newIndex);
-                _fitMapBounds();
-              },
-              itemBuilder: (context, index) {
-                final stop = _vm.stops[index];
-                return _StopItem(
-                  key: ValueKey(stop.placeId),
-                  stop: stop,
-                  number: index + 1,
-                  isFirst: index == 0,
-                  isLast: index == _vm.stops.length - 1,
-                  onEditTime: () => _pickStartTime(index),
-                  onReplace: () => _showReplacePicker(index),
-                  onDelete: () => _removeStop(index),
-                );
-              },
-            ),
-          ],
-        ),
+          )
+        else
+          Stack(
+            children: [
+              Positioned(
+                left: 17,
+                top: 16,
+                bottom: 16,
+                child: SizedBox(
+                  width: 2,
+                  child: CustomPaint(
+                    painter: _DashedLinePainter(),
+                  ),
+                ),
+              ),
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: stops.length,
+                onReorder: (oldIndex, newIndex) {
+                  final ok = _vm.reorder(oldIndex, newIndex);
+                  _fitMapBounds();
+                  if (ok) {
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        const SnackBar(
+                          content: Text('Stop order updated.'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                  } else {
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            _vm.error ??
+                                'That order does not allow enough travel time '
+                                'between these stops.',
+                          ),
+                        ),
+                      );
+                  }
+                },
+                itemBuilder: (context, index) {
+                  final stop = stops[index];
+                  return _StopItem(
+                    key: ValueKey(stop.placeId),
+                    stop: stop,
+                    number: index + 1,
+                    isFirst: index == 0,
+                    isLast: index == stops.length - 1,
+                    onEditTime: () => _pickStartTime(index),
+                    onReplace: () => _showReplacePicker(index),
+                    onDelete: () => _removeStop(index),
+                  );
+                },
+              ),
+            ],
+          ),
         const SizedBox(height: 12),
-        GestureDetector(
-          onTap: _showAddPicker,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 2),
-            child: Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.terracottaDark, width: 2),
-                    color: AppColors.warmBg,
+        if (stops.isNotEmpty)
+          GestureDetector(
+            onTap: _showAddPicker,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 2),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.terracottaDark, width: 2),
+                      color: AppColors.warmBg,
+                    ),
+                    child: const Icon(Icons.add, size: 20, color: AppColors.terracottaDark),
                   ),
-                  child: const Icon(Icons.add, size: 20, color: AppColors.terracottaDark),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Add another place',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.terracottaDark,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
       ],
     );
   }
+
+  // ─── Floating Add Button ────────────────────────────────────
 
   Widget _buildFloatingAddButton() {
     return FloatingActionButton(
@@ -533,6 +801,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       child: const Icon(Icons.add, color: Colors.white, size: 28),
     );
   }
+
+  // ─── Bottom Button ──────────────────────────────────────────
 
   Widget _buildBottomButton() {
     return ClipRect(
@@ -574,12 +844,35 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
+  // ─── Helpers ─────────────────────────────────────────────────
+
   String _fmt(DateTime t) {
     final h = t.hour.toString().padLeft(2, '0');
     final m = t.minute.toString().padLeft(2, '0');
     return '$h:$m';
   }
+
+  /// Converts a validation error message into a user-friendly string.
+  /// Messages that are already friendly are passed through.
+  String _friendlyValidationError(String msg) {
+    // Add a short prefix for common patterns.
+    if (msg.startsWith('Stop "') && msg.contains('has an invalid time')) {
+      return 'One of the stops has an invalid time sequence.';
+    }
+    if (msg.contains('exploration time')) {
+      return 'This change makes the schedule exceed the available time for the day.';
+    }
+    if (msg.contains('travel time')) {
+      return 'That order does not allow enough travel time between these stops.';
+    }
+    if (msg.contains('Add at least one stop')) {
+      return 'You need at least one stop to finish editing.';
+    }
+    return msg;
+  }
 }
+
+// ─── Stop Item, DashedLinePainter (unchanged) ────────────────
 
 class _StopItem extends StatelessWidget {
   final EditableStop stop;

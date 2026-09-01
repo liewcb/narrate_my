@@ -1,16 +1,21 @@
 // lib/viewmodel/ItineraryModel/add_custom_place_vm.dart
 import 'package:flutter/foundation.dart';
 
+import '../../core/services/database_manager.dart';
+import '../../core/utils/friendly_messages.dart';
 import '../../model/business_logic/itinerary_service/custom_place_service.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
+import '../../model/repositories/adapters/bookmark_repository_adapter.dart';
 import '../../model/repositories/adapters/itinerary_stop_repository_adapter.dart';
 import '../../model/repositories/adapters/place_repository_adapter.dart';
+import '../../model/repositories/interfaces/bookmark_repository.dart';
 
 /// ViewModel for the "Add Location" workflow (Manage Itinerary).
 ///
 /// Responsibilities:
 ///   - Load the selected day's stops (with joined Place data).
+///   - Load the traveler's bookmarks (for quick selection).
 ///   - Search Google Places by free-text query (NOT the rejected
 ///     central-point/radius approach).
 ///   - Show search results; on selection compute distance + travel time
@@ -19,21 +24,28 @@ import '../../model/repositories/adapters/place_repository_adapter.dart';
 ///   - On confirmation, replace the affected day's stops through the repo.
 class AddCustomPlaceVM extends ChangeNotifier {
   final String itineraryId;
-  final int dayIndex; // 1-based (DB: day_index > 0)
-  final DateTime dayDate;
+  int _dayIndex; // 1-based (DB: day_index > 0)
+  DateTime _dayDate;
   final String explorationTime;
   final String travelPace;
   final String transportMode;
   final List<String> interests;
+  final String userId;
 
   final ItineraryStopRepositoryImpl _stopRepo;
   final PlaceRepositoryAdapter _placeRepo;
   final CustomPlaceService _service;
+  final BookmarkRepository _bookmarkRepo;
 
   // ─── Existing day ────────────────────────────────────────────
   List<ItineraryStop> _dayStops = [];
   bool _isLoading = false;
   String? _loadError;
+
+  // ─── Bookmarks ───────────────────────────────────────────────
+  List<Place> _bookmarks = [];
+  bool _isLoadingBookmarks = false;
+  String? _bookmarksError;
 
   // ─── Text search ─────────────────────────────────────────────
   String _query = '';
@@ -56,26 +68,38 @@ class AddCustomPlaceVM extends ChangeNotifier {
 
   AddCustomPlaceVM({
     required this.itineraryId,
-    required this.dayIndex,
-    required this.dayDate,
+    required int dayIndex,
+    required DateTime dayDate,
     this.explorationTime = 'Standard',
     this.travelPace = 'Standard',
     this.transportMode = 'walking',
     this.interests = const [],
+    this.userId = '',
     ItineraryStopRepositoryImpl? stopRepo,
     PlaceRepositoryAdapter? placeRepo,
     CustomPlaceService? service,
-  })  : _stopRepo = stopRepo ?? ItineraryStopRepositoryImpl(),
-        _placeRepo = placeRepo ?? PlaceRepositoryAdapter(),
-        _service = service ?? CustomPlaceService();
+    BookmarkRepository? bookmarkRepo,
+  })  : _dayIndex = dayIndex,
+        _dayDate = dayDate,
+        _stopRepo = stopRepo ?? DatabaseManager().itineraryStopRepository,
+        _placeRepo = placeRepo ?? DatabaseManager().placeRepository,
+        _service = service ?? CustomPlaceService(),
+        _bookmarkRepo = bookmarkRepo ?? DatabaseManager().bookmarkRepository;
 
   // ─── Getters ────────────────────────────────────────────────
+
+  int get dayIndex => _dayIndex;
+  DateTime get dayDate => _dayDate;
 
   List<ItineraryStop> get dayStops => List.unmodifiable(_dayStops);
   List<Place> get dayPlaces =>
       _dayStops.map((s) => s.place ?? Place.empty(s.placeId)).toList();
   bool get isLoading => _isLoading;
   String? get loadError => _loadError;
+
+  List<Place> get bookmarks => List.unmodifiable(_bookmarks);
+  bool get isLoadingBookmarks => _isLoadingBookmarks;
+  String? get bookmarksError => _bookmarksError;
 
   String get query => _query;
   set query(String value) => _query = value;
@@ -100,12 +124,16 @@ class AddCustomPlaceVM extends ChangeNotifier {
     for (final p in _searchResults) {
       if (p.placeId == _selectedPlaceId) return p;
     }
+    for (final p in _bookmarks) {
+      if (p.placeId == _selectedPlaceId) return p;
+    }
     return null;
   }
 
   // ─── Load ───────────────────────────────────────────────────
 
   Future<void> load() async {
+    debugPrint('[ADD_CUSTOM] Itinerary loaded — day $dayIndex');
     _isLoading = true;
     _loadError = null;
     notifyListeners();
@@ -126,10 +154,59 @@ class AddCustomPlaceVM extends ChangeNotifier {
         joined.add(stop.copyWith(place: place));
       }
       _dayStops = joined;
+      debugPrint('[ADD_CUSTOM] Existing stops: ${_dayStops.length}');
     } catch (e) {
-      _loadError = e.toString();
+      _loadError = friendlyErrorMessage(
+        e,
+        fallback: 'Unable to load the itinerary. Please try again.',
+      );
+      debugPrint('[ADD_CUSTOM] Load error: $e');
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Switch the target day and reload its stops. Used when the traveler
+  /// changes the day selector on the screen.
+  Future<void> selectDay(int newDayIndex, DateTime newDayDate) async {
+    if (newDayIndex == _dayIndex) return;
+    debugPrint('[ADD_CUSTOM] Selected day: $newDayIndex');
+    _dayIndex = newDayIndex;
+    _dayDate = newDayDate;
+    _clearSelection();
+    await load();
+  }
+
+  /// Load the traveler's bookmarked places (only those not already in the
+  /// selected day, so they are valid insertion candidates).
+  Future<void> loadBookmarks() async {
+    if (userId.isEmpty) {
+      _bookmarks = [];
+      _bookmarksError = 'No saved places available';
+      notifyListeners();
+      return;
+    }
+    _isLoadingBookmarks = true;
+    _bookmarksError = null;
+    notifyListeners();
+
+    try {
+      final dtos = await _bookmarkRepo.getBookmarksWithPlaces(userId);
+      final usedIds = _dayStops.map((s) => s.placeId).toSet();
+      _bookmarks = dtos
+          .map((d) => d.place)
+          .where((p) => !usedIds.contains(p.placeId))
+          .toList();
+      if (_bookmarks.isEmpty) {
+        _bookmarksError = 'No saved places available';
+      }
+    } catch (e) {
+      _bookmarksError = 'No saved places available';
+      debugPrint('[ADD_CUSTOM] Bookmarks load failed: $e');
+      _bookmarks = [];
+    } finally {
+      _isLoadingBookmarks = false;
       notifyListeners();
     }
   }
@@ -139,6 +216,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
   /// Search Google Places by the user's free-text query.
   Future<void> searchPlaces() async {
     if (_query.trim().isEmpty) return;
+    debugPrint('[ADD_CUSTOM] Search query: $_query');
 
     _isSearching = true;
     _searchError = null;
@@ -162,8 +240,13 @@ class AddCustomPlaceVM extends ChangeNotifier {
       _searchResults = results
           .where((p) => !usedIds.contains(p.placeId))
           .toList();
+      debugPrint('[ADD_CUSTOM] Search results: ${_searchResults.length}');
     } catch (e) {
-      _searchError = e.toString();
+      _searchError = friendlyErrorMessage(
+        e,
+        fallback: "We couldn't search for places right now. Please try again.",
+      );
+      debugPrint('[ADD_CUSTOM] Search error: $e');
     } finally {
       _isSearching = false;
       notifyListeners();
@@ -183,6 +266,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
 
     final place = selectedPlace;
     if (place == null) return;
+    debugPrint('[ADD_CUSTOM] Selected place: ${place.placeName} ($placeId)');
 
     try {
       _proximity = await _service.evaluateProximity(
@@ -190,6 +274,8 @@ class AddCustomPlaceVM extends ChangeNotifier {
         existingDayPlaces: dayPlaces,
         transportMode: transportMode,
       );
+      debugPrint('[ADD_CUSTOM] Proximity calculated: '
+          '${_proximity!.proximity} ${_proximity!.distanceFromItineraryKm.toStringAsFixed(1)}km');
       notifyListeners();
     } catch (e) {
       debugPrint('[AddCustomPlace] proximity error: $e');
@@ -203,6 +289,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
     final place = selectedPlace;
     if (place == null) return;
 
+    debugPrint('[ADD_CUSTOM] Planning insertion');
     _isPlanning = true;
     _planError = null;
     _planResult = null;
@@ -221,8 +308,20 @@ class AddCustomPlaceVM extends ChangeNotifier {
         tripLocation: dayPlaces.isNotEmpty ? dayPlaces.first.coordinates : null,
       );
       _planResult = result;
+      debugPrint('[ADD_CUSTOM] Proposed schedule generated — '
+          'success=${result.success}');
+      if (!result.success) {
+        debugPrint('[ADD_CUSTOM] Validation: FAIL — '
+            '${result.message ?? 'no reason'}');
+      } else {
+        debugPrint('[ADD_CUSTOM] Validation: PASS');
+      }
     } catch (e) {
-      _planError = e.toString();
+      _planError = friendlyErrorMessage(
+        e,
+        fallback: 'Unable to plan this place. Please try again.',
+      );
+      debugPrint('[ADD_CUSTOM] Planning error: $e');
     } finally {
       _isPlanning = false;
       notifyListeners();
@@ -235,21 +334,18 @@ class AddCustomPlaceVM extends ChangeNotifier {
   Future<bool> confirmAndSave() async {
     final plan = _planResult;
     final proposedDay = plan?.proposedDay;
-    if (plan == null || proposedDay == null) return false;
+    if (plan == null || proposedDay == null || !plan.success) {
+      _saveError = 'No validated plan to save.';
+      return false;
+    }
 
+    debugPrint('[ADD_CUSTOM] Saving updated itinerary');
     _isSaving = true;
     _saveError = null;
     notifyListeners();
 
     try {
-      // 1. Delete the existing day's stops.
-      for (final stop in _dayStops) {
-        if (stop.stopId != 0) {
-          await _stopRepo.deleteStop(stop.stopId);
-        }
-      }
-
-      // 2. Rebuild the day's stops from the validated schedule.
+      // 1. Persist the places so stop place_id references are valid.
       final now = DateTime.now();
       final newStops = <ItineraryStop>[];
       for (var i = 0; i < proposedDay.stops.length; i++) {
@@ -265,32 +361,51 @@ class AddCustomPlaceVM extends ChangeNotifier {
           itineraryId: itineraryId,
           placeId: place.placeId,
           dayIndex: dayIndex, // 1-based
-          stopOrder: i + 1, // 1-based
+          stopOrder: i + 1, // recalculated sequentially
           startTime: s.startTime,
           endTime: s.endTime,
           durationMinutes: s.durationMinutes,
-          travelFromPrevMinutes: null,
+          travelFromPrevMinutes: s.travelFromPreviousMinutes,
           stopStatus: 'PLANNED',
           createdAt: now,
           updatedAt: now,
         ));
       }
 
-      // 3. Persist the new stops.
-      for (final stop in newStops) {
-        await _stopRepo.addStop(stop);
-      }
+      // 2. Atomically replace the day's stops (delete + batch insert).
+      await _stopRepo.replaceDayStops(
+        itineraryId: itineraryId,
+        dayIndex: dayIndex,
+        newStops: newStops,
+      );
 
       _saved = true;
+      debugPrint('[ADD_CUSTOM] Supabase update successful');
       notifyListeners();
       return true;
     } catch (e) {
-      _saveError = e.toString();
+      _saveError = friendlyErrorMessage(
+        e,
+        fallback: 'Unable to save your itinerary. Please try again.',
+      );
+      debugPrint('[ADD_CUSTOM] Save failed: $e');
       notifyListeners();
       return false;
     } finally {
       _isSaving = false;
       notifyListeners();
     }
+  }
+
+  // ─── Helpers ────────────────────────────────────────────────
+
+  void _clearSelection() {
+    _query = '';
+    _searchResults = [];
+    _selectedPlaceId = null;
+    _proximity = null;
+    _planResult = null;
+    _planError = null;
+    _hasSearched = false;
   }
 }

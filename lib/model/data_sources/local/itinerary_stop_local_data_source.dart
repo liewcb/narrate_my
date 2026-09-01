@@ -25,7 +25,7 @@ class ItineraryStopLocalSource {
   Future<int> insert(ItineraryStop stop) async {
     final db = await _db;
     final dto = ItineraryStopDTO.fromEntity(stop);
-    final map = dto.toMap()..remove('stop_id'); // let DB assign ID
+    final map = dto.toMap()..remove('stop_id');
     final id = await db.insert(
       'itinerary_stops',
       map,
@@ -59,6 +59,15 @@ class ItineraryStopLocalSource {
       'itinerary_stops',
       where: 'itinerary_id = ?',
       whereArgs: [itineraryId],
+    );
+  }
+
+  Future<void> deleteForDay(String itineraryId, int dayIndex) async {
+    final db = await _db;
+    await db.delete(
+      'itinerary_stops',
+      where: 'itinerary_id = ? AND day_index = ?',
+      whereArgs: [itineraryId, dayIndex],
     );
   }
 

@@ -106,6 +106,15 @@ class ItineraryConstants {
   /// replacing attraction candidates.
   static const int minimumFoodCandidatesPerDay = 1;
 
+  /// Maximum number of candidates sent to DeepSeek for the AI candidate
+  /// evaluation / itinerary-planning pool.
+  ///
+  /// Keeps the prompt concise and avoids the timeouts caused by sending an
+  /// unlimited candidate set (e.g. 103 candidates / ~40k-char prompts).
+  /// The remaining scored candidates stay available as a RESERVE pool for
+  /// feasibility-driven replacement during regeneration/repair.
+  static const int maxAiPlanningPoolSize = 45;
+
   // ============================================================
   // 4. DAILY STOP LIMITS
   // ============================================================

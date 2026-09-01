@@ -35,6 +35,30 @@ class _Step3AddPlaceBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final vm = context.watch<Step3AddPlaceVM>();
 
+    // ── Compute filtered list based on search query ──
+    final query = vm.searchQuery.trim().toLowerCase();
+    List<WizardPlace> displayPlaces;
+
+    if (vm.selectedTab == 1) {
+      // "Search Maps" tab – filter the default places
+      displayPlaces = query.isEmpty
+          ? vm.pagedDefaultPlaces
+          : vm.pagedDefaultPlaces.where((p) =>
+      p.name.toLowerCase().contains(query) ||
+          p.type.toLowerCase().contains(query) ||
+          p.location.toLowerCase().contains(query)
+      ).toList();
+    } else {
+      // "Bookmarks" tab – filter the bookmarks list
+      displayPlaces = query.isEmpty
+          ? vm.availablePlaces
+          : vm.availablePlaces.where((p) =>
+      p.name.toLowerCase().contains(query) ||
+          p.type.toLowerCase().contains(query) ||
+          p.location.toLowerCase().contains(query)
+      ).toList();
+    }
+
     return Scaffold(
       backgroundColor: AppColors.creamBg,
       body: SafeArea(
@@ -64,8 +88,16 @@ class _Step3AddPlaceBody extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   _SearchBar(onChanged: vm.searchPlaces),
+                  if (vm.selectedTab == 1 && vm.selectedHotspot != null) ...[
+                    const SizedBox(height: 12),
+                    _HotspotBanner(
+                      hotspotName: vm.selectedHotspot!.hotspotName,
+                      radiusKm: vm.selectedHotspot!.suggestedRadiusKm,
+                    ),
+                  ],
                   const SizedBox(height: 22),
-                  // ... rest of the content unchanged ...
+
+                  // ── Content area ──
                   if (vm.isLoading)
                     const Padding(
                       padding: EdgeInsets.only(top: 48),
@@ -93,76 +125,65 @@ class _Step3AddPlaceBody extends StatelessWidget {
                           ),
                         ),
                       )
-                    else if (vm.selectedTab == 1 && vm.availablePlaces.isEmpty && vm.searchQuery.isEmpty)
+                    // Show empty state for bookmarks error (no data)
+                    else if (vm.selectedTab == 0 && vm.bookmarksError != null && vm.availablePlaces.isEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
                           child: Center(
                             child: Column(
                               children: [
-                                const Icon(Icons.map_outlined, size: 48, color: AppColors.outline),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  'Explore top attractions and restaurants nearby',
+                                const Icon(Icons.bookmark_border, color: AppColors.outline, size: 40),
+                                const SizedBox(height: 8),
+                                Text(
+                                  vm.bookmarksError!,
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(color: AppColors.outline, fontSize: 14),
-                                ),
-                                const SizedBox(height: 16),
-                                ElevatedButton.icon(
-                                  onPressed: vm.loadDefaultPlaces,
-                                  icon: const Icon(Icons.explore_outlined, color: Colors.white),
-                                  label: const Text('Load Recommended Places'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.brandGreen,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
+                                  style: const TextStyle(color: AppColors.outline, fontSize: 14),
                                 ),
                               ],
                             ),
                           ),
                         )
-                      else if (vm.selectedTab == 0 && vm.bookmarksError != null && vm.availablePlaces.isEmpty)
+                      // If there's no data at all (and search is empty) – show initial empty state
+                      else if (displayPlaces.isEmpty && query.isEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
                             child: Center(
-                              child: Column(
-                                children: [
-                                  const Icon(Icons.bookmark_border, color: AppColors.outline, size: 40),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    vm.bookmarksError!,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(color: AppColors.outline, fontSize: 14),
-                                  ),
-                                ],
+                              child: Text(
+                                vm.selectedTab == 1
+                                    ? 'No places found in the selected destination.'
+                                    : 'No bookmarks yet.\nSave places you want to visit!',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: AppColors.outline, fontSize: 14, height: 1.4),
                               ),
                             ),
                           )
-                        else if (vm.availablePlaces.isEmpty)
+                        // Show "No results" if search yields nothing
+                        else if (displayPlaces.isEmpty && query.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
                               child: Center(
-                                child: Text(
-                                  vm.selectedTab == 1
-                                      ? 'No places found in the selected destination.'
-                                      : 'No bookmarks yet.\nSave places you want to visit!',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(color: AppColors.outline, fontSize: 14, height: 1.4),
+                                child: Column(
+                                  children: [
+                                    const Icon(Icons.search_off, color: AppColors.outline, size: 40),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'No places match your search.',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(color: AppColors.outline, fontSize: 14),
+                                    ),
+                                  ],
                                 ),
                               ),
                             )
+                          // Show the list with filtered results
                           else
                             _PlaceList(
-                              places: vm.selectedTab == 1
-                                  ? vm.pagedDefaultPlaces
-                                  : vm.availablePlaces,
+                              places: displayPlaces,
                               isAdded: vm.isPlaceAdded,
                               onToggle: vm.togglePlace,
+                              // Only show "Load more" when on Search Maps tab, search is empty, and there are more pages
                               showLoadMore: vm.selectedTab == 1 &&
-                                  vm.searchQuery.isEmpty &&
+                                  query.isEmpty &&
                                   vm.hasMoreDefaultPlaces,
                               onLoadMore: vm.loadMorePlaces,
                               isLoadingMore: vm.isLoadingMore,
@@ -401,6 +422,64 @@ class _SearchBar extends StatelessWidget {
   }
 }
 
+class _HotspotBanner extends StatelessWidget {
+  final String hotspotName;
+  final double radiusKm;
+
+  const _HotspotBanner({
+    required this.hotspotName,
+    required this.radiusKm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.brandGreenLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.brandGreen),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.location_on_outlined,
+              color: AppColors.brandGreen,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Searching around $hotspotName',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.brandGreen,
+                    ),
+                  ),
+                  Text(
+                    'Recommended radius: ${radiusKm.toStringAsFixed(1)} km',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.outline,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PlaceList extends StatelessWidget {
   final List<WizardPlace> places;
   final bool Function(String) isAdded;
@@ -599,7 +678,35 @@ class _PlaceCard extends StatelessWidget {
 
               // Add button – fixed size
               GestureDetector(
-                onTap: onToggle,
+                onTap: () {
+                  if (place.isOutsideHotspot) {
+                    showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Outside recommended hotspot'),
+                        content: Text(
+                          'This location is outside the recommended '
+                          'hotspot area.\nDistance from selected hotspot: '
+                          '${place.distanceKm?.toStringAsFixed(1)} km.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Add Anyway'),
+                          ),
+                        ],
+                      ),
+                    ).then((confirmed) {
+                      if (confirmed == true) onToggle();
+                    });
+                  } else {
+                    onToggle();
+                  }
+                },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(

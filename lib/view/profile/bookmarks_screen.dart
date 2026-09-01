@@ -62,7 +62,7 @@ class _BookmarksView extends StatelessWidget {
                               color: AppColors.accent,
                             ),
                             title: Text(b.itemType[0].toUpperCase() + b.itemType.substring(1)),
-                            subtitle: Text(b.itemId, style: const TextStyle(fontSize: 11)),
+                            subtitle: Text(b.id, style: const TextStyle(fontSize: 11)),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_outline, color: AppColors.error),
                               onPressed: () => vm.remove(b.id),
