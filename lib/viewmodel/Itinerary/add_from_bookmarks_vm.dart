@@ -1,11 +1,11 @@
 import 'package:flutter/cupertino.dart';
+import '../../core/services/database_manager.dart';
 import '../../model/dto/bookmark_with_place_dto.dart';
 import '../../model/entities/place.dart';
-import '../../model/repositories/adapters/bookmark_repository_adapter.dart';
 import '../../model/repositories/interfaces/bookmark_repository.dart';
 
 class AddFromBookmarksViewModel extends ChangeNotifier {
-  final BookmarkRepository _repo = BookmarkRepositoryImpl();
+  final BookmarkRepository _repo = DatabaseManager().bookmarkRepository;
   final String userId;
 
   List<BookmarkWithPlaceDTO> _bookmarks = [];

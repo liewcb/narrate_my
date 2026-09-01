@@ -23,7 +23,6 @@ abstract class BookmarkRepository {
   /// Find the user's bookmark using Google's canonical place_id.
   Future<Bookmark?> getPlaceBookmark(String userId, String googlePlaceId);
 
-  /// Check remotely using Google's canonical place_id so every module and
-  /// device sees the same state.
-  Future<bool> isBookmarked(String userId, String googlePlaceId);
+  /// Check if a place is already bookmarked by a user.
+  Future<bool> isBookmarked(String userId, String placeId);
 }

@@ -19,7 +19,24 @@ class ItinerarySelectedDestinationRepositoryImpl
   Future<List<ItinerarySelectedDestinationDTO>> getSelectedDestinations(
       String itineraryId,
       ) async {
-    // Local-first
+    // 1. Remote first (source of truth)
+    try {
+      final remoteList = await _remote.fetchForItinerary(itineraryId);
+      if (remoteList.isNotEmpty) {
+        // Cache on remote success (best-effort)
+        try {
+          await _local.cacheAll(remoteList);
+        } catch (e) {
+          debugPrint('[SelectedDestRepo] Local cache write failed: $e');
+        }
+        return remoteList;
+      }
+    } catch (e) {
+      debugPrint('[SelectedDestRepo] Remote fetch failed: $e');
+    }
+
+    // 2. Local cache fallback (offline)
+    debugPrint('[SelectedDestRepo] Attempting local cache fallback');
     try {
       final localList = await _local.getForItinerary(itineraryId);
       if (localList.isNotEmpty) {
@@ -28,33 +45,23 @@ class ItinerarySelectedDestinationRepositoryImpl
     } catch (e) {
       debugPrint('[SelectedDestRepo] Local read failed: $e');
     }
-
-    // Remote fallback
-    try {
-      final remoteList = await _remote.fetchForItinerary(itineraryId);
-      if (remoteList.isNotEmpty) {
-        await _local.cacheAll(remoteList);
-      }
-      return remoteList;
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Remote fetch failed: $e');
-      return [];
-    }
+    return [];
   }
 
   @override
   Future<void> addSelectedDestination(ItinerarySelectedDestinationDTO destination) async {
-    // Insert locally
-    try {
-      await _local.insert(destination);
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Local insert failed: $e');
-    }
-    // Insert remotely
+    // 1. Insert remotely first (source of truth)
     try {
       await _remote.insert(destination);
     } catch (e) {
       debugPrint('[SelectedDestRepo] Remote insert failed: $e');
+      rethrow;
+    }
+    // 2. Insert locally on remote success (best-effort)
+    try {
+      await _local.insert(destination);
+    } catch (e) {
+      debugPrint('[SelectedDestRepo] Local insert failed: $e');
     }
   }
 
@@ -64,17 +71,18 @@ class ItinerarySelectedDestinationRepositoryImpl
       String destinationId,
       int allocatedDays,
       ) async {
-    // Update locally
-    try {
-      await _local.updateAllocatedDays(itineraryId, destinationId, allocatedDays);
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Local update failed: $e');
-    }
-    // Update remotely
+    // 1. Update remotely first (source of truth)
     try {
       await _remote.updateAllocatedDays(itineraryId, destinationId, allocatedDays);
     } catch (e) {
       debugPrint('[SelectedDestRepo] Remote update failed: $e');
+      rethrow;
+    }
+    // 2. Update locally on remote success (best-effort)
+    try {
+      await _local.updateAllocatedDays(itineraryId, destinationId, allocatedDays);
+    } catch (e) {
+      debugPrint('[SelectedDestRepo] Local update failed: $e');
     }
   }
 
@@ -83,17 +91,18 @@ class ItinerarySelectedDestinationRepositoryImpl
       String itineraryId,
       String destinationId,
       ) async {
-    // Delete locally
-    try {
-      await _local.delete(itineraryId, destinationId);
-    } catch (e) {
-      debugPrint('[SelectedDestRepo] Local delete failed: $e');
-    }
-    // Delete remotely
+    // 1. Delete remotely first (source of truth)
     try {
       await _remote.delete(itineraryId, destinationId);
     } catch (e) {
       debugPrint('[SelectedDestRepo] Remote delete failed: $e');
+      rethrow;
+    }
+    // 2. Delete locally on remote success (best-effort)
+    try {
+      await _local.delete(itineraryId, destinationId);
+    } catch (e) {
+      debugPrint('[SelectedDestRepo] Local delete failed: $e');
     }
   }
 }

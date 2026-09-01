@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../core/services/database_manager.dart';
 import '../../core/config/itinerary_constants.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/repositories/adapters/itinerary_stop_repository_adapter.dart';
@@ -54,7 +55,7 @@ class AddPlaceVM extends ChangeNotifier {
     required this.explorationTime,
     ItineraryStopRepository? stopRepository,
   }) : _stopRepository =
-            stopRepository ?? ItineraryStopRepositoryImpl();
+            stopRepository ?? DatabaseManager().itineraryStopRepository;
 
   // ─── Existing schedule ──────────────────────────────────────
   List<ItineraryStop> _existingStops = [];

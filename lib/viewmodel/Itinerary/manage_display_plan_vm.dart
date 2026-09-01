@@ -1,13 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
-import '../../model/entities/bookmark.dart';
+import '../../core/services/database_manager.dart';
 import '../../model/entities/itinerary.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
 import '../../model/repositories/adapters/itinerary_repository_adapter.dart';
 import '../../model/repositories/adapters/itinerary_stop_repository_adapter.dart';
 import '../../model/repositories/adapters/place_repository_adapter.dart';
+import '../../core/config/api_keys.dart';
 import 'package:narrate_my/view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 
 /// Presentation UI wrapper combining Stop + Place details.
@@ -29,29 +30,27 @@ class DisplayableStop {
 
 class ManageDisplayPlanViewModel extends ChangeNotifier {
   final String itineraryId;
-  final ItineraryRepositoryImpl _repository = ItineraryRepositoryImpl();
-  final ItineraryStopRepositoryImpl _stopRepo = ItineraryStopRepositoryImpl();
-  final PlaceRepositoryAdapter _placeRepo = PlaceRepositoryAdapter();
+  final ItineraryRepositoryImpl _repository = DatabaseManager().itineraryRepository;
+  final ItineraryStopRepositoryImpl _stopRepo = DatabaseManager().itineraryStopRepository;
+  final PlaceRepositoryAdapter _placeRepo = DatabaseManager().placeRepository;
 
   // ─── State ──────────────────────────────────────────────────
 
   Itinerary? _itinerary;
   List<ItineraryStop> _stops = [];
-  int _selectedDayIndex = 1; // 1-based day (header: "Day 1")
+  int? _selectedDayFilter; // null = all days, otherwise day index
   String? _expandedStopId;
   bool _isLoading = false;
   bool _isSaving = false;
   String? _error;
   ItineraryTemporalStatus _temporalStatus = ItineraryTemporalStatus.upcoming;
-
-  /// Stop-status filter (null = show all).
   String? _stopStatusFilter;
 
   // ─── Getters ────────────────────────────────────────────────
 
   Itinerary? get itinerary => _itinerary;
   List<ItineraryStop> get stops => _stops;
-  int get selectedDayIndex => _selectedDayIndex;
+  int? get selectedDayFilter => _selectedDayFilter;
   String? get expandedStopId => _expandedStopId;
   bool get isLoading => _isLoading;
   bool get isSaving => _isSaving;
@@ -67,8 +66,15 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
   /// Whether progress recording (Completed/Skipped) is allowed (Ongoing only).
   bool get canRecordProgress => _temporalStatus.allowsProgressRecording;
 
-  /// Whether the itinerary can be customized (Ongoing only).
+  /// Whether the itinerary can be customized (Ongoing or Upcoming – now editable).
   bool get canCustomize => _temporalStatus.isEditable;
+
+  /// Sorted list of available day indices (1‑based).
+  List<int> get availableDayIndices {
+    final set = _stops.map((s) => s.dayIndex).toSet();
+    final list = set.toList()..sort();
+    return list;
+  }
 
   /// Set the stop-status filter (Planned/Completed/Skipped, or null for all).
   void setStopStatusFilter(String? status) {
@@ -77,51 +83,42 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Stops for the currently selected day, sorted by [ItineraryStop.stopOrder].
-  /// Stops are stored 1-based (`day_index > 0`), matching [selectedDayIndex].
-  List<ItineraryStop> get currentDayStops {
-    var dayStops = _stops
-        .where((s) => s.dayIndex == _selectedDayIndex)
-        .toList();
-    dayStops.sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
-
-    // Apply the stop-status filter (Planned / Completed / Skipped).
+  /// Stops for the currently selected day, or all stops if filter is null.
+  /// Sorted by [ItineraryStop.stopOrder].
+  List<ItineraryStop> get filteredStops {
+    var filtered = _stops;
+    if (_selectedDayFilter != null) {
+      filtered = filtered.where((s) => s.dayIndex == _selectedDayFilter).toList();
+    }
     if (_stopStatusFilter != null) {
-      dayStops = dayStops
-          .where((s) => s.stopStatus == _stopStatusFilter)
-          .toList();
+      filtered = filtered.where((s) => s.stopStatus == _stopStatusFilter).toList();
     }
-    return dayStops;
+    filtered.sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+    return filtered;
   }
 
-  /// Condensed itinerary preview: the first stop of each day.
-  ///
-  /// Groups [_stops] by [ItineraryStop.dayIndex], sorts each day's stops by
-  /// [ItineraryStop.stopOrder] ascending, and keeps only the stop with the
-  /// smallest `stopOrder` per day. Keys are 1-based day indexes.
-  Map<int, ItineraryStop> get firstStopPerDay {
-    final byDay = <int, List<ItineraryStop>>{};
-    for (final stop in _stops) {
-      byDay.putIfAbsent(stop.dayIndex, () => []).add(stop);
-    }
-
-    final result = <int, ItineraryStop>{};
-    final dayIndexes = byDay.keys.toList()..sort();
-    for (final dayIndex in dayIndexes) {
-      final stops = byDay[dayIndex]!
+  /// Returns a hero image URL for a given day (or for all days if [dayIndex] is null).
+  String? getHeroImageUrl(int? dayIndex) {
+    String? ref;
+    if (dayIndex == null) {
+      // All days: use the first stop of the whole itinerary
+      final firstStop = _stops.isNotEmpty ? _stops.first : null;
+      ref = firstStop?.place?.placePhotoRef;
+    } else {
+      // Specific day: find the first stop of that day
+      final dayStops = _stops.where((s) => s.dayIndex == dayIndex).toList()
         ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
-      if (stops.isNotEmpty) {
-        result[dayIndex] = stops.first;
-      }
+      ref = dayStops.isNotEmpty ? dayStops.first.place?.placePhotoRef : null;
     }
-    return result;
+    if (ref == null || ref.isEmpty) return null;
+    return _buildPhotoUrl(ref, maxWidth: 800);
   }
 
-  /// [firstStopPerDay] as a sorted list (ascending day order) for previews.
-  List<ItineraryStop> get firstStopPerDayList {
-    final map = firstStopPerDay;
-    final days = map.keys.toList()..sort();
-    return [for (final day in days) map[day]!];
+  String _buildPhotoUrl(String photoreference, {int maxWidth = 800}) {
+    return 'https://maps.googleapis.com/maps/api/place/photo'
+        '?maxwidth=$maxWidth'
+        '&photoreference=$photoreference'
+        '&key=${ApiKeys.googleMapsApiKey}';
   }
 
   // ─── Constructor ────────────────────────────────────────────
@@ -137,22 +134,15 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      print('📚 Loading itinerary: $itineraryId');
       _itinerary = await _repository.getItinerary(itineraryId);
-      print('✅ Itinerary loaded: $_itinerary');
 
-      // Compute temporal status from dates (not from the stored status field).
       _temporalStatus = ItineraryStatusResolver.resolve(
         startDate: _itinerary!.startDate,
         endDate: _itinerary!.endDate,
       );
-      print('✅ Temporal status: ${_temporalStatus.name}');
 
       final rawStops = await _stopRepo.getStopsForItinerary(itineraryId);
-      print('✅ Stops loaded: ${rawStops.length}');
 
-      // Join each stop with its original Place (nullable; fall back to
-      // Place.empty when the place is not yet in the local DB).
       final joined = <ItineraryStop>[];
       for (final stop in rawStops) {
         Place? place;
@@ -165,11 +155,11 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
       }
       _stops = joined;
 
-      _selectedDayIndex = 1;
+      // Reset selected day filter to null (show all) after load.
+      _selectedDayFilter = null;
       _expandedStopId = null;
     } catch (e) {
       _error = e.toString();
-      print('❌ Load error: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -179,9 +169,10 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
   /// Refresh (pull‑to‑refresh).
   Future<void> refresh() => load();
 
-  /// Change the selected day.
-  void selectDay(int dayIndex) {
-    _selectedDayIndex = dayIndex;
+  /// Change the selected day filter (null for all days).
+  void selectDay(int? dayIndex) {
+    if (_selectedDayFilter == dayIndex) return;
+    _selectedDayFilter = dayIndex;
     _expandedStopId = null;
     notifyListeners();
   }
@@ -208,9 +199,6 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
 
   /// Add bookmarked places (by their Google placeIds) as new stops on
   /// [dayIndex].
-  ///
-  /// Each place is fetched from the local place cache, saved if missing,
-  /// and appended to the day. Only runs for ongoing itineraries.
   Future<int> addBookmarkedPlaces({
     required int dayIndex,
     required List<String> placeIds,
@@ -223,8 +211,8 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     if (toAdd.isEmpty) return 0;
 
     var nextOrder = _stops
-            .where((s) => s.dayIndex == dayIndex)
-            .fold<int>(-1, (max, s) => s.stopOrder > max ? s.stopOrder : max) +
+        .where((s) => s.dayIndex == dayIndex)
+        .fold<int>(-1, (max, s) => s.stopOrder > max ? s.stopOrder : max) +
         1;
 
     final now = DateTime.now();
@@ -334,31 +322,29 @@ extension ManageDisplayPlanViewModelUI on ManageDisplayPlanViewModel {
   /// Header string formatted like: "Day 1 · 12 Aug · Kuala Lumpur Getaway"
   String get formattedDayHeader {
     if (itinerary == null) return '';
-    final currentDate =
-        itinerary!.startDate.add(Duration(days: selectedDayIndex - 1));
+    final currentDay = selectedDayFilter ?? 1;
+    final currentDate = itinerary!.startDate.add(Duration(days: currentDay - 1));
     final dateStr = DateFormat('d MMM').format(currentDate);
-    return 'Day $selectedDayIndex · $dateStr · ${itinerary!.title}';
+    return 'Day $currentDay · $dateStr · ${itinerary!.title}';
   }
 
   /// Combined stops with place data and computed travel intervals for UI rendering.
   List<DisplayableStop> get currentDayDisplayStops {
-    final stops = currentDayStops; // Filtered & sorted by stopOrder
+    final stops = filteredStops;
     final List<DisplayableStop> displayList = [];
 
     for (int i = 0; i < stops.length; i++) {
       final current = stops[i];
-      final place = current.place ?? Place.empty(current.placeId); // Join reference
+      final place = current.place ?? Place.empty(current.placeId);
 
       final timeFormat = DateFormat('HH:mm');
       final timeRange =
           '${timeFormat.format(current.startTime)} – ${timeFormat.format(current.endTime)}';
 
-      // Prev travel calculation
       final prevText = current.travelFromPrevMinutes != null
           ? '${current.travelFromPrevMinutes} min'
           : null;
 
-      // Next travel calculation
       String? nextText;
       if (i < stops.length - 1) {
         final nextStop = stops[i + 1];

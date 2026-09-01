@@ -9,6 +9,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/services/database_manager.dart';
 import '../../model/entities/itinerary.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
@@ -40,9 +41,9 @@ class ManageEditItineraryViewModel extends ChangeNotifier {
   final String itineraryId;
   final int dayIndex; // 1-based day number
 
-  final ItineraryRepositoryImpl _repository = ItineraryRepositoryImpl();
-  final ItineraryStopRepositoryImpl _stopRepo = ItineraryStopRepositoryImpl();
-  final PlaceRepositoryAdapter _placeRepo = PlaceRepositoryAdapter();
+  final ItineraryRepositoryImpl _repository = DatabaseManager().itineraryRepository;
+  final ItineraryStopRepositoryImpl _stopRepo = DatabaseManager().itineraryStopRepository;
+  final PlaceRepositoryAdapter _placeRepo = DatabaseManager().placeRepository;
 
   // ─── State ──────────────────────────────────────────────────
 

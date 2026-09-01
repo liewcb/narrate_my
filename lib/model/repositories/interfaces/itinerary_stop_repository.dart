@@ -16,4 +16,13 @@ abstract class ItineraryStopRepository {
 
   /// Save a list of stops (e.g., after reordering) – convenience method.
   Future<void> saveStops(List<ItineraryStop> stops);
+
+  /// Replace all stops for a single day atomically (local batch):
+  /// deletes the existing day's stops and inserts [newStops] in one
+  /// operation, protecting against partial updates. Remote is best-effort.
+  Future<void> replaceDayStops({
+    required String itineraryId,
+    required int dayIndex,
+    required List<ItineraryStop> newStops,
+  });
 }

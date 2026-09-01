@@ -39,11 +39,11 @@ class ItineraryRegenerationService {
     AIService? aiService,
     AiScheduleValidator? validator,
   })  : _aiService = aiService ?? AIService(
-          baiApiKey: ApiKeys.baiApiKey,
-          baiModel: ApiKeys.baiModel,
-          openRouterApiKey: ApiKeys.openRouterApiKey,
-          cohereApiKey: ApiKeys.cohereApiKey,
-        ),
+    baiApiKey: ApiKeys.baiApiKey,
+    baiModel: ApiKeys.baiModel,
+    openRouterApiKey: ApiKeys.openRouterApiKey,
+    cohereApiKey: ApiKeys.cohereApiKey,
+  ),
         _validator = validator ?? AiScheduleValidator();
 
   /// Regenerate [current] using its own candidate pool + the traveler's
@@ -73,7 +73,6 @@ class ItineraryRegenerationService {
         '${alternatives.length}');
 
     final mustVisitIds = request.mustVisitPlaceIds;
-    final scored = current.scoredCandidates ?? const [];
 
     for (int attempt = 1; attempt <= maxRegenerationAttempts; attempt++) {
       debugPrint('[REGENERATE] DeepSeek attempt $attempt');
@@ -82,7 +81,6 @@ class ItineraryRegenerationService {
         request: request,
         current: current,
         alternatives: alternatives,
-        scored: scored,
         feedback: attempt > 1 ? _lastFeedback : null,
       );
 
@@ -145,7 +143,7 @@ class ItineraryRegenerationService {
           explorationTime: request.explorationTime ?? 'Standard',
           destinationOrder: request.destinations,
           allocatedDaysPerDestination:
-              request.daySplit.isNotEmpty ? request.daySplit : null,
+          request.daySplit.isNotEmpty ? request.daySplit : null,
           placeIdToDestination: placeIdToDestination,
         );
 
@@ -163,7 +161,7 @@ class ItineraryRegenerationService {
           debugPrint('Days: ${aiDays.length}');
           debugPrint('Candidates supplied: ${alternatives.length}');
           final generatedStops =
-              aiDays.fold<int>(0, (sum, d) => sum + d.schedule.length);
+          aiDays.fold<int>(0, (sum, d) => sum + d.schedule.length);
           debugPrint('Stops generated: $generatedStops');
           debugPrint('Must-visits: ${_verifiedMustVisitCount(aiDays, mustVisitIds)} / '
               '${mustVisitIds.length}');
@@ -189,7 +187,7 @@ class ItineraryRegenerationService {
         debugPrint('Days: ${aiDays.length}');
         debugPrint('Candidates supplied: ${alternatives.length}');
         final failedStops =
-            aiDays.fold<int>(0, (sum, d) => sum + d.schedule.length);
+        aiDays.fold<int>(0, (sum, d) => sum + d.schedule.length);
         debugPrint('Stops generated: $failedStops');
         debugPrint('Must-visits: ${_verifiedMustVisitCount(aiDays, mustVisitIds)} / '
             '${mustVisitIds.length}');
@@ -285,7 +283,6 @@ class ItineraryRegenerationService {
     required TripDraft request,
     required ItineraryResult current,
     required List<Place> alternatives,
-    required List<ScoredAttraction> scored,
     String? feedback,
   }) {
     final buffer = StringBuffer();
@@ -332,23 +329,16 @@ class ItineraryRegenerationService {
 
     // ── ALTERNATIVE CANDIDATES ─────────────────────────────────
     buffer.writeln('ALTERNATIVE CANDIDATES (select from these ONLY)');
-    final scoredById = <String, ScoredAttraction>{
-      for (final s in scored) s.place.placeId: s,
-    };
     for (final place in alternatives) {
-      final s = scoredById[place.placeId];
       final clusterId = _clusterIdForPlace(current, place.placeId);
       buffer.writeln(jsonEncode({
         'placeId': place.placeId,
         'name': place.placeName,
         'destinationId': place.destinationId,
         'category': place.category,
-        'types': place.placeTypes,
         'latitude': place.placeLatitude,
         'longitude': place.placeLongitude,
         'rating': place.placeRating,
-        'finalScore': s?.score,
-        'interestScore': s?.breakdown['interest'],
         'isMustVisit': mustVisitIds.contains(place.placeId),
         'clusterId': clusterId,
         'visitDurationMinutes': place.visitDurationMinutes,
@@ -397,7 +387,8 @@ class ItineraryRegenerationService {
 
     // ── OUTPUT CONTRACT ─────────────────────────────────────────
     buffer.writeln('Return STRICT JSON ONLY (no Markdown fences) with this '
-        'structure:');
+        'structure. Do NOT emit a "stopOrder" field — the array ordering IS '
+        'the stop order and will be assigned by the system.');
     buffer.writeln(_jsonTemplate());
 
     return buffer.toString();
@@ -412,7 +403,6 @@ class ItineraryRegenerationService {
       "date": "YYYY-MM-DD",
       "schedule": [
         {
-          "stopOrder": 1,
           "placeId": "EXACT_CANDIDATE_PLACE_ID",
           "startTime": "HH:mm",
           "endTime": "HH:mm",
@@ -461,10 +451,10 @@ class ItineraryRegenerationService {
   }
 
   List<ScheduledDay> _toScheduledDays(
-    List<AIDaySchedule> aiDays,
-    TripDraft request,
-    ItineraryResult current,
-  ) {
+      List<AIDaySchedule> aiDays,
+      TripDraft request,
+      ItineraryResult current,
+      ) {
     final registry = current.placeRegistry;
     final startDate = request.startDate ?? DateTime.now();
     final result = <ScheduledDay>[];
@@ -561,9 +551,9 @@ class ItineraryRegenerationService {
   }
 
   Map<String, String> _placeIdToDestination(
-    ItineraryResult current,
-    TripDraft request,
-  ) {
+      ItineraryResult current,
+      TripDraft request,
+      ) {
     // The validator compares against allocatedDaysPerDestination keys
     // which are destination NAMES (e.g. "Kuala Lumpur"), not IDs.
     // We must return the matching name, not the DB ID.

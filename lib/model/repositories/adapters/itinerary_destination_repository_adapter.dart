@@ -1,4 +1,6 @@
 
+import 'package:flutter/foundation.dart';
+
 import '../../data_sources/local/itinerary_destination_local_data_source.dart';
 import '../../data_sources/remote/itinerary_destination_remote_data_source.dart';
 import '../../entities/itinerary_destination.dart';
@@ -18,16 +20,32 @@ class ItineraryDestinationRepositoryImpl implements ItineraryDestinationReposito
 
   @override
   Future<List<ItineraryDestination>> getSelectedDestinations(String itineraryId) async {
-    // Local first
-    final local = await _local.getForItinerary(itineraryId);
-    if (local.isNotEmpty) return local;
-
-    // Remote fallback
-    final remote = await _remote.fetchForItinerary(itineraryId);
-    if (remote.isNotEmpty) {
-      await _local.insertAll(remote);
+    // 1. Remote first (source of truth)
+    try {
+      final remote = await _remote.fetchForItinerary(itineraryId);
+      if (remote.isNotEmpty) {
+        // Cache on remote success (best-effort)
+        try {
+          await _local.insertAll(remote);
+        } catch (e) {
+          debugPrint('[ItineraryDestRepo] Local cache write failed: $e');
+        }
+        return remote;
+      }
+    } catch (e) {
+      debugPrint('[ItineraryDestRepo] Remote read failed: $e');
     }
-    return remote;
+
+    // 2. Local cache fallback (offline)
+    debugPrint('[ItineraryDestRepo] Attempting local cache fallback');
+    try {
+      final local = await _local.getForItinerary(itineraryId);
+      if (local.isNotEmpty) return local;
+    } catch (e) {
+      debugPrint('[ItineraryDestRepo] Local read failed: $e');
+    }
+
+    return [];
   }
 
   @override

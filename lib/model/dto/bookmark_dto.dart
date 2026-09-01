@@ -2,9 +2,13 @@ import '../entities/bookmark.dart';
 
 /// Data Transfer Object for [Bookmark].
 ///
-/// Handles serialization for Supabase and local database. The joined
-/// [Place] lives in [BookmarkWithPlaceDTO] — this DTO only carries the
-/// bookmark's own columns.
+/// Handles serialization between:
+/// - Supabase
+/// - Local SQLite database
+/// - Domain [Bookmark] entity
+///
+/// This DTO only contains bookmark fields.
+/// Place data is handled separately by [BookmarkWithPlaceDTO].
 class BookmarkDTO {
   final String id;
   final String userId;
@@ -16,55 +20,40 @@ class BookmarkDTO {
   const BookmarkDTO({
     required this.id,
     required this.userId,
-    this.itemId,
+    required this.itemId,
     required this.itemType,
     this.placeId,
     this.createdAt,
   });
 
-  // ─── From Supabase ──────────────────────────────────────────────
+  // ============================================================
+  // FROM SUPABASE
+  // ============================================================
+
   factory BookmarkDTO.fromSupabase(Map<String, dynamic> json) {
     return BookmarkDTO(
       id: json['id'].toString(),
+
       userId: json['user_id'].toString(),
-      itemId: json['item_id']?.toString(),
+
+      itemId: json['item_id'].toString(),
+
       itemType: json['item_type'].toString(),
-      placeId: json['place_id']?.toString(),
+
+      placeId: json['place_id'] != null ? json['place_id'].toString() : null,
+
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())
           : null,
     );
   }
 
-  // ─── From JSON (alias for fromSupabase) ────────────────────────
+  // ============================================================
+  // FROM JSON
+  // ============================================================
+
   factory BookmarkDTO.fromJson(Map<String, dynamic> json) {
     return BookmarkDTO.fromSupabase(json);
-  }
-
-  // ─── From Local Database (SQLite) ──────────────────────────────
-  factory BookmarkDTO.fromMap(Map<String, dynamic> map) {
-    return BookmarkDTO(
-      id: map['id'].toString(),
-      userId: map['user_id'].toString(),
-      itemId: map['item_id']?.toString(),
-      itemType: map['item_type'].toString(),
-      placeId: map['place_id']?.toString(),
-      createdAt: map['created_at'] != null
-          ? DateTime.tryParse(map['created_at'].toString())
-          : null,
-    );
-  }
-
-  // ─── To Local Database Map ─────────────────────────────────────
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'user_id': userId,
-      'item_id': itemId,
-      'item_type': itemType,
-      'place_id': placeId,
-      'created_at': createdAt?.toIso8601String(),
-    };
   }
 
   /// Supabase insert/update payload. Database-generated values are omitted
@@ -80,7 +69,62 @@ class BookmarkDTO {
     };
   }
 
-  // ─── From Domain Entity ────────────────────────────────────────
+  // ============================================================
+  // FROM LOCAL SQLITE
+  // ============================================================
+
+  factory BookmarkDTO.fromMap(Map<String, dynamic> map) {
+    return BookmarkDTO(
+      id: map['id'].toString(),
+
+      userId: map['user_id'].toString(),
+
+      itemId: map['item_id'].toString(),
+
+      itemType: map['item_type'].toString(),
+
+      placeId: map['place_id'] != null ? map['place_id'].toString() : null,
+
+      createdAt: map['created_at'] != null
+          ? DateTime.tryParse(map['created_at'].toString())
+          : null,
+    );
+  }
+
+  // ============================================================
+  // TO SUPABASE
+  // ============================================================
+
+  Map<String, dynamic> toSupabase() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'item_id': itemId,
+      'item_type': itemType,
+      'place_id': placeId,
+      'created_at': createdAt?.toIso8601String(),
+    };
+  }
+
+  // ============================================================
+  // TO LOCAL SQLITE
+  // ============================================================
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'item_id': itemId,
+      'item_type': itemType,
+      'place_id': placeId,
+      'created_at': createdAt?.toIso8601String(),
+    };
+  }
+
+  // ============================================================
+  // FROM DOMAIN ENTITY
+  // ============================================================
+
   factory BookmarkDTO.fromEntity(Bookmark entity) {
     return BookmarkDTO(
       id: entity.id,
@@ -92,7 +136,10 @@ class BookmarkDTO {
     );
   }
 
-  // ─── To Domain Entity ──────────────────────────────────────────
+  // ============================================================
+  // TO DOMAIN ENTITY
+  // ============================================================
+
   Bookmark toEntity() {
     return Bookmark(
       id: id,
@@ -100,7 +147,7 @@ class BookmarkDTO {
       itemId: itemId,
       itemType: itemType,
       placeId: placeId,
-      createdAt: createdAt,
+      createdAt: createdAt ?? DateTime.now(),
     );
   }
 }

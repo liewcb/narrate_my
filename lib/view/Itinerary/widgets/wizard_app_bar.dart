@@ -1,16 +1,17 @@
-// lib/widgets/wizard_app_bar.dart
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart'; // adjust import to your new theme file
 
 /// App bar with a back button, step indicator, and optional actions.
 class WizardAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final int step; // 1..4
+  final int step;
+  final int totalSteps;
   final VoidCallback? onBackPressed;
   final List<Widget>? actions;
 
   const WizardAppBar({
     super.key,
     required this.step,
+    this.totalSteps = 5, // Default to 5
     this.onBackPressed,
     this.actions,
   });
@@ -18,44 +19,69 @@ class WizardAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      color: AppColors.bg.withOpacity(0.9),   // was creamBg
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppColors.ink), // was brandCharcoal
-            onPressed: onBackPressed ?? () => Navigator.maybePop(context),
-            padding: EdgeInsets.zero,
+      color: AppColors.bg.withOpacity(0.9),
+      // SafeArea automatically pushes the content down below the phone's notch/status bar
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          // Adjust vertical padding here for visual breathing room (16px looks very clean)
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            children: [
+              // 1. LEFT SIDE: Back Button
+              SizedBox(
+                width: 32, // Fixed width to balance the right side
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: AppColors.ink),
+                  onPressed: onBackPressed ?? () => Navigator.maybePop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(), // Removes default wide tap margins
+                  alignment: Alignment.centerLeft,
+                ),
+              ),
+
+              const Spacer(),
+
+              // 2. CENTER: Step Indicator
+              Text(
+                'Step $step of $totalSteps',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color: AppColors.inkFaint,
+                ),
+              ),
+
+              const Spacer(),
+
+              // 3. RIGHT SIDE: Actions or Empty Space (must balance the left side)
+              if (actions != null && actions!.isNotEmpty)
+                Row(children: actions!)
+              else
+                const SizedBox(width: 32), // Exact same width as the back button so text is dead-center
+            ],
           ),
-          const Spacer(),
-          Text(
-            'Step $step of 4',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-              color: AppColors.inkFaint,      // was outline
-            ),
-          ),
-          const Spacer(),
-          if (actions != null && actions!.isNotEmpty)
-            Row(children: actions!)
-          else
-            const SizedBox(width: 48),
-        ],
+        ),
       ),
     );
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(56);
+  // Standard toolbar height + extra breathing room
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight + 20);
 }
 
-/// 4-step progress bar with active/inactive dots.
+/// Progress bar with active/inactive dots.
 class WizardProgressBar extends StatelessWidget {
-  final int activeSteps; // how many steps are completed (active)
+  final int activeSteps;
+  final int totalSteps;
 
-  const WizardProgressBar({super.key, required this.activeSteps});
+  const WizardProgressBar({
+    super.key,
+    required this.activeSteps,
+    this.totalSteps = 5,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -67,18 +93,19 @@ class WizardProgressBar extends StatelessWidget {
           Container(
             height: 2,
             width: double.infinity,
-            color: AppColors.moduleBorder.withOpacity(0.6), // was outlineLight
+            color: AppColors.moduleBorder.withOpacity(0.6),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(4, (i) {
+            // Automatically generates the exact number of dots you need
+            children: List.generate(totalSteps, (i) {
               final active = i < activeSteps;
               return Container(
                 width: 12,
                 height: 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: active ? AppColors.primary : AppColors.bg, // was brandGreen / creamBg
+                  color: active ? AppColors.primary : AppColors.bg,
                   border: Border.all(
                     color: active ? AppColors.primary : AppColors.moduleBorder,
                     width: 2,

@@ -209,7 +209,7 @@ class _ManageDetailPlanScreenState extends State<ManageDetailPlanScreen> {
 
   Widget _buildDaySelector() {
     final totalDays = _viewModel.itinerary?.totalDays ?? 1;
-    final selected = _viewModel.selectedDayIndex;
+    final selected = _viewModel.selectedDayFilter;
 
     return SizedBox(
       height: 48,
@@ -281,7 +281,7 @@ class _ManageDetailPlanScreenState extends State<ManageDetailPlanScreen> {
             if (_viewModel.canCustomize) ...[
               const SizedBox(height: 24),
               ElevatedButton.icon(
-                onPressed: () => _openAddBookmarks(_viewModel.selectedDayIndex),
+                onPressed: () => _openAddBookmarks(_viewModel.selectedDayFilter ?? 1),
                 icon: const Icon(Icons.bookmark_add_outlined, size: 18),
                 label: const Text('Add from bookmarks'),
                 style: ElevatedButton.styleFrom(

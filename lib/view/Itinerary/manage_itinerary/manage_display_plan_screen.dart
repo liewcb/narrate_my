@@ -1,13 +1,17 @@
-// lib/view/Itinerary/manage_itinerary/manage_display_plan_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/entities/itinerary_stop.dart';
+import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/manage_display_plan_vm.dart';
 import 'package:narrate_my/view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 import 'add_from_bookmark.dart';
+import 'add_custom_screen.dart';
 import 'edit_stop_screen.dart';
+import 'interactive_maps_screen.dart';
 import 'manage_edit_itinerary_screen.dart';
+import '../widgets/view_place_detail_screen.dart';
 
 class ManageDisplayPlanScreen extends StatefulWidget {
   final String itineraryId;
@@ -22,11 +26,60 @@ class ManageDisplayPlanScreen extends StatefulWidget {
 class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
   late ManageDisplayPlanViewModel _viewModel;
 
+  // Stores GlobalKeys for each day to allow targeted scrolling
+  final Map<int, GlobalKey> _dayKeys = {};
+
+  // Scroll controller for the day-navigation (All Days scrolls to top).
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _viewModel = ManageDisplayPlanViewModel(itineraryId: widget.itineraryId);
     _viewModel.load();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // Selects the day filter and scrolls to the corresponding content.
+  // null = All Days → scroll back to the top of the itinerary content.
+  void _selectDay(int? dayIndex) {
+    // 1. Handle "All Days" top scroll
+    if (dayIndex == null) {
+      _viewModel.selectDay(null);
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOut,
+        );
+      }
+      return;
+    }
+
+    // 2. Perform smooth scroll to the target day key
+    final key = _dayKeys[dayIndex];
+    if (key != null && key.currentContext != null) {
+      Scrollable.ensureVisible(
+        key.currentContext!,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
+        alignment: 0.05, // Position near top of viewport
+      );
+    }
+
+    // 3. Update the selected tab highlight in ViewModel
+    _viewModel.selectDay(dayIndex);
+  }
+
+  /// Validates if a specific day can be edited.
+  /// Now it simply returns true if the entire itinerary is customizable.
+  bool _canEditDay(DateTime dayDate) {
+    return _viewModel.canCustomize;
   }
 
   @override
@@ -56,15 +109,39 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
               style: AppTextStyles.pageTitle.copyWith(fontSize: 18),
             ),
             actions: [
-              IconButton(
+              PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert, color: AppColors.ink),
-                onPressed: () {},
+                onSelected: (value) {
+                  if (value == 'interactive_map') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => InteractiveMapsScreen(
+                          itineraryId: widget.itineraryId,
+                        ),
+                      ),
+                    );
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'interactive_map',
+                    child: Row(
+                      children: [
+                        Icon(Icons.map_outlined, color: AppColors.ink),
+                        SizedBox(width: 12),
+                        Text('Interactive Map (All)'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
           body: Stack(
             children: [
               ListView(
+                controller: _scrollController,
                 padding: const EdgeInsets.only(
                   left: 20.0,
                   right: 20.0,
@@ -73,9 +150,12 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
                 ),
                 children: [
                   _buildHeroSection(itinerary),
-                  const SizedBox(height: 20.0),
-                  _buildStopFilterChips(),
                   const SizedBox(height: 24.0),
+
+                  // Jump To Day Navigation Tabs
+                  // _buildDayNavigationTabs(),
+                  // const SizedBox(height: 16.0),
+
                   ..._buildDayCards(),
                 ],
               ),
@@ -90,6 +170,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
   // ─── Hero Section ───────────────────────────────────────────
 
   Widget _buildHeroSection(dynamic itinerary) {
+    final heroImageUrl = _viewModel.getHeroImageUrl(_viewModel.selectedDayFilter);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -99,10 +180,17 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
             height: 180,
             width: double.infinity,
             color: AppColors.accent.withOpacity(0.15),
-            child: itinerary?.coverImageUrl != null
+            child: heroImageUrl != null
                 ? Image.network(
-              itinerary!.coverImageUrl!,
+              heroImageUrl,
               fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Center(
+                child: Icon(
+                  Icons.map_outlined,
+                  size: 56,
+                  color: AppColors.inkFaint,
+                ),
+              ),
             )
                 : const Center(
               child: Icon(
@@ -140,42 +228,44 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
 
   Widget _buildStatusBadge() {
     final status = _viewModel.temporalStatus;
-    final (Color bg, Color fg, String label, IconData icon) = switch (status) {
-      ItineraryTemporalStatus.past => (
-      AppColors.surface2,
-      AppColors.inkFaint,
-      'Past',
-      Icons.history,
-      ),
-      ItineraryTemporalStatus.ongoing => (
-      AppColors.green,
-      AppColors.surface,
-      'Ongoing',
-      Icons.play_circle_outline,
-      ),
-      ItineraryTemporalStatus.upcoming => (
-      AppColors.accentSoft,
-      AppColors.bg,
-      'Upcoming',
-      Icons.event_available,
-      ),
-    };
+    // Default styling for all statuses except 'past'
+    Color bgColor = AppColors.surface;
+    Color fgColor = AppColors.ink;
+    IconData icon = Icons.circle_outlined;
+    String label = '';
+
+    switch (status) {
+      case ItineraryTemporalStatus.past:
+        bgColor = AppColors.surface2;
+        fgColor = AppColors.inkFaint;
+        icon = Icons.history;
+        label = 'Past';
+        break;
+      case ItineraryTemporalStatus.ongoing:
+        label = 'Ongoing';
+        icon = Icons.play_circle_outline;
+        break;
+      case ItineraryTemporalStatus.upcoming:
+        label = 'Upcoming';
+        icon = Icons.event_available;
+        break;
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: bg,
+        color: bgColor,
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: fg),
+          Icon(icon, size: 12, color: fgColor),
           const SizedBox(width: 4),
           Text(
             label,
             style: AppTextStyles.labelSm.copyWith(
-              color: fg,
+              color: fgColor,
               fontWeight: FontWeight.w600,
               fontSize: 11,
             ),
@@ -185,47 +275,76 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     );
   }
 
-  // ─── Stop Status Filter Chips ────────────────────────────────
+  // ─── Jump to Day Tabs ────────────────────────────────────────
 
-  Widget _buildStopFilterChips() {
-    final options = <(String?, String)>[
-      (null, 'All'),
-      ('PLANNED', 'Planned'),
-      ('COMPLETED', 'Completed'),
-      ('SKIPPED', 'Skipped'),
-    ];
+  Widget _buildDayNavigationTabs() {
+    final days = _viewModel.availableDayIndices;
+    if (days.isEmpty) return const SizedBox.shrink();
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      clipBehavior: Clip.none,
-      child: Row(
-        children: options.map((opt) {
-          final (value, label) = opt;
-          final isActive = _viewModel.stopStatusFilter == value;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: GestureDetector(
-              onTap: () => _viewModel.setStopStatusFilter(value),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isActive ? AppColors.green : AppColors.surface,
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                  border: Border.all(
-                    color: isActive ? AppColors.green : AppColors.moduleBorder,
-                  ),
-                ),
-                child: Text(
-                  label,
-                  style: AppTextStyles.labelSm.copyWith(
-                    color: isActive ? AppColors.surface : AppColors.ink,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'JUMP TO DAY',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: AppColors.inkFaint,
+          ),
+        ),
+        const SizedBox(height: 12.0),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: Row(
+            children: [
+              // "All Days" is always the first tab.
+              _buildDayTabItem('All Days', null, Icons.view_day_outlined),
+              const SizedBox(width: 12),
+              for (final day in days) ...[
+                _buildDayTabItem('Day $day', day, Icons.calendar_today_outlined),
+                const SizedBox(width: 12),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDayTabItem(String label, int? dayIndex, IconData icon) {
+    final isActive = _viewModel.selectedDayFilter == dayIndex;
+
+    return GestureDetector(
+      onTap: () => _selectDay(dayIndex),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? AppColors.accent : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          border: Border.all(
+            color: isActive ? AppColors.accent : AppColors.moduleBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isActive ? AppColors.bg : AppColors.ink,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: AppTextStyles.labelSm.copyWith(
+                color: isActive ? AppColors.bg : AppColors.ink,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          );
-        }).toList(),
+          ],
+        ),
       ),
     );
   }
@@ -264,13 +383,18 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
           ? '${DateFormat('d MMM').format(date)} • ${stops.length} stops'
           : '${stops.length} stops';
 
+      _dayKeys[dayIndex] ??= GlobalKey();
+
       cards.add(
-        _buildDaySection(
-          dayTitle: dayTitle,
-          dayMeta: dayMeta,
-          stops: stops,
-          dayIndex: dayIndex,
-          dayDate: date ?? DateTime.now(),
+        Container(
+          key: _dayKeys[dayIndex],
+          child: _buildDaySection(
+            dayTitle: dayTitle,
+            dayMeta: dayMeta,
+            stops: stops,
+            dayIndex: dayIndex,
+            dayDate: date ?? DateTime.now(),
+          ),
         ),
       );
       cards.add(const SizedBox(height: 28.0));
@@ -286,33 +410,39 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     required int dayIndex,
     required DateTime dayDate,
   }) {
+    // Now simply checks overall editability – all days of editable trips show the button.
+    final canEditThisDay = _canEditDay(dayDate);
+
     return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x05000000),
-            offset: Offset(0, 2),
-            blurRadius: 8,
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Day Header Row
-          GestureDetector(
-            onTap: _viewModel.canCustomize ? () => _openEditDay(dayIndex) : null,
-            child: Row(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x05000000),
+              offset: Offset(0, 2),
+              blurRadius: 8,
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Day Header Row with Edit Button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(dayTitle, style: AppTextStyles.pageTitle.copyWith(fontSize: 20)),
+                      Text(
+                        dayTitle,
+                        style: AppTextStyles.pageTitle.copyWith(fontSize: 20),
+                      ),
                       const SizedBox(height: 2.0),
                       Text(
                         dayMeta,
@@ -321,131 +451,131 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
                     ],
                   ),
                 ),
-                if (_viewModel.canCustomize)
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: AppColors.surface2,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: AppColors.ink,
+                if (canEditThisDay)
+                  OutlinedButton.icon(
+                    onPressed: () => _openEditDay(dayIndex),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Edit Plan'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.accent,
+                      side: BorderSide(color: AppColors.accent.withOpacity(0.5)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
                     ),
                   ),
               ],
             ),
-          ),
-          const SizedBox(height: 20.0),
+            const SizedBox(height: 20.0),
 
-          // Timeline Section matching Edit Plan timeline pattern
-          const Text(
-            'STOPS',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
-              color: AppColors.inkFaint,
+            // Timeline Section
+            const Text(
+              'STOPS',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: AppColors.inkFaint,
+              ),
             ),
-          ),
-          const SizedBox(height: 12.0),
+            const SizedBox(height: 12.0),
 
-          Stack(
-            children: [
-              // Dashed line background
-              Positioned(
-                left: 17,
-                top: 20,
-                bottom: 20,
-                child: SizedBox(
-                  width: 2,
-                  child: CustomPaint(
-                    painter: _DashedLinePainter(color: AppColors.moduleBorder),
+            Stack(
+              children: [
+                Positioned(
+                  left: 17,
+                  top: 20,
+                  bottom: 20,
+                  child: SizedBox(
+                    width: 2,
+                    child: CustomPaint(
+                      painter: _DashedLinePainter(color: AppColors.moduleBorder),
+                    ),
+                  ),
+                ),
+                Column(
+                  children: List.generate(stops.length, (index) {
+                    final stop = stops[index];
+                    return _buildStopItem(
+                      stop: stop,
+                      number: index + 1,
+                      isFirst: index == 0,
+                      isLast: index == stops.length - 1,
+                      canEdit: canEditThisDay,
+                    );
+                  }),
+                ),
+              ],
+            ),
+
+            // Add Place Actions
+            if (canEditThisDay) ...[
+              const SizedBox(height: 12.0),
+              GestureDetector(
+                onTap: () => _openAddPlace(dayIndex, dayDate),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.accent, width: 2),
+                          color: AppColors.surface,
+                        ),
+                        child: const Icon(Icons.add, size: 18, color: AppColors.accent),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Add custom place to ${dayTitle.toLowerCase()}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.accent,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              // Stop items
-              Column(
-                children: List.generate(stops.length, (index) {
-                  final stop = stops[index];
-                  return _buildStopItem(
-                    stop: stop,
-                    number: index + 1,
-                    isFirst: index == 0,
-                    isLast: index == stops.length - 1,
-                  );
-                }),
+              const SizedBox(height: 6.0),
+              GestureDetector(
+                onTap: () => _openAddBookmarks(dayIndex),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.green, width: 2),
+                          color: AppColors.surface,
+                        ),
+                        child: const Icon(Icons.bookmark_add_outlined, size: 16, color: AppColors.green),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Add from bookmarks to ${dayTitle.toLowerCase()}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
-          ),
-
-          // Add Place Actions
-          if (_viewModel.canCustomize) ...[
-            const SizedBox(height: 12.0),
-            GestureDetector(
-              onTap: () => _openAddPlace(dayIndex, dayDate),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.accent, width: 2),
-                        color: AppColors.surface,
-                      ),
-                      child: const Icon(Icons.add, size: 18, color: AppColors.accent),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Add custom place to ${dayTitle.toLowerCase()}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.accent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 6.0),
-            GestureDetector(
-              onTap: () => _openAddBookmarks(dayIndex),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.green, width: 2),
-                        color: AppColors.surface,
-                      ),
-                      child: const Icon(Icons.bookmark_add_outlined, size: 16, color: AppColors.green),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Add from bookmarks to ${dayTitle.toLowerCase()}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.green,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
-        ],
-      ),
-    );
+        ));
   }
 
   Widget _buildStopItem({
@@ -453,11 +583,8 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     required int number,
     required bool isFirst,
     required bool isLast,
+    bool canEdit = false,
   }) {
-    final statusColor = _statusColor(stop.stopStatus);
-    final statusIcon = _statusIcon(stop.stopStatus);
-    final statusLabel = _statusLabel(stop.stopStatus);
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Row(
@@ -551,48 +678,43 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
                           ),
                         ],
                       ),
-                      if (stop.place?.address != null || stop.place?.address != null) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.location_on_outlined,
-                              size: 16,
-                              color: AppColors.accent,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                stop.place?.address ?? stop.place?.address ?? '',
-                                style: AppTextStyles.bodySm.copyWith(
-                                  color: AppColors.inkFaint,
-                                  fontSize: 12,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
                       Row(
                         children: [
-                          Icon(
-                            statusIcon,
-                            size: 14,
-                            color: statusColor,
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 16,
+                            color: AppColors.accent,
                           ),
                           const SizedBox(width: 6),
-                          Text(
-                            statusLabel,
-                            style: AppTextStyles.bodySm.copyWith(
-                              color: statusColor,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
+                          Expanded(
+                            child: Text(
+                              stop.place?.address ?? stop.place?.address ?? '',
+                              style: AppTextStyles.bodySm.copyWith(
+                                color: AppColors.inkFaint,
+                                fontSize: 12,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          if (canEdit)
+                            GestureDetector(
+                              onTap: () => _openEditStop(stop),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.surface2,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.edit_outlined,
+                                  size: 18,
+                                  color: AppColors.inkSoft,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ],
@@ -607,6 +729,32 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
   }
 
   Future<void> _openStop(ItineraryStop stop) async {
+    if (stop.placeId.isEmpty && stop.place == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Unable to open this place. Place information is unavailable.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ViewPlaceDetailScreen(
+          placeId: stop.placeId,
+          initialPlace: stop.place,
+        ),
+      ),
+    );
+  }
+
+  /// Opens the Edit Stop screen for a specific stop. Editing is localized to
+  /// the selected stop — it never regenerates the whole itinerary. Reloads
+  /// the plan state on return so Preview reflects the change.
+  Future<void> _openEditStop(ItineraryStop stop) async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -617,19 +765,122 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
         ),
       ),
     );
-
     if (changed == true && mounted) {
       await _viewModel.load();
     }
   }
 
   Future<void> _openEditDay(int dayIndex) async {
-    final changed = await Navigator.push<bool>(
+    final allDays = _buildAllDays();
+    final initialIndex = allDays.indexWhere((d) => d.dayNumber == dayIndex);
+    final safeIndex = initialIndex < 0 ? 0 : initialIndex;
+
+    final edited = await Navigator.push<List<DayPlan>>(
       context,
       MaterialPageRoute(
         builder: (_) => ManageEditItineraryScreen(
+          initialDayIndex: safeIndex,
+          allDays: allDays,
+        ),
+      ),
+    );
+
+    if (edited != null && mounted) {
+      await _viewModel.load();
+    }
+  }
+
+  List<DayPlan> _buildAllDays() {
+    final grouped = <int, List<ItineraryStop>>{};
+    for (final stop in _viewModel.stops) {
+      grouped.putIfAbsent(stop.dayIndex, () => []).add(stop);
+    }
+    final dayIndices = grouped.keys.toList()..sort();
+    final startDate = _viewModel.itinerary?.startDate ?? DateTime.now();
+
+    return dayIndices.map((dayIndex) {
+      final dayStops = grouped[dayIndex]!
+        ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+      return DayPlan(
+        dayNumber: dayIndex,
+        date: startDate.add(Duration(days: dayIndex - 1)),
+        places: dayStops.map(_toWizardPlace).toList(),
+      );
+    }).toList();
+  }
+
+  WizardPlace _toWizardPlace(ItineraryStop stop) {
+    final place = stop.place ?? Place.empty(stop.placeId);
+    final type = place.placeCategory ??
+        (place.placeTypes.isNotEmpty ? place.placeTypes.first : 'Attraction');
+    final travelMinutes = stop.travelFromPrevMinutes;
+
+    return WizardPlace(
+      placeId: stop.placeId,
+      name: place.placeName,
+      type: type,
+      typeIcon: _categoryIcon(type),
+      rating: place.placeRating,
+      imageUrl: place.placePhotoRef != null
+          ? 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.placePhotoRef}&key=${ApiKeys.googleMapsApiKey}'
+          : null,
+      travelTime: travelMinutes != null ? '$travelMinutes min' : '',
+      travelIcon: Icons.directions_car,
+      duration: '${stop.durationMinutes} min',
+      location: place.placeAddress,
+      latitude: place.placeLatitude,
+      longitude: place.placeLongitude,
+      startTime: stop.startTime,
+      endTime: stop.endTime,
+    );
+  }
+
+  static IconData _categoryIcon(String category) {
+    switch (category.toLowerCase()) {
+      case 'museum':
+        return Icons.museum;
+      case 'cultural':
+        return Icons.palette;
+      case 'adventure':
+        return Icons.attractions;
+      case 'nature':
+        return Icons.park;
+      case 'shopping':
+        return Icons.shopping_bag;
+      case 'restaurant':
+      case 'cafe':
+        return Icons.restaurant;
+      case 'nightlife':
+      case 'bar':
+        return Icons.nightlife;
+      default:
+        return Icons.place;
+    }
+  }
+
+  Future<void> _openAddPlace(int dayIndex, DateTime dayDate) async {
+    final itinerary = _viewModel.itinerary;
+    if (itinerary == null) return;
+
+    final availableDays = _viewModel.stops
+        .map((s) => s.dayIndex)
+        .toSet()
+        .toList()
+      ..sort();
+
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddCustomStopScreen(
           itineraryId: widget.itineraryId,
-          dayNumber: dayIndex,
+          dayIndex: dayIndex,
+          dayDate: dayDate,
+          availableDayIndices: availableDays,
+          explorationTime: itinerary.explorationTime,
+          travelPace: itinerary.travelPace,
+          transportMode: itinerary.transportationMode,
+          interests: itinerary.interests,
+          userId: itinerary.userId,
         ),
       ),
     );
@@ -637,10 +888,6 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     if (changed == true && mounted) {
       await _viewModel.load();
     }
-  }
-
-  Future<void> _openAddPlace(int dayIndex, DateTime dayDate) async {
-    // Navigate to Add Custom Place Screen
   }
 
   Future<void> _openAddBookmarks(int dayIndex) async {
@@ -664,39 +911,6 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
         );
         await _viewModel.load();
       }
-    }
-  }
-
-  IconData _statusIcon(String status) {
-    switch (status) {
-      case 'COMPLETED':
-        return Icons.check_circle;
-      case 'SKIPPED':
-        return Icons.block;
-      default:
-        return Icons.radio_button_unchecked;
-    }
-  }
-
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'COMPLETED':
-        return AppColors.green;
-      case 'SKIPPED':
-        return AppColors.inkFaint;
-      default:
-        return AppColors.accent;
-    }
-  }
-
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'COMPLETED':
-        return 'Completed';
-      case 'SKIPPED':
-        return 'Skipped';
-      default:
-        return 'Planned';
     }
   }
 

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../core/services/database_manager.dart';
 import '../../model/business_logic/itinerary_service/destination_service.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/destination.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../model/repositories/adapters/destination_repository_adapter.dart';
 import '../../model/repositories/interfaces/destination_repository.dart';
 
 
@@ -13,7 +13,7 @@ class Step1WhereToViewModel extends ChangeNotifier {
   // DEPENDENCIES
   // ============================================================
 
-  final DestinationRepository _repository = DestinationRepositoryImpl();
+  final DestinationRepository _repository = DatabaseManager().destinationRepository;
   late final GetAllDestinationsUseCase _getAllUseCase;
   late final GetPopularDestinationsUseCase _popularUseCase;
 

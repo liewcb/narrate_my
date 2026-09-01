@@ -3,13 +3,14 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/config/api_keys.dart';
+import '../../core/services/database_manager.dart';
 import '../../core/services/google_maps_service.dart';
+import '../../model/business_logic/itinerary_service/candidate_retrieval_service.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/destination.dart';
+import '../../model/entities/destination_hotspot.dart';
 import '../../model/entities/place.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../model/repositories/adapters/bookmark_repository_adapter.dart';
-import '../../model/repositories/adapters/destination_repository_adapter.dart';
 import '../../model/repositories/interfaces/bookmark_repository.dart';
 import '../../model/repositories/interfaces/destination_repository.dart';
 
@@ -27,7 +28,11 @@ class WizardPlace {
   final String location;
   final bool? isOpenNow;
   final String? openHours;
-  final bool isEnabled; // NEW: whether this place belongs to the selected destination
+  final bool isEnabled;
+  final double? distanceKm;
+  final String? distanceStatus;
+  final String? destinationId;
+  final String? hotspotId;
 
   const WizardPlace({
     required this.placeId,
@@ -42,10 +47,16 @@ class WizardPlace {
     this.location = '',
     this.isOpenNow,
     this.openHours,
-    this.isEnabled = true, // default enabled
+    this.isEnabled = true,
+    this.distanceKm,
+    this.distanceStatus,
+    this.destinationId,
+    this.hotspotId,
   });
 
-  /// Convenience copyWith for creating a modified instance.
+  bool get isOutsideHotspot =>
+      distanceStatus != null && distanceStatus != 'WITHIN_HOTSPOT';
+
   WizardPlace copyWith({
     String? placeId,
     String? name,
@@ -60,6 +71,10 @@ class WizardPlace {
     bool? isOpenNow,
     String? openHours,
     bool? isEnabled,
+    double? distanceKm,
+    String? distanceStatus,
+    String? destinationId,
+    String? hotspotId,
   }) {
     return WizardPlace(
       placeId: placeId ?? this.placeId,
@@ -75,6 +90,10 @@ class WizardPlace {
       isOpenNow: isOpenNow ?? this.isOpenNow,
       openHours: openHours ?? this.openHours,
       isEnabled: isEnabled ?? this.isEnabled,
+      distanceKm: distanceKm ?? this.distanceKm,
+      distanceStatus: distanceStatus ?? this.distanceStatus,
+      destinationId: destinationId ?? this.destinationId,
+      hotspotId: hotspotId ?? this.hotspotId,
     );
   }
 }
@@ -85,6 +104,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
   final GoogleMapsService _mapsService;
   final DestinationRepository _destinationRepository;
   final BookmarkRepository _bookmarkRepository;
+  final CandidateRetrievalService _candidateService;
 
   // ─── UI State ──────────────────────────────────────────────
   int selectedTab = 0; // 0: Bookmarks, 1: Search Maps
@@ -102,45 +122,142 @@ class Step3AddPlaceVM extends ChangeNotifier {
   bool isLoading = false;
   String? errorMessage;
 
+  // ─── Selected hotspot ────────────────────────────────────────
+  DestinationHotspot? _selectedHotspot;
+
   // ─── Pagination ─────────────────────────────────────────────
   static const int _pageSize = 10;
   int _currentPage = 0;
   bool isLoadingMore = false;
 
   // ─── Shared selection ───────────────────────────────────────
-  // Display names for the chips (backward compatible) plus the actual
-  // Google place IDs passed to the generation pipeline so must-visits can
-  // be verified/validated by their real place_id.
-  final List<String> _mustVisitPlaces = [];          // names (chips)
-  final List<String> _mustVisitPlaceIds = [];        // Google place_ids
-  final Map<String, String> _mustVisitNameById = {}; // id → name
+  final List<String> _mustVisitPlaces = [];
+  final List<String> _mustVisitPlaceIds = [];
+  final Map<String, String> _mustVisitNameById = {};
 
-  // ─── Destination cache for validation ──────────────────────
+  // ─── Destination cache ──────────────────────────────────────
   List<Destination> _cachedSelectedDestinations = [];
+  String user_id = "";
 
-  /// User whose bookmarks are shown on the Bookmarks tab.
-  final String userId;
+  // ─── Static Google Places type maps ────────────────────────
+  static const Map<String, List<String>> interestToGoogleTypes = {
+    'History & Culture': [
+      'museum',
+      'art_gallery',
+      'place_of_worship',
+      'hindu_temple',
+      'church',
+      'mosque',
+      'synagogue',
+    ],
+    'Nature & Outdoors': [
+      'park',
+      'national_park',
+      'natural_feature',
+      'campground',
+      'zoo',
+      'aquarium',
+      'botanical_garden',
+      'hiking_area',
+    ],
+    'Food & Culinary': [
+      'restaurant',
+      'cafe',
+      'bakery',
+      'meal_takeaway',
+      'meal_delivery',
+      'bar',
+    ],
+    'Thrills & Entertainment': [
+      'amusement_park',
+      'stadium',
+      'bowling_alley',
+      'tourist_attraction',
+      'movie_theater',
+    ],
+    'Shopping & Markets': [
+      'shopping_mall',
+      'clothing_store',
+      'department_store',
+      'book_store',
+      'jewelry_store',
+      'supermarket',
+      'convenience_store',
+    ],
+    'Nightlife & Social': [
+      'night_club',
+      'casino',
+      'liquor_store',
+      'bar',
+      'movie_theater',
+    ],
+  };
+
+  static const Map<String, String> attractionTypesToSubCategory = {
+    'zoo': 'Wildlife & Animals',
+    'aquarium': 'Wildlife & Animals',
+    'amusement_park': 'Theme Parks',
+    'theme_park': 'Theme Parks',
+    'water_park': 'Theme Parks',
+    'bowling_alley': 'Games & Bowling',
+    'stadium': 'Sports & Events',
+    'museum': 'Museums',
+    'art_gallery': 'Art Galleries',
+    'tourist_attraction': 'Landmarks',
+    'place_of_worship': 'Historical Sites',
+    'church': 'Historical Sites',
+    'hindu_temple': 'Historical Sites',
+    'mosque': 'Historical Sites',
+    'synagogue': 'Historical Sites',
+    'park': 'Parks & Gardens',
+    'garden': 'Parks & Gardens',
+    'natural_feature': 'Natural Wonders',
+    'forest': 'Natural Wonders',
+    'beach': 'Natural Wonders',
+    'movie_theater': 'Cinemas',
+    'shopping_mall': 'Shopping & Retail',
+    'clothing_store': 'Shopping & Retail',
+    'department_store': 'Shopping & Retail',
+    'book_store': 'Shopping & Retail',
+    'jewelry_store': 'Shopping & Retail',
+    'market': 'Shopping & Retail',
+    'night_club': 'Nightlife',
+    'casino': 'Nightlife',
+    'liquor_store': 'Nightlife',
+    'wine_bar': 'Nightlife',
+  };
+
+  static const Map<String, String> foodTypesToSubCategory = {
+    'cafe': 'Coffee & Cafe',
+    'bakery': 'Bakery & Sweets',
+    'restaurant': 'Restaurant',
+    'meal_takeaway': 'Quick Bites',
+    'meal_delivery': 'Delivery',
+    'bar': 'Bars & Pubs',
+    'night_club': 'Nightlife & Drinks',
+    'wine_bar': 'Wine Bar',
+  };
 
   Step3AddPlaceVM(
       this.draft, {
-        this.userId = '06f22239-d257-49f2-a6c9-786a69a5fbec',
+        userId,
         GoogleMapsService? mapsService,
         DestinationRepository? destinationRepository,
         BookmarkRepository? bookmarkRepository,
+        CandidateRetrievalService? candidateService,
       })  : _mapsService = mapsService ?? GoogleMapsService(),
         _destinationRepository =
-            destinationRepository ?? DestinationRepositoryImpl(),
+            destinationRepository ?? DatabaseManager().destinationRepository,
         _bookmarkRepository =
-            bookmarkRepository ?? BookmarkRepositoryImpl() {
+            bookmarkRepository ?? DatabaseManager().bookmarkRepository,
+        user_id = userId,
+        _candidateService =
+            candidateService ?? CandidateRetrievalService() {
     _ensureSelectedDestinations();
     loadBookmarks();
   }
 
   // ---------- Getters ----------
-
-  /// The list shown in the body, depending on the active tab.
-  /// For bookmarks, it returns the filtered (by search query) bookmarks.
-  /// For search maps, it returns default places or search results.
   List<WizardPlace> get availablePlaces {
     if (selectedTab == 1) {
       return searchQuery.trim().isEmpty ? _defaultPlaces : _searchResults;
@@ -164,14 +281,12 @@ class Step3AddPlaceVM extends ChangeNotifier {
   bool get hasMoreDefaultPlaces =>
       pagedDefaultPlaces.length < _defaultPlaces.length;
 
-  List<String> get mustVisitPlaces => _mustVisitPlaces; // names (chips)
-
-  /// Selected must-visit Google place IDs (for the generation pipeline).
+  List<String> get mustVisitPlaces => _mustVisitPlaces;
   List<String> get mustVisitPlaceIds => List.unmodifiable(_mustVisitPlaceIds);
+  DestinationHotspot? get selectedHotspot => _selectedHotspot;
+  double? get selectedHotspotRadiusKm => _selectedHotspot?.suggestedRadiusKm;
 
-  // ---------- Actions ----------
-
-  /// Resolve the selected destinations from the draft and cache them.
+  // ---------- Init / Load ----------
   Future<void> _ensureSelectedDestinations() async {
     try {
       _cachedSelectedDestinations = await _resolveSelectedDestinations();
@@ -181,54 +296,29 @@ class Step3AddPlaceVM extends ChangeNotifier {
     }
   }
 
-  /// Load bookmarks from the repository, filter by destination,
-  /// and set `isEnabled` accordingly.
   Future<void> loadBookmarks() async {
     isLoadingBookmarks = true;
     bookmarksError = null;
     notifyListeners();
 
     try {
-      // 1. Resolve selected destinations
       await _ensureSelectedDestinations();
-      print('📌 Selected destinations: ${_cachedSelectedDestinations.map((d) => d.destinationName).toList()}');
-
-      // 2. Fetch from remote (local caching is disabled in your adapter, so remote is used)
-      final dtos = await _bookmarkRepository.getBookmarksWithPlaces(userId);
-      print('📚 dtos length: ${dtos.length}');
-
-      // 3. Map DTOs to WizardPlace, with fallbacks
+      final dtos = await _bookmarkRepository.getBookmarksWithPlaces(user_id);
       final mapped = dtos.map((dto) {
         try {
-          return _toWizardPlace(dto.place, '').copyWith(
-            isEnabled: true, // temporarily force enabled
-          );
+          return _toWizardPlace(dto.place, '').copyWith(isEnabled: true);
         } catch (e) {
-          print('❌ Mapping failed for place ${dto.place.placeName}: $e');
           return null;
         }
       }).where((w) => w != null).cast<WizardPlace>().toList();
-      print('📚 mapped length: ${mapped.length}');
 
-      // 4. Apply destination filter (optional)
       final filtered = mapped.where((w) => _belongsToAnySelectedDestinationByPlace(w)).toList();
-      print('📚 filtered length: ${filtered.length}');
-
-      // 5. If filtering removed everything, fallback to showing all (for debugging)
       if (filtered.isEmpty && mapped.isNotEmpty) {
-        print('⚠️ All bookmarks filtered out – using all with isEnabled=false for debugging');
         _bookmarks = mapped.map((w) => w.copyWith(isEnabled: false)).toList();
       } else {
         _bookmarks = filtered.isEmpty ? mapped : filtered;
       }
-
-      print('📚 Final _bookmarks length: ${_bookmarks.length}');
-      if (_bookmarks.isNotEmpty) {
-        print('📚 First bookmark: ${_bookmarks.first.name}');
-      }
-
     } catch (e) {
-      print('❌ [Step3VM] loadBookmarks error: $e');
       bookmarksError = 'Could not load bookmarks.';
       _bookmarks = [];
     } finally {
@@ -237,29 +327,22 @@ class Step3AddPlaceVM extends ChangeNotifier {
     }
   }
 
-// Add a new helper to check destination by place (using coordinates)
   bool _belongsToAnySelectedDestinationByPlace(WizardPlace w) {
-    if (_cachedSelectedDestinations.isEmpty) return false;
-    // Since we don't have coordinates in WizardPlace, we fallback to true for now.
-    // In a real app, you'd fetch the Place from the cache or use the original Place.
-    return true; // Force true for debugging – remove once filtering works.
+    // Placeholder: you can implement actual geofencing or name matching
+    // For now, we treat all bookmarks as enabled.
+    return true;
   }
 
-  /// Check if a place belongs to any selected destination.
   bool _belongsToAnySelectedDestination(Place place) {
     if (_cachedSelectedDestinations.isEmpty) return false;
-
     for (final dest in _cachedSelectedDestinations) {
       final destCoords = (dest.latitude != null && dest.longitude != null)
           ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
           : null;
-
       if (destCoords != null) {
         final distance = destCoords.distanceTo(place.coordinates);
-        if (distance <= 50.0) return true; // within 50 km
+        if (distance <= 50.0) return true;
       }
-
-      // Fallback: address contains destination name
       final combined = (place.placeAddress + ' ' + place.placeName).toLowerCase();
       if (combined.contains(dest.destinationName.toLowerCase())) {
         return true;
@@ -278,26 +361,27 @@ class Step3AddPlaceVM extends ChangeNotifier {
     }
   }
 
-  /// One search bar, two behaviours:
-  ///   tab 0 → local bookmark filtering (no API call)
-  ///   tab 1 → real Google Places search, destination-restricted
   void searchPlaces(String query) {
     searchQuery = query;
     if (selectedTab == 0) {
-      // Bookmarks: pure local filter — never touch Google.
       notifyListeners();
       return;
     }
     _searchMaps(query);
   }
 
-  /// Toggle selection; only enabled places can be toggled.
   void togglePlace(String placeName) {
     final place = availablePlaces.firstWhere(
           (p) => p.name == placeName,
-      orElse: () => WizardPlace(placeId: '', name: '', type: '', typeIcon: Icons.place, rating: 0, isEnabled: false),
+      orElse: () => WizardPlace(
+          placeId: '',
+          name: '',
+          type: '',
+          typeIcon: Icons.place,
+          rating: 0,
+          isEnabled: false),
     );
-    if (!place.isEnabled) return; // prevent selecting disabled places
+    if (!place.isEnabled) return;
 
     final placeId = place.placeId.isNotEmpty ? place.placeId : placeName;
 
@@ -317,8 +401,6 @@ class Step3AddPlaceVM extends ChangeNotifier {
   bool isPlaceAdded(String name) => _mustVisitPlaces.contains(name);
 
   TripDraft buildDraft() {
-    // Prefer real Google place_ids; the pipeline resolves names when only
-    // names are available (legacy wizard data).
     final ids = _mustVisitPlaceIds.isNotEmpty
         ? _mustVisitPlaceIds
         : _mustVisitPlaces;
@@ -326,9 +408,8 @@ class Step3AddPlaceVM extends ChangeNotifier {
   }
 
   // ---------- Search Maps – Default Places ----------
-
   Future<void> loadDefaultPlaces() async {
-    debugPrint('🚀 [Step3VM] loadDefaultPlaces()');
+    debugPrint('🚀 loadDefaultPlaces()');
     isLoading = true;
     errorMessage = null;
     _currentPage = 0;
@@ -342,57 +423,75 @@ class Step3AddPlaceVM extends ChangeNotifier {
         return;
       }
 
-      const attractionTypes = ['tourist_attraction', 'museum', 'park', 'landmark'];
-      const foodTypes = ['restaurant', 'cafe'];
+      // ---- Build type list from user interests ----
+      final interests = draft.interests ?? [];
+      final allTypes = <String>[];
+      for (final interest in interests) {
+        final types = interestToGoogleTypes[interest];
+        if (types != null) allTypes.addAll(types);
+      }
+      final uniqueTypes = allTypes.toSet().toList();
+      debugPrint('🔍 Google Places types: $uniqueTypes');
 
       final all = <WizardPlace>[];
       final seenIds = <String>{};
 
       for (final dest in selected) {
-        final hasCoords = dest.latitude != null && dest.longitude != null;
+        final hotspot = await _candidateService.selectBestHotspot(
+          destinationName: dest.destinationName,
+          destinationId: dest.destinationId,
+          interests: draft.interests,
+        );
+        _selectedHotspot = hotspot;
 
-        List<Place> attractions = [];
-        List<Place> restaurants = [];
-
-        if (hasCoords) {
-          attractions = await _mapsService.searchNearbyPlaces(
-            latitude: dest.latitude!,
-            longitude: dest.longitude!,
-            radius: 10000,
-            types: attractionTypes,
+        if (hotspot != null) {
+          final radiusMeters = (hotspot.suggestedRadiusKm * 1000).toDouble();
+          final places = await _mapsService.searchNearbyPlaces(
+            latitude: hotspot.latitude,
+            longitude: hotspot.longitude,
+            radius: radiusMeters,
+            types: uniqueTypes, // dynamic types
           );
-          restaurants = await _mapsService.searchNearbyPlaces(
-            latitude: dest.latitude!,
-            longitude: dest.longitude!,
-            radius: 10000,
-            types: foodTypes,
-          );
+          for (final place in places) {
+            if (!seenIds.add(place.placeId)) continue;
+            all.add(_toWizardPlace(
+              place,
+              dest.destinationName,
+              destinationId: hotspot.destinationId,
+              hotspotId: hotspot.id,
+            ));
+          }
         } else {
-          // Fallback: text search
-          attractions = await _mapsService.searchTextPlaces(
-            query: 'top attractions in ${dest.destinationName}',
+          // Fallback: use destination centre
+          final hasCoords = dest.latitude != null && dest.longitude != null;
+          if (!hasCoords) continue;
+          final places = await _mapsService.searchNearbyPlaces(
+            latitude: dest.latitude!,
+            longitude: dest.longitude!,
+            radius: 10000,
+            types: uniqueTypes,
           );
-          restaurants = await _mapsService.searchTextPlaces(
-            query: 'popular restaurants in ${dest.destinationName}',
+          final destCoords = Coordinates(
+            latitude: dest.latitude!,
+            longitude: dest.longitude!,
           );
-        }
-
-        final merged = [...attractions, ...restaurants];
-        for (final place in merged) {
-          final coords = hasCoords
-              ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
-              : null;
-
-          if (!_belongsToDestination(place, dest, coords)) continue;
-          if (!seenIds.add(place.placeId)) continue;
-          all.add(_toWizardPlace(place, dest.destinationName));
+          for (final place in places) {
+            if (!_belongsToDestination(place, dest, destCoords)) continue;
+            if (!seenIds.add(place.placeId)) continue;
+            all.add(_toWizardPlace(place, dest.destinationName));
+          }
         }
       }
 
       all.sort((a, b) => b.rating.compareTo(a.rating));
       _defaultPlaces = all;
+      notifyListeners();
+
+      // ---- Fetch AI durations in background ----
+      _fetchAndUpdateDurations();
+
     } catch (e) {
-      debugPrint('❌ [Step3VM] loadDefaultPlaces error: $e');
+      debugPrint('❌ loadDefaultPlaces error: $e');
       errorMessage = 'Could not load places. Check your connection.';
       _defaultPlaces = [];
     } finally {
@@ -401,7 +500,6 @@ class Step3AddPlaceVM extends ChangeNotifier {
     }
   }
 
-  /// Load the next page of default places (pagination).
   Future<void> loadMorePlaces() async {
     if (isLoadingMore || !hasMoreDefaultPlaces) return;
     isLoadingMore = true;
@@ -412,7 +510,6 @@ class Step3AddPlaceVM extends ChangeNotifier {
   }
 
   // ---------- Search Maps – Text Search ----------
-
   Future<void> _searchMaps(String query) async {
     if (query.trim().isEmpty) {
       _searchResults = [];
@@ -429,15 +526,30 @@ class Step3AddPlaceVM extends ChangeNotifier {
     try {
       final selected = await _resolveSelectedDestinations();
       if (selected.isEmpty) {
-        errorMessage = 'No destinations selected. Go back to Step 1.';
+        errorMessage = 'No destinations selected.';
         _searchResults = [];
         return;
       }
+
+      final interests = draft.interests ?? [];
+      final allTypes = <String>[];
+      for (final interest in interests) {
+        final types = interestToGoogleTypes[interest];
+        if (types != null) allTypes.addAll(types);
+      }
+      final uniqueTypes = allTypes.toSet().toList();
 
       final all = <WizardPlace>[];
       final seenIds = <String>{};
 
       for (final dest in selected) {
+        final hotspot = await _candidateService.selectBestHotspot(
+          destinationName: dest.destinationName,
+          destinationId: dest.destinationId,
+          interests: draft.interests,
+        );
+        _selectedHotspot = hotspot;
+
         final coords = dest.latitude != null && dest.longitude != null
             ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
             : null;
@@ -452,16 +564,50 @@ class Step3AddPlaceVM extends ChangeNotifier {
           longitude: coords?.longitude,
         );
 
-        for (final place in results) {
-          if (!_belongsToDestination(place, dest, coords)) continue;
+        // Filter results by the relevant types
+        final filteredResults = results.where((place) {
+          final placeTypes = place.placeTypes ?? [];
+          return placeTypes.any((t) => uniqueTypes.contains(t));
+        }).toList();
+
+        for (final place in filteredResults) {
           if (!seenIds.add(place.placeId)) continue;
-          all.add(_toWizardPlace(place, dest.destinationName));
+
+          double? distanceKm;
+          String? distanceStatus;
+          if (hotspot != null) {
+            final hotspotCoords = Coordinates(
+              latitude: hotspot.latitude,
+              longitude: hotspot.longitude,
+            );
+            distanceKm = _mapsService.distanceKm(
+              hotspotCoords,
+              place.coordinates,
+            );
+            distanceStatus = classifyHotspotDistance(
+              distanceKm,
+              hotspot.suggestedRadiusKm,
+            ).label; // ✅ now works
+          }
+
+          all.add(_toWizardPlace(
+            place,
+            dest.destinationName,
+            distanceKm: distanceKm,
+            distanceStatus: distanceStatus,
+            destinationId: hotspot?.destinationId,
+            hotspotId: hotspot?.id,
+          ));
         }
       }
 
       _searchResults = all;
+      notifyListeners();
+
+      _fetchAndUpdateSearchDurations();
+
     } catch (e) {
-      debugPrint('❌ [Step3VM] _searchMaps error: $e');
+      debugPrint('❌ _searchMaps error: $e');
       errorMessage = 'Could not search places. Check your connection.';
       _searchResults = [];
     } finally {
@@ -470,8 +616,54 @@ class Step3AddPlaceVM extends ChangeNotifier {
     }
   }
 
-  // ---------- Destination Helpers ----------
+  // ---------- AI Duration Helpers ----------
+  Future<String> _fetchDurationFromAI(String placeName, String placeType, String location) async {
+    // 🔥 Replace with real Deepseek API call.
+    await Future.delayed(const Duration(milliseconds: 300));
+    final type = placeType.toLowerCase();
+    if (type.contains('museum') || type.contains('art_gallery')) return '120 min';
+    if (type.contains('restaurant') || type.contains('cafe')) return '60 min';
+    if (type.contains('park') || type.contains('natural_feature')) return '90 min';
+    if (type.contains('shopping') || type.contains('mall')) return '90 min';
+    if (type.contains('attraction') || type.contains('landmark')) return '75 min';
+    return '60 min';
+  }
 
+  Future<void> _fetchAndUpdateDurations() async {
+    if (_defaultPlaces.isEmpty) return;
+    final futures = _defaultPlaces.map((place) =>
+        _fetchDurationFromAI(place.name, place.type, place.location));
+    try {
+      final durations = await Future.wait(futures);
+      for (int i = 0; i < _defaultPlaces.length; i++) {
+        _defaultPlaces[i] = _defaultPlaces[i].copyWith(
+          duration: durations[i],
+        );
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ Failed to fetch AI durations: $e');
+    }
+  }
+
+  Future<void> _fetchAndUpdateSearchDurations() async {
+    if (_searchResults.isEmpty) return;
+    final futures = _searchResults.map((place) =>
+        _fetchDurationFromAI(place.name, place.type, place.location));
+    try {
+      final durations = await Future.wait(futures);
+      for (int i = 0; i < _searchResults.length; i++) {
+        _searchResults[i] = _searchResults[i].copyWith(
+          duration: durations[i],
+        );
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('❌ Failed to fetch AI durations for search results: $e');
+    }
+  }
+
+  // ---------- Destination Helpers ----------
   Future<List<Destination>> _resolveSelectedDestinations() async {
     if (draft.destinations.isEmpty) return [];
     final all = await _destinationRepository.getAllDestinations();
@@ -479,32 +671,32 @@ class Step3AddPlaceVM extends ChangeNotifier {
     return all.where((d) => names.contains(d.destinationName.trim().toLowerCase())).toList();
   }
 
-  /// Destination relevance check: when the destination has coordinates,
-  /// the place must be within a reasonable radius. Otherwise, fall back
-  /// to checking the address string.
   bool _belongsToDestination(
       Place place,
       Destination dest,
       Coordinates? destCoords,
       ) {
     const maxKm = 50.0;
-
     if (destCoords != null) {
       final d = _mapsService.distanceKm(destCoords, place.coordinates);
       if (d <= maxKm) return true;
     }
-
-    // Fallback: address contains the destination name.
     if (dest.destinationName.isNotEmpty) {
       final address = (place.address + ' ' + place.name).toLowerCase();
       if (address.contains(dest.destinationName.toLowerCase())) return true;
     }
-
     return false;
   }
 
   // ---------- Conversion Helpers ----------
-  WizardPlace _toWizardPlace(Place place, String destinationName) {
+  WizardPlace _toWizardPlace(
+      Place place,
+      String destinationName, {
+        double? distanceKm,
+        String? distanceStatus,
+        String? destinationId,
+        String? hotspotId,
+      }) {
     final primaryType = _resolvePrimaryCategory(place.placeTypes ?? []);
     final typeIcon = _getCategoryIcon(place.placeTypes ?? []);
     final (travelIcon, travelLabel) = _getTravelModeInfo();
@@ -520,22 +712,22 @@ class Step3AddPlaceVM extends ChangeNotifier {
           : null,
       travelTime: '$travelLabel ~10-15m',
       travelIcon: travelIcon,
-      duration: '60 min',
+      duration: 'Estimating…',
       location: destinationName,
       isOpenNow: place.placeRegularOpeningHours?.openNow,
       isEnabled: true,
+      distanceKm: distanceKm,
+      distanceStatus: distanceStatus,
+      destinationId: destinationId,
+      hotspotId: hotspotId,
     );
   }
 
   String _resolvePrimaryCategory(List<String> types) {
-    if (types == null || types.isEmpty) return 'Attraction';
-
+    if (types.isEmpty) return 'Attraction';
     final specificTypes = types.where((t) =>
-    t != 'point_of_interest' && t != 'establishment'
-    ).toList();
-
+    t != 'point_of_interest' && t != 'establishment').toList();
     final rawType = specificTypes.isNotEmpty ? specificTypes.first : types.first;
-
     return rawType
         .replaceAll('_', ' ')
         .split(' ')
@@ -544,7 +736,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
   }
 
   IconData _getCategoryIcon(List<String> types) {
-    if (types == null || types.isEmpty) return Icons.place_rounded;
+    if (types.isEmpty) return Icons.place_rounded;
     final joined = types.join(' ').toLowerCase();
 
     if (joined.contains('restaurant') ||
@@ -569,13 +761,11 @@ class Step3AddPlaceVM extends ChangeNotifier {
         joined.contains('store')) {
       return Icons.shopping_bag_rounded;
     }
-
     return Icons.place_rounded;
   }
 
   (IconData, String) _getTravelModeInfo() {
     final mode = (draft.transportation ?? 'walking').toString().toLowerCase();
-
     if (mode.contains('car') || mode.contains('drive') || mode.contains('driving')) {
       return (Icons.directions_car_rounded, 'Drive');
     } else if (mode.contains('transit') || mode.contains('bus') || mode.contains('train')) {
@@ -584,5 +774,17 @@ class Step3AddPlaceVM extends ChangeNotifier {
       return (Icons.directions_bike_rounded, 'Bike');
     }
     return (Icons.directions_walk_rounded, 'Walk');
+  }
+
+  // ─── Hotspot distance classifier (corrected) ──────────────
+  static ({String label, Color color}) classifyHotspotDistance(
+      double distanceKm, double suggestedRadiusKm) {
+    if (distanceKm <= suggestedRadiusKm) {
+      return (label: 'WITHIN_HOTSPOT', color: Colors.green);
+    } else if (distanceKm <= suggestedRadiusKm * 2.0) {
+      return (label: 'OUTSIDE_HOTSPOT', color: Colors.orange);
+    } else {
+      return (label: 'FAR_FROM_DESTINATION', color: Colors.red);
+    }
   }
 }

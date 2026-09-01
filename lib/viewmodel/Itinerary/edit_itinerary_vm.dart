@@ -32,6 +32,20 @@ class EditableStop {
     required this.endTime,
     this.travelFromPrevMinutes = 0,
   });
+
+  /// Deep copy so snapshots taken before a mutation are not affected by the
+  /// mutation (EditableStop's time fields are mutable).
+  EditableStop copy() => EditableStop(
+        placeId: placeId,
+        name: name,
+        address: address,
+        durationMinutes: durationMinutes,
+        isMustVisit: isMustVisit,
+        place: place,
+        startTime: startTime,
+        endTime: endTime,
+        travelFromPrevMinutes: travelFromPrevMinutes,
+      );
 }
 
 /// ViewModel for [EditItineraryScreen].
@@ -92,17 +106,37 @@ class EditItineraryViewModel extends ChangeNotifier {
 
   // ─── Operations ─────────────────────────────────────────────
 
-  void reorder(int oldIndex, int newIndex) {
+  /// Reorders a stop. Returns `true` when the order actually changed and the
+  /// resulting schedule is still valid. On an invalid reorder the change is
+  /// reverted and [_error] carries a user-friendly reason.
+  bool reorder(int oldIndex, int newIndex) {
     if (newIndex > oldIndex) newIndex -= 1;
+    if (oldIndex == newIndex) return false;
+
+    final snapshot = _snapshotStops();
     final item = _stops.removeAt(oldIndex);
     _stops.insert(newIndex, item);
     _rechainSchedule();
+
+    final errors = validate();
+    if (errors.isNotEmpty) {
+      _restoreStops(snapshot);
+      _error = errors.first;
+      notifyListeners();
+      return false;
+    }
     _error = null;
     notifyListeners();
+    return true;
   }
 
-  void setStartTime(int index, TimeOfDay newTime) {
-    if (index < 0 || index >= _stops.length) return;
+  /// Sets a new start time for a stop and rechains the rest of the day.
+  /// Returns `true` only when the new time keeps the day valid; otherwise the
+  /// change is reverted and [_error] carries a user-friendly reason.
+  bool setStartTime(int index, TimeOfDay newTime) {
+    if (index < 0 || index >= _stops.length) return false;
+
+    final snapshot = _snapshotStops();
     final stop = _stops[index];
     stop.startTime = DateTime(
       stop.startTime.year,
@@ -113,8 +147,17 @@ class EditItineraryViewModel extends ChangeNotifier {
     );
     stop.endTime = stop.startTime.add(Duration(minutes: stop.durationMinutes));
     _rechainSchedule();
+
+    final errors = validate();
+    if (errors.isNotEmpty) {
+      _restoreStops(snapshot);
+      _error = errors.first;
+      notifyListeners();
+      return false;
+    }
     _error = null;
     notifyListeners();
+    return true;
   }
 
   bool removeStop(int index) {
@@ -133,15 +176,20 @@ class EditItineraryViewModel extends ChangeNotifier {
 
   bool canAddCandidate(Place candidate) {
     if (_stops.any((s) => s.placeId == candidate.placeId)) {
-      _error = 'This place is already included in the itinerary.';
+      _error = 'This place is already in your itinerary.';
       notifyListeners();
       return false;
     }
     return true;
   }
 
-  void addCandidate(Place candidate) {
-    if (!canAddCandidate(candidate)) return;
+  /// Adds a candidate to the end of the day. Returns `true` only when the
+  /// addition keeps the day valid; otherwise the addition is reverted and
+  /// [_error] carries a user-friendly reason.
+  bool addCandidate(Place candidate) {
+    if (!canAddCandidate(candidate)) return false;
+
+    final snapshot = _snapshotStops();
     final day = _tripStartDate.add(Duration(days: _dayIndex));
     final startTime = _stops.isNotEmpty
         ? _stops.last.endTime.add(const Duration(minutes: 15))
@@ -159,17 +207,31 @@ class EditItineraryViewModel extends ChangeNotifier {
       travelFromPrevMinutes: _stops.isNotEmpty ? 15 : 0,
     ));
     _rechainSchedule();
-    _error = null;
-    notifyListeners();
-  }
 
-  bool replaceStop(int index, Place candidate) {
-    if (index < 0 || index >= _stops.length) return false;
-    if (_stops.any((s) => s.placeId == candidate.placeId && s.placeId != _stops[index].placeId)) {
-      _error = 'This place is already included in the itinerary.';
+    final errors = validate();
+    if (errors.isNotEmpty) {
+      _restoreStops(snapshot);
+      _error = errors.first;
       notifyListeners();
       return false;
     }
+    _error = null;
+    notifyListeners();
+    return true;
+  }
+
+  /// Replaces a stop. Returns `true` only when the replacement keeps the day
+  /// valid; otherwise the original stop is restored and [_error] carries a
+  /// user-friendly reason.
+  bool replaceStop(int index, Place candidate) {
+    if (index < 0 || index >= _stops.length) return false;
+    if (_stops.any((s) => s.placeId == candidate.placeId && s.placeId != _stops[index].placeId)) {
+      _error = 'This place is already in your itinerary.';
+      notifyListeners();
+      return false;
+    }
+
+    final snapshot = _snapshotStops();
     _stops[index] = EditableStop(
       placeId: candidate.placeId,
       name: candidate.placeName,
@@ -182,6 +244,14 @@ class EditItineraryViewModel extends ChangeNotifier {
       travelFromPrevMinutes: _stops[index].travelFromPrevMinutes,
     );
     _rechainSchedule();
+
+    final errors = validate();
+    if (errors.isNotEmpty) {
+      _restoreStops(snapshot);
+      _error = errors.first;
+      notifyListeners();
+      return false;
+    }
     _error = null;
     notifyListeners();
     return true;
@@ -376,6 +446,15 @@ class EditItineraryViewModel extends ChangeNotifier {
       if (s.place.placeId == placeId) return s;
     }
     return null;
+  }
+
+  /// Snapshot the current stop list for revert-on-invalid.
+  List<EditableStop> _snapshotStops() => _stops.map((s) => s.copy()).toList();
+
+  /// Restore stops from a snapshot and rechain the schedule.
+  void _restoreStops(List<EditableStop> snapshot) {
+    _stops = snapshot;
+    _rechainSchedule();
   }
 
   /// Re-chain the schedule: recalculate start/end times sequentially from

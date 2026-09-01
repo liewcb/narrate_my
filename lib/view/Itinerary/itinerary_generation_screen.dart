@@ -63,7 +63,8 @@ class _Step5GenerationBody extends StatelessWidget {
               mustVisitPlaceIds: List.of(vm.draft.mustVisitPlaceIds),
               tripStartDate: vm.draft.startDate ?? DateTime.now(),
               onRegenerateAlternatives: () => vm.regenerateItinerary(),
-              onSave: () => vm.saveItinerary(),
+              userId: vm.userId,
+              draft: vm.draft,
             ),
           ),
         );

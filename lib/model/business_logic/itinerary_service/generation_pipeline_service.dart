@@ -1,6 +1,4 @@
-﻿// lib/model/business_logic/itinerary_service/generation_pipeline_service.dart
-
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 
 import '../../../core/config/api_keys.dart';
 import '../../../core/config/itinerary_constants.dart';
@@ -454,7 +452,7 @@ class ItineraryGenerationPipeline {
         }
       }
 
-      final candidates = scored.map((s) {
+      AiCandidateContext toContext(ScoredAttraction s) {
         final place = s.place;
         return AiCandidateContext(
           placeId: place.placeId,
@@ -472,7 +470,85 @@ class ItineraryGenerationPipeline {
           latitude: place.placeLatitude,
           longitude: place.placeLongitude,
         );
-      }).toList();
+      }
+
+      // ── Planning pool vs reserve pool ─────────────────────────────
+      // Split the scored candidates into a concise AI planning/evaluation
+      // pool (top-N by score, must-visits always retained) and a reserve
+      // pool available for feasibility-driven replacement during repair.
+      final maxPlanningPool = ItineraryConstants.maxAiPlanningPoolSize;
+      final planningScored = <ScoredAttraction>[];
+      final reserveScored = <ScoredAttraction>[];
+      for (final s in scored) {
+        if (planningScored.length < maxPlanningPool || s.isMustVisit) {
+          planningScored.add(s);
+        } else {
+          reserveScored.add(s);
+        }
+      }
+      final candidates = planningScored.map(toContext).toList();
+      final reserveCandidates = reserveScored.map(toContext).toList();
+
+      debugPrint('[STAGE 13 - DEEPSEEK INPUT PREP]');
+      debugPrint('Planning pool: ${candidates.length} candidates');
+      debugPrint('Reserve pool: ${reserveCandidates.length} candidates');
+
+      // ============================================================
+      // STAGE 14 - DEEPSEEK CANDIDATE EVALUATION
+      //
+      // DeepSeek estimates a dynamic visit duration (and relevance /
+      // priority) for each planning-pool candidate. The estimate is only
+      // candidate metadata — the deterministic scheduler/validator remain
+      // the final authority on the schedule.
+      // ============================================================
+      onProgress('Evaluating places... (6/9)');
+      final evaluation = await _aiService.evaluateCandidates(
+        candidates: candidates,
+        interests: request.interests,
+        mustVisitIds: effectiveMustVisitIds,
+        totalDays: request.totalDays,
+        explorationTime: effectiveExploration,
+        destinationName: request.destinations.isNotEmpty
+            ? request.destinations.first
+            : null,
+      );
+
+      debugPrint('[STAGE 14 - DEEPSEEK CANDIDATE EVALUATION]');
+      debugPrint('Candidates entering: ${candidates.length}');
+      debugPrint('Candidates evaluated: ${evaluation.evaluations.length}');
+      debugPrint('Evaluation failures: ${evaluation.rejectedPlaceIds.length}');
+      if (evaluation.rejectedPlaceIds.isNotEmpty) {
+        debugPrint('  Invented/unknown place IDs rejected: '
+            '${evaluation.rejectedPlaceIds}');
+      }
+
+      // ── Enrich candidates with dynamic durations ────────────────
+      // Un-evaluated candidates keep their existing static/known duration
+      // (safe fallback); AI estimates are clamped to the allowed range and
+      // stored as candidate metadata only.
+      final enrichedCandidates = <AiCandidateContext>[];
+      for (final c in candidates) {
+        final eval = evaluation.evaluations[c.placeId];
+        enrichedCandidates.add(c.copyWith(
+          estimatedVisitMinutes: eval?.estimatedVisitMinutes,
+          aiRelevanceScore: eval?.relevanceScore,
+          planningPriority: eval?.planningPriority,
+        ));
+      }
+
+      debugPrint('[STAGE 14B - ENRICHED CANDIDATES]');
+      debugPrint('Candidates: ${enrichedCandidates.length}');
+      final enrichedIds = enrichedCandidates.map((c) => c.placeId).toSet();
+      debugPrint('Unique placeIds: ${enrichedIds.length}');
+      debugPrint('Duplicate placeIds: '
+          '${enrichedIds.length == enrichedCandidates.length ? '[]' : enrichedCandidates.length - enrichedIds.length}');
+      if (AIService.debugAiEvaluationDurations) {
+        for (final c in enrichedCandidates) {
+          if (c.estimatedVisitMinutes != null) {
+            debugPrint('  ${c.name} = ${c.estimatedVisitMinutes} min');
+          }
+        }
+      }
 
       // placeId → destination, so the validator can verify the AI did not
       // schedule a candidate outside its destination's allocated days.
@@ -483,27 +559,29 @@ class ItineraryGenerationPipeline {
 
       final prompt = _promptBuilder.buildSchedulePrompt(
         request: request,
-        candidates: candidates,
+        candidates: enrichedCandidates,
         clusters: clusters,
+        reserveCandidates: reserveCandidates,
       );
 
-      debugPrint('[STAGE 13 - DEEPSEEK INPUT]');
+      debugPrint('[STAGE 15 - DEEPSEEK INPUT SUMMARY]');
       debugPrint('Trip days: ${request.totalDays}');
       debugPrint('Destination allocation: ${
           request.daySplit.isNotEmpty ? request.daySplit : 'even split'}');
       debugPrint('Travel pace: $effectivePace');
       debugPrint('Exploration time: $effectiveExploration');
       debugPrint('Must-visits: ${request.mustVisitPlaceIds.length}');
-      debugPrint('Candidate count: ${candidates.length}');
+      debugPrint('Planning candidates: ${enrichedCandidates.length}');
+      debugPrint('Reserve candidates: ${reserveCandidates.length}');
       debugPrint('Cluster count: ${clusters.length}');
       debugPrint('Prompt size: ${prompt.length} chars');
 
       // ============================================================
-      // STAGE 14 - DEEPSEEK SCHEDULE GENERATION (+ regeneration)
+      // STAGE 16 - DEEPSEEK SCHEDULE GENERATION (+ regeneration)
       // ============================================================
       onProgress('Creating schedule... (7/9)');
-      debugPrint('[STAGE 14 - DEEPSEEK RESPONSE]');
-      debugPrint('Sending ${candidates.length} candidates, '
+      debugPrint('[STAGE 16 - DEEPSEEK RESPONSE]');
+      debugPrint('Sending ${enrichedCandidates.length} candidates, '
           '${clusters.length} clusters');
 
       // AI must only reference place IDs that survived scoring.
@@ -586,8 +664,8 @@ class ItineraryGenerationPipeline {
           placeIdToDestination: placeIdToDestination,
         );
 
-        // ── STAGE 15 - AI RESPONSE VALIDATION ────────────────────
-        debugPrint('[STAGE 15 - AI RESPONSE VALIDATION]');
+        // ── STAGE 17 - AI RESPONSE VALIDATION ────────────────────
+        debugPrint('[STAGE 17 - AI RESPONSE VALIDATION]');
         debugPrint('JSON valid: YES');
         debugPrint('Days returned: ${aiDays.length}');
         debugPrint('Stops returned: '
@@ -628,7 +706,7 @@ class ItineraryGenerationPipeline {
       }
 
       // ============================================================
-      // STAGE 16 - CONVERT VALIDATED AI OUTPUT → DOMAIN SCHEDULE
+      // STAGE 18 - CONVERT VALIDATED AI OUTPUT → DOMAIN SCHEDULE
       // ============================================================
       onProgress('Validating... (8/9)');
       final scheduledDays = _toScheduledDays(
@@ -644,7 +722,7 @@ class ItineraryGenerationPipeline {
         );
       }
 
-      debugPrint('[STAGE 16 - FINAL VALIDATION]');
+      debugPrint('[STAGE 18 - FINAL VALIDATION]');
       debugPrint('✓ all required days exist (${scheduledDays.length})');
       debugPrint('✓ destination allocation (validated by AI response validation)');
       debugPrint('✓ must-visits present (validated by AI response validation)');
@@ -655,7 +733,7 @@ class ItineraryGenerationPipeline {
       debugPrint('RESULT: PASS');
 
       // ============================================================
-      // STAGE 17 - FETCH WEATHER
+      // STAGE 19 - FETCH WEATHER
       // ============================================================
       onProgress('Fetching weather... (9/9)');
       final weather = await _fetchWeather(request, scheduledDays);
@@ -665,7 +743,7 @@ class ItineraryGenerationPipeline {
 
       onProgress('Finalizing your itinerary...');
       final totalStops =
-          scheduledDays.fold<int>(0, (sum, d) => sum + d.stops.length);
+      scheduledDays.fold<int>(0, (sum, d) => sum + d.stops.length);
       debugPrint('════════════════════════════════════════════');
       debugPrint('✅ PIPELINE COMPLETE');
       debugPrint('════════════════════════════════════════════');
@@ -685,22 +763,22 @@ class ItineraryGenerationPipeline {
       debugPrint('Destinations: ${request.destinations}');
 
       return ItineraryResult.success(
-        scheduledDays: scheduledDays,
-        weather: weather,
-        criticFeedback: critic,
-        warnings: validation.issues
-            .map((i) => ValidationIssue(
-                  type: i.type,
-                  severity: 'warning',
-                  message: i.message,
-                  dayIndex: i.dayIndex,
-                ))
-            .toList(),
-        candidatePool: candidatePool,
-        placeRegistry: registry,
-        scoredCandidates: scored,
-        clusters: clusters,
-        unretrievableMustVisits: unretrievable
+          scheduledDays: scheduledDays,
+          weather: weather,
+          criticFeedback: critic,
+          warnings: validation.issues
+              .map((i) => ValidationIssue(
+            type: i.type,
+            severity: 'warning',
+            message: i.message,
+            dayIndex: i.dayIndex,
+          ))
+              .toList(),
+          candidatePool: candidatePool,
+          placeRegistry: registry,
+          scoredCandidates: scored,
+          clusters: clusters,
+          unretrievableMustVisits: unretrievable
       );
     } catch (e, stack) {
       debugPrint('❌ [PIPELINE ERROR]');
@@ -722,10 +800,10 @@ class ItineraryGenerationPipeline {
     final fullPrompt = feedback.trim().isEmpty
         ? prompt
         : '$prompt\n\n'
-            'PREVIOUS OUTPUT WAS REJECTED BY VALIDATION. '
-            'REGENERATE THE ENTIRE SCHEDULE FIXING ALL ERRORS:\n'
-            '$feedback\n\n'
-            'Return STRICT JSON ONLY in the exact format requested above.';
+        'PREVIOUS OUTPUT WAS REJECTED BY VALIDATION. '
+        'REGENERATE THE ENTIRE SCHEDULE FIXING ALL ERRORS:\n'
+        '$feedback\n\n'
+        'Return STRICT JSON ONLY in the exact format requested above.';
     return _aiService.generateRawContent(fullPrompt);
   }
 
@@ -816,9 +894,9 @@ class ItineraryGenerationPipeline {
         date: date,
         stops: stops,
         totalDuration:
-            stops.fold<int>(0, (sum, s) => sum + s.durationMinutes),
+        stops.fold<int>(0, (sum, s) => sum + s.durationMinutes),
         totalTravelTime:
-            stops.fold<double>(0, (sum, s) => sum + s.travelFromPreviousMinutes),
+        stops.fold<double>(0, (sum, s) => sum + s.travelFromPreviousMinutes),
       ));
     }
 
@@ -847,9 +925,9 @@ class ItineraryGenerationPipeline {
   }
 
   Future<WeatherForecast> _fetchWeather(
-    TripDraft request,
-    List<ScheduledDay> scheduledDays,
-  ) async {
+      TripDraft request,
+      List<ScheduledDay> scheduledDays,
+      ) async {
     try {
       if (scheduledDays.isNotEmpty && scheduledDays.first.stops.isNotEmpty) {
         final firstStop = scheduledDays.first.stops.first;
@@ -868,10 +946,10 @@ class ItineraryGenerationPipeline {
   }
 
   Future<CriticResult> _critic(
-    List<ScheduledDay> scheduledDays,
-    String effectivePace,
-    TripDraft request,
-  ) async {
+      List<ScheduledDay> scheduledDays,
+      String effectivePace,
+      TripDraft request,
+      ) async {
     try {
       return await _aiService.evaluateItinerary(
         days: scheduledDays,

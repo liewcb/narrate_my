@@ -12,7 +12,7 @@ class PlaceBookmarkService {
   final BookmarkRepository _repository;
 
   PlaceBookmarkService({BookmarkRepository? repository})
-    : _repository = repository ?? BookmarkRepositoryImpl();
+      : _repository = repository ?? BookmarkRepositoryImpl();
 
   String? get currentUserId => _repository.currentUserId;
 

@@ -1,4 +1,3 @@
-// lib/model/dto/destination_hotspot_dto.dart
 import '../entities/destination_hotspot.dart';
 
 /// Data Transfer Object – used for serialisation to/from local DB and the
