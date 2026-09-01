@@ -2,15 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../model/entities/ar_site.dart';
+import '../../model/entities/coordinates.dart';
 import '../../model/entities/place.dart';
 import '../../model/entities/recommendation.dart';
 import '../../viewmodel/bookmark_vm.dart';
 import '../profile/auth/login_screen.dart';
+import 'nearby_ar_site_details_screen.dart';
 
 Future<void> showNearbyRecommendationDetails(
   BuildContext context,
-  Recommendation recommendation,
-) {
+  Recommendation recommendation, {
+  ARSite? arSite,
+  Coordinates? userLocation,
+  VoidCallback? onOpenAr,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -22,6 +28,9 @@ Future<void> showNearbyRecommendationDetails(
         create: (_) => BookmarkVm()..load(recommendation.placeId),
         child: NearbyRecommendationDetailsScreen(
           recommendation: recommendation,
+          arSite: arSite,
+          userLocation: userLocation,
+          onOpenAr: onOpenAr,
         ),
       ),
     ),
@@ -30,10 +39,16 @@ Future<void> showNearbyRecommendationDetails(
 
 class NearbyRecommendationDetailsScreen extends StatelessWidget {
   final Recommendation recommendation;
+  final ARSite? arSite;
+  final Coordinates? userLocation;
+  final VoidCallback? onOpenAr;
 
   const NearbyRecommendationDetailsScreen({
     super.key,
     required this.recommendation,
+    this.arSite,
+    this.userLocation,
+    this.onOpenAr,
   });
 
   Place get _bookmarkPlace => Place(
@@ -159,9 +174,13 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _CategoryChip(label: recommendation.category),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _CategoryChip(label: recommendation.category),
+                if (arSite != null) const ARAvailableBadge(),
+              ],
             ),
             const SizedBox(height: 20),
             _AttractionImage(recommendation: recommendation),
@@ -223,6 +242,19 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
                 height: 1.55,
               ),
             ),
+            if (arSite != null && userLocation != null) ...[
+              const SizedBox(height: 22),
+              ARAvailabilityPanel(
+                site: arSite!,
+                userLocation: userLocation!,
+                onOpenAr: onOpenAr == null
+                    ? null
+                    : () {
+                        Navigator.of(context).pop();
+                        onOpenAr!();
+                      },
+              ),
+            ],
             const SizedBox(height: 24),
             _BookmarkButton(
               isBookmarked: bookmarkViewModel.isBookmarked,

@@ -26,7 +26,7 @@ class _AppRoutesState extends State<AppRoutes> {
   List<Widget> _screens() => [
     ARExplorationView(isActive: _index == 0),
     const MyItinerariesScreen(),
-    const NearbyRecommendationScreen(),
+    NearbyRecommendationScreen(onOpenAr: () => setState(() => _index = 0)),
     const ProfileScreen(),
   ];
 
