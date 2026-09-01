@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../../viewmodel/ar/ar_recommendation_vm.dart';
 import 'video_player_overlay.dart';
 
 /// Action Menu shown after Avatar is placed on plane
@@ -11,7 +12,10 @@ class ARActionMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     const primaryTeal = Color(0xFF2E656A);
 
-    return Selector<ARPlacementViewModel, ({bool isPlaced, bool hasStarted, String? videoUrl, String landmarkName})>(
+    return Selector<
+      ARPlacementViewModel,
+      ({bool isPlaced, bool hasStarted, String? videoUrl, String landmarkName})
+    >(
       selector: (context, vm) => (
         isPlaced: vm.isAvatarPlaced,
         hasStarted: vm.hasStartedStorytelling,
@@ -45,12 +49,17 @@ class ARActionMenu extends StatelessWidget {
                         ),
                       ),
                       onPressed: () {
-                        context.read<ARPlacementViewModel>().openStorytellingMenu();
+                        context
+                            .read<ARPlacementViewModel>()
+                            .openStorytellingMenu();
                       },
                       icon: const Icon(Icons.play_arrow),
                       label: const Text(
                         "Storytelling",
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -65,7 +74,9 @@ class ARActionMenu extends StatelessWidget {
                           child: OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.white,
-                              side: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+                              side: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.35),
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(22),
                               ),
@@ -86,7 +97,10 @@ class ARActionMenu extends StatelessWidget {
                               );
                             },
                             icon: const Icon(Icons.play_circle_fill, size: 18),
-                            label: const Text("Watch Video", style: TextStyle(fontSize: 13)),
+                            label: const Text(
+                              "Watch Video",
+                              style: TextStyle(fontSize: 13),
+                            ),
                           ),
                         ),
                       ),
@@ -97,16 +111,29 @@ class ARActionMenu extends StatelessWidget {
                           child: OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.white,
-                              side: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+                              side: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.35),
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(22),
                               ),
                             ),
                             onPressed: () {
-                              // Recommendation
+                              final marker = context
+                                  .read<ARPlacementViewModel>()
+                                  .selectedMarker;
+                              if (marker != null) {
+                                context.read<ARRecommendationVm>().open(marker);
+                              }
                             },
-                            icon: const Icon(Icons.recommend_outlined, size: 18),
-                            label: const Text("Recommend", style: TextStyle(fontSize: 13)),
+                            icon: const Icon(
+                              Icons.recommend_outlined,
+                              size: 18,
+                            ),
+                            label: const Text(
+                              "Recommend",
+                              style: TextStyle(fontSize: 13),
+                            ),
                           ),
                         ),
                       ),

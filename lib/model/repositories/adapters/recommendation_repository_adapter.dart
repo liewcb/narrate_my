@@ -2,9 +2,7 @@ import 'dart:math' as math;
 
 import '../../data_sources/local/recommendation_cache_local_data_source.dart';
 import '../../data_sources/remote/recommendation_data_source.dart';
-import '../../data_sources/remote/recommendation_places_remote_data_source.dart';
 import '../../data_sources/remote/recommendation_preference_context_data_source.dart';
-import '../../DTO/recommendation_place_dto.dart';
 import '../../dto/recommendation_dto.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/recommendation.dart';
@@ -12,18 +10,14 @@ import '../interfaces/recommendation_repository.dart';
 
 class RecommendationRepositoryAdapter implements RecommendationRepository {
   final RecommendationRemoteDataSource _remoteDataSource;
-  final RecommendationPlacesRemoteDataSource _placesDataSource;
   final RecommendationCacheLocalDataSource _cacheDataSource;
   final RecommendationPreferenceContextDataSource _preferenceContextDataSource;
 
   RecommendationRepositoryAdapter(
     this._remoteDataSource, {
-    RecommendationPlacesRemoteDataSource? placesDataSource,
     RecommendationCacheLocalDataSource? cacheDataSource,
     RecommendationPreferenceContextDataSource? preferenceContextDataSource,
-  }) : _placesDataSource =
-           placesDataSource ?? RecommendationPlacesRemoteDataSource(),
-       _cacheDataSource =
+  }) : _cacheDataSource =
            cacheDataSource ?? RecommendationCacheLocalDataSource(),
        _preferenceContextDataSource =
            preferenceContextDataSource ??
@@ -84,7 +78,7 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
       if (dtos.isNotEmpty && recommendations.isEmpty) {
         throw const RecommendationResolutionException(
           'Recommendations were found, but their map locations could not be '
-          'verified. Check Places API access and try again.',
+          'verified. Please try again.',
         );
       }
 
@@ -129,33 +123,17 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
     // bucket so distances do not remain stale after the tourist moves.
     final latitudeBucket = latitude.toStringAsFixed(3);
     final longitudeBucket = longitude.toStringAsFixed(3);
-    return 'nearby:v2:$cacheIdentity:$latitudeBucket:$longitudeBucket';
+    return 'nearby:v3:$cacheIdentity:$latitudeBucket:$longitudeBucket';
   }
 
   Future<Recommendation?> _resolveRecommendation(
     RecommendationDto dto,
     Coordinates origin,
   ) async {
-    RecommendationPlaceDto? place;
-    try {
-      final query = [
-        dto.name,
-        if (dto.address != null) dto.address!,
-      ].join(', ');
-      final places = await _placesDataSource.searchText(
-        query: query,
-        latitude: origin.latitude,
-        longitude: origin.longitude,
-        radiusMeters: 50000,
-      );
-      place = _bestPlaceMatch(dto.name, places);
-    } catch (_) {
-      // Coordinates supplied by the Edge Function remain usable even when
-      // Google Places enrichment is temporarily unavailable.
-    }
-
-    final resolvedLatitude = dto.latitude ?? place?.latitude;
-    final resolvedLongitude = dto.longitude ?? place?.longitude;
+    // Google Places enrichment is performed by the Edge Function. The mobile
+    // app never receives or needs the Places web-service API key.
+    final resolvedLatitude = dto.latitude;
+    final resolvedLongitude = dto.longitude;
     if (resolvedLatitude == null || resolvedLongitude == null) return null;
 
     final destination = Coordinates(
@@ -165,38 +143,14 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
     final distanceKm = origin.distanceTo(destination);
 
     return dto.toEntity(
-      resolvedPlaceId:
-          dto.placeId ?? place?.placeId ?? '${dto.rank}-${dto.name}',
+      resolvedPlaceId: dto.placeId ?? '${dto.rank}-${dto.name}',
       resolvedLatitude: resolvedLatitude,
       resolvedLongitude: resolvedLongitude,
-      resolvedAddress: dto.address ?? place?.address ?? 'Address unavailable',
-      resolvedImageUrl:
-          dto.imageUrl ??
-          _placesDataSource.buildPhotoUrl(dto.photoReference) ??
-          _placesDataSource.buildPhotoUrl(place?.photoResourceName),
-      resolvedRating: dto.rating ?? place?.rating,
+      resolvedAddress: dto.address ?? 'Address unavailable',
+      resolvedImageUrl: dto.imageUrl,
+      resolvedRating: dto.rating,
       distanceKm: distanceKm,
       estimatedTravelMinutes: math.max(1, (distanceKm / 35 * 60).round()),
     );
   }
-
-  RecommendationPlaceDto? _bestPlaceMatch(
-    String recommendationName,
-    List<RecommendationPlaceDto> places,
-  ) {
-    if (places.isEmpty) return null;
-    final target = _normaliseName(recommendationName);
-    for (final place in places) {
-      final candidate = _normaliseName(place.name);
-      if (candidate == target ||
-          candidate.contains(target) ||
-          target.contains(candidate)) {
-        return place;
-      }
-    }
-    return places.first;
-  }
-
-  String _normaliseName(String value) =>
-      value.toLowerCase().replaceAll(RegExp('[^a-z0-9]'), '');
 }

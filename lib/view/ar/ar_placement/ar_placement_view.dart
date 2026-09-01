@@ -6,23 +6,36 @@ import 'package:ar_flutter_plugin_plus/datatypes/config_planedetection.dart';
 import '../../../core/widgets/app_bottom_navigation.dart';
 import '../../../model/entities/ar_object.dart';
 import '../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../viewmodel/ar/ar_recommendation_vm.dart';
 import 'widgets/ar_placement_top_bar.dart';
 import 'widgets/ar_scanning_guide.dart';
 import 'widgets/ar_storytelling_panel.dart';
 import 'widgets/ar_action_menu.dart';
-
+import 'widgets/ar_recommendation_overlay.dart';
 
 /// Screen corresponding to `AR Placement Screen` in the architecture diagram.
 /// Pure View layer with strict MVVM adherence.
 class ARPlacementScreen extends StatelessWidget {
   final ARMarker? selectedMarker;
+  final List<String> cameraMarkerIds;
 
-  const ARPlacementScreen({super.key, this.selectedMarker});
+  const ARPlacementScreen({
+    super.key,
+    this.selectedMarker,
+    this.cameraMarkerIds = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider<ARPlacementViewModel>(
-      create: (context) => ARPlacementViewModel()..init(selectedMarker),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ARPlacementViewModel>(
+          create: (_) => ARPlacementViewModel()..init(selectedMarker),
+        ),
+        ChangeNotifierProvider<ARRecommendationVm>(
+          create: (_) => ARRecommendationVm(cameraMarkerIds: cameraMarkerIds),
+        ),
+      ],
       child: const _ARPlacementContent(),
     );
   }
@@ -35,7 +48,8 @@ class _ARPlacementContent extends StatefulWidget {
   State<_ARPlacementContent> createState() => _ARPlacementContentState();
 }
 
-class _ARPlacementContentState extends State<_ARPlacementContent> with WidgetsBindingObserver {
+class _ARPlacementContentState extends State<_ARPlacementContent>
+    with WidgetsBindingObserver {
   bool _isNativeViewReady = true;
 
   static const _navItems = [
@@ -77,7 +91,8 @@ class _ARPlacementContentState extends State<_ARPlacementContent> with WidgetsBi
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       setState(() => _isNativeViewReady = true);
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       setState(() => _isNativeViewReady = false);
     }
   }
@@ -133,7 +148,10 @@ class _ARPlacementContentState extends State<_ARPlacementContent> with WidgetsBi
                 right: 0,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF142121).withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(20),
@@ -159,7 +177,11 @@ class _ARPlacementContentState extends State<_ARPlacementContent> with WidgetsBi
                         SizedBox(width: 10),
                         Text(
                           "Placing Manja on ground...",
-                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
@@ -174,6 +196,9 @@ class _ARPlacementContentState extends State<_ARPlacementContent> with WidgetsBi
 
           // 7. Storytelling Narration Subtitles & Play Controls
           const ARStorytellingPanel(),
+
+          // 8. Contextual recommendations shown without unmounting ARCore.
+          const ARRecommendationOverlay(),
         ],
       ),
       bottomNavigationBar: AppBottomNavBar(
