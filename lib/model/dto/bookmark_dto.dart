@@ -36,11 +36,11 @@ class BookmarkDTO {
 
       userId: json['user_id'].toString(),
 
-      itemId: json['item_id'].toString(),
+      itemId: json['item_id']?.toString(),
 
       itemType: json['item_type'].toString(),
 
-      placeId: json['place_id'] != null ? json['place_id'].toString() : null,
+      placeId: json['place_id']?.toString(),
 
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())
@@ -79,11 +79,11 @@ class BookmarkDTO {
 
       userId: map['user_id'].toString(),
 
-      itemId: map['item_id'].toString(),
+      itemId: map['item_id']?.toString(),
 
       itemType: map['item_type'].toString(),
 
-      placeId: map['place_id'] != null ? map['place_id'].toString() : null,
+      placeId: map['place_id']?.toString(),
 
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'].toString())

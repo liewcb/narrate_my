@@ -1,5 +1,6 @@
 // lib/data/data_sources/remote/bookmark_remote_data_source.dart
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/database_manager.dart';
@@ -56,7 +57,7 @@ class BookmarkRemoteSource {
         );
       }).toList();
     } catch (e) {
-      print('❌ Remote fetch failed: $e');
+      debugPrint('Remote bookmark fetch failed: $e');
       return [];
     }
   }

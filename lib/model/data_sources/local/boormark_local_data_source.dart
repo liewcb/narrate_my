@@ -80,7 +80,7 @@ class BookmarkLocalSource {
 
         userId: row['user_id'].toString(),
 
-        itemId: row['item_id'].toString(),
+        itemId: row['item_id']?.toString(),
 
         itemType: row['item_type'].toString(),
 

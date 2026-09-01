@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:postgrest/postgrest.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/services/database_manager.dart';
 import '../../data_sources/local/boormark_local_data_source.dart';
 import '../../data_sources/remote/bookmark_remote_data_source.dart';
 import '../../dto/bookmark_with_place_dto.dart';

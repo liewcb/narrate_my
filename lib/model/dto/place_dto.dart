@@ -92,8 +92,13 @@ class PlaceDto {
   // ============================================================
 
   Map<String, dynamic> toJsonForRemote() {
+    // The shared public.places table stores only canonical place details.
+    // destinationId/hotspotId and the extra Google scoring fields remain
+    // available on Place for the itinerary pipeline, but they are not columns
+    // in that table and must not be sent to PostgREST.
+    final effectiveId = id.trim().isNotEmpty ? id.trim() : placeId.trim();
     return {
-      'id': id,
+      'id': effectiveId,
       'place_id': placeId,
       'name': name,
       'address': address,
@@ -109,10 +114,6 @@ class PlaceDto {
       'website': website,
       'photo_reference': photoReference,
       'opening_hours': openingHours,
-      'user_ratings_total': placeTotalReviews,
-      'business_status': businessStatus,
-      'destination_id': destinationId,
-      'hotspot_id': hotspotId,
     };
   }
 
