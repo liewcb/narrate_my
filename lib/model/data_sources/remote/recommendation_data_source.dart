@@ -14,14 +14,19 @@ class RecommendationRemoteDataSource {
     required double longitude,
   }) async {
     try {
+      final accessToken = _supabase.auth.currentSession?.accessToken;
       final response = await _supabase.functions.invoke(
         'recommend-nearby',
         body: {'latitude': latitude, 'longitude': longitude},
+        headers: accessToken == null
+            ? null
+            : {'Authorization': 'Bearer $accessToken'},
       );
 
       if (response.status < 200 || response.status >= 300) {
-        throw Exception(
-          'Failed to get recommendations. Status: ${response.status}',
+        throw RecommendationRemoteException(
+          _errorMessage(response.data),
+          statusCode: response.status,
         );
       }
 
@@ -46,8 +51,40 @@ class RecommendationRemoteDataSource {
         }
       }
       return result;
+    } on RecommendationRemoteException {
+      rethrow;
     } catch (e) {
-      throw Exception('Unable to retrieve nearby recommendations: $e');
+      throw RecommendationRemoteException(
+        'Unable to retrieve nearby recommendations.',
+        cause: e,
+      );
     }
   }
+
+  String _errorMessage(dynamic data) {
+    if (data is Map) {
+      final message = data['error'] ?? data['message'];
+      if (message != null && message.toString().trim().isNotEmpty) {
+        return message.toString();
+      }
+    }
+    return 'Unable to retrieve nearby recommendations.';
+  }
+}
+
+class RecommendationRemoteException implements Exception {
+  final String message;
+  final int? statusCode;
+  final Object? cause;
+
+  const RecommendationRemoteException(
+    this.message, {
+    this.statusCode,
+    this.cause,
+  });
+
+  bool get isQuotaLimited => statusCode == 429;
+
+  @override
+  String toString() => message;
 }

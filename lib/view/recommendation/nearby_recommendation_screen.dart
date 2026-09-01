@@ -4,14 +4,19 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../model/data_sources/remote/recommendation_data_source.dart';
+import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/recommendation.dart';
+import '../../model/repositories/adapters/ar_site_repository_adapter.dart';
 import '../../model/repositories/adapters/recommendation_repository_adapter.dart';
-import '../../viewmodel/recommendation/nearby_recommendation_viewmodel.dart';
+import '../../viewmodel/recommendation/nearby_recommendation_vm.dart';
+import 'nearby_ar_site_details_screen.dart';
 import 'nearby_recommendation_details_screen.dart';
 
 class NearbyRecommendationScreen extends StatelessWidget {
-  const NearbyRecommendationScreen({super.key});
+  final VoidCallback? onOpenAr;
+
+  const NearbyRecommendationScreen({super.key, this.onOpenAr});
 
   @override
   Widget build(BuildContext context) {
@@ -19,15 +24,20 @@ class NearbyRecommendationScreen extends StatelessWidget {
       create: (_) {
         final dataSource = RecommendationRemoteDataSource();
         final repository = RecommendationRepositoryAdapter(dataSource);
-        return NearbyRecommendationViewModel(repository)..loadRecommendations();
+        return NearbyRecommendationVm(
+          repository,
+          arSiteRepository: SupabaseARSiteRepositoryAdapter(),
+        )..loadRecommendations();
       },
-      child: const _NearbyRecommendationMap(),
+      child: _NearbyRecommendationMap(onOpenAr: onOpenAr),
     );
   }
 }
 
 class _NearbyRecommendationMap extends StatefulWidget {
-  const _NearbyRecommendationMap();
+  final VoidCallback? onOpenAr;
+
+  const _NearbyRecommendationMap({this.onOpenAr});
 
   @override
   State<_NearbyRecommendationMap> createState() =>
@@ -46,7 +56,7 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.watch<NearbyRecommendationViewModel>();
+    final viewModel = context.watch<NearbyRecommendationVm>();
     final location = viewModel.currentLocation;
 
     if (location == null) {
@@ -60,7 +70,11 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
     }
 
     _scheduleCameraFit(location, viewModel.recommendations);
-    final markers = _buildMarkers(viewModel.recommendations);
+    final markers = _buildMarkers(
+      viewModel.recommendations,
+      viewModel.arSites,
+      location,
+    );
 
     return Scaffold(
       body: SizedBox.expand(
@@ -103,6 +117,13 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
                 ),
               ),
             ),
+            if (viewModel.recommendations.isNotEmpty ||
+                viewModel.arSites.isNotEmpty)
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 72,
+                left: 16,
+                child: const _MapLegend(),
+              ),
             Positioned(
               left: 0,
               right: 0,
@@ -121,7 +142,7 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
               Positioned(
                 left: 16,
                 right: 16,
-                top: MediaQuery.paddingOf(context).top + 78,
+                top: MediaQuery.paddingOf(context).top + 118,
                 child: _ErrorBanner(
                   message: viewModel.errorMessage!,
                   onRetry: viewModel.refreshRecommendations,
@@ -133,25 +154,93 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
     );
   }
 
-  Set<maps.Marker> _buildMarkers(List<Recommendation> recommendations) {
-    return recommendations.map((recommendation) {
-      final hue = recommendation.rank.isEven
-          ? maps.BitmapDescriptor.hueOrange
-          : maps.BitmapDescriptor.hueCyan;
-      return maps.Marker(
-        markerId: maps.MarkerId(recommendation.placeId),
-        position: maps.LatLng(
-          recommendation.latitude,
-          recommendation.longitude,
+  Set<maps.Marker> _buildMarkers(
+    List<Recommendation> recommendations,
+    List<ARSite> arSites,
+    Coordinates userLocation,
+  ) {
+    final markers = <maps.Marker>{};
+    final matchedSiteIds = <String>{};
+
+    for (final recommendation in recommendations) {
+      final arSite = _findMatchingARSite(recommendation, arSites);
+      if (arSite != null) matchedSiteIds.add(arSite.siteId);
+      markers.add(
+        maps.Marker(
+          markerId: maps.MarkerId(recommendation.placeId),
+          position: maps.LatLng(
+            recommendation.latitude,
+            recommendation.longitude,
+          ),
+          icon: maps.BitmapDescriptor.defaultMarkerWithHue(
+            arSite == null
+                ? maps.BitmapDescriptor.hueCyan
+                : maps.BitmapDescriptor.hueViolet,
+          ),
+          infoWindow: maps.InfoWindow(
+            title: recommendation.name,
+            snippet: arSite == null
+                ? recommendation.category
+                : 'AR available • ${recommendation.category}',
+          ),
+          onTap: () => showNearbyRecommendationDetails(
+            context,
+            recommendation,
+            arSite: arSite,
+            userLocation: userLocation,
+            onOpenAr: widget.onOpenAr,
+          ),
         ),
-        icon: maps.BitmapDescriptor.defaultMarkerWithHue(hue),
-        infoWindow: maps.InfoWindow(
-          title: recommendation.name,
-          snippet: recommendation.category,
-        ),
-        onTap: () => showNearbyRecommendationDetails(context, recommendation),
       );
-    }).toSet();
+    }
+
+    for (final site in arSites) {
+      if (matchedSiteIds.contains(site.siteId)) continue;
+      markers.add(
+        maps.Marker(
+          markerId: maps.MarkerId('ar-site-${site.siteId}'),
+          position: maps.LatLng(site.latitude, site.longitude),
+          icon: maps.BitmapDescriptor.defaultMarkerWithHue(
+            maps.BitmapDescriptor.hueViolet,
+          ),
+          infoWindow: maps.InfoWindow(
+            title: site.name,
+            snippet:
+                '${site.experiences.length} AR ${site.experiences.length == 1 ? 'experience' : 'experiences'} available',
+          ),
+          onTap: () => showNearbyArSiteDetails(
+            context,
+            site: site,
+            userLocation: userLocation,
+            onOpenAr: widget.onOpenAr == null
+                ? null
+                : () {
+                    Navigator.of(context).pop();
+                    widget.onOpenAr!();
+                  },
+          ),
+        ),
+      );
+    }
+
+    return markers;
+  }
+
+  ARSite? _findMatchingARSite(
+    Recommendation recommendation,
+    List<ARSite> sites,
+  ) {
+    for (final site in sites) {
+      if (site.matchesPlace(
+        googlePlaceId: recommendation.placeId,
+        placeName: recommendation.name,
+        placeLatitude: recommendation.latitude,
+        placeLongitude: recommendation.longitude,
+      )) {
+        return site;
+      }
+    }
+    return null;
   }
 
   void _scheduleCameraFit(
@@ -218,6 +307,52 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
       // The map may still be laying out during the first frame. Its initial
       // camera remains correctly centered on the user's live location.
     }
+  }
+}
+
+class _MapLegend extends StatelessWidget {
+  const _MapLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      elevation: 2,
+      borderRadius: BorderRadius.circular(12),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _LegendItem(color: Color(0xFF00BCD4), label: 'Recommended'),
+            SizedBox(width: 10),
+            _LegendItem(color: Color(0xFF7E57C2), label: 'AR available'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _LegendItem({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.location_on_rounded, color: color, size: 17),
+        const SizedBox(width: 3),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
   }
 }
 

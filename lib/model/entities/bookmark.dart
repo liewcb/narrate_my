@@ -1,17 +1,17 @@
 class Bookmark {
   final String id;
   final String userId;
-  final String itemId;
+  final String? itemId;
   final String itemType;
-  final DateTime createdAt;
   final String? placeId;
+  final DateTime? createdAt;
 
   const Bookmark({
     required this.id,
     required this.userId,
-    required this.itemId,
+    this.itemId,
     required this.itemType,
-    required this.createdAt,
     this.placeId,
+    this.createdAt,
   });
 }

@@ -12,7 +12,7 @@ import '../entities/bookmark.dart';
 class BookmarkDTO {
   final String id;
   final String userId;
-  final String itemId;
+  final String? itemId;
   final String itemType;
   final String? placeId;
   final DateTime? createdAt;
@@ -54,6 +54,19 @@ class BookmarkDTO {
 
   factory BookmarkDTO.fromJson(Map<String, dynamic> json) {
     return BookmarkDTO.fromSupabase(json);
+  }
+
+  /// Supabase insert/update payload. Database-generated values are omitted
+  /// when empty so their defaults can run.
+  Map<String, dynamic> toRemoteMap() {
+    return {
+      if (id.isNotEmpty) 'id': id,
+      'user_id': userId,
+      if (itemId != null) 'item_id': itemId,
+      'item_type': itemType,
+      if (placeId != null) 'place_id': placeId,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+    };
   }
 
   // ============================================================

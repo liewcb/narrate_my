@@ -74,6 +74,11 @@ class ARPlacementViewModel extends ChangeNotifier {
   Future<void> init(ARMarker? marker) async {
     _selectedMarker = marker;
     _placementState = PlacementState.initializing;
+    _isAvatarPlaced = false;
+    _show3DLandmarkModel = false;
+    _showVideoPlayer = false;
+    _hasStartedStorytelling = false;
+    _playbackState = StoryPlaybackState.stopped;
     notifyListeners();
 
     // 1. Prepare/cache avatar GLB config in parallel
@@ -192,7 +197,7 @@ class ARPlacementViewModel extends ChangeNotifier {
   void openStorytellingMenu() {
     _hasStartedStorytelling = true;
     _playbackState = StoryPlaybackState.stopped;
-    _show3DLandmarkModel = false;
+    _show3DLandmarkModel = false; 
     _currentSubtitle = _placementService.narrationService.currentScript?.initialGreeting ??
         "Hello! I'm Manja! (Tap Play below to begin)";
     notifyListeners();

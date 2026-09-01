@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../model/entities/ar_site.dart';
+import '../../model/entities/coordinates.dart';
+import '../../model/entities/place.dart';
 import '../../model/entities/recommendation.dart';
+import '../../viewmodel/bookmark_vm.dart';
+import '../profile/auth/login_screen.dart';
+import 'nearby_ar_site_details_screen.dart';
 
 Future<void> showNearbyRecommendationDetails(
   BuildContext context,
-  Recommendation recommendation,
-) {
+  Recommendation recommendation, {
+  ARSite? arSite,
+  Coordinates? userLocation,
+  VoidCallback? onOpenAr,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -14,21 +24,103 @@ Future<void> showNearbyRecommendationDetails(
     backgroundColor: Colors.transparent,
     builder: (_) => FractionallySizedBox(
       heightFactor: 0.78,
-      child: NearbyRecommendationDetailsScreen(recommendation: recommendation),
+      child: ChangeNotifierProvider(
+        create: (_) => BookmarkVm()..load(recommendation.placeId),
+        child: NearbyRecommendationDetailsScreen(
+          recommendation: recommendation,
+          arSite: arSite,
+          userLocation: userLocation,
+          onOpenAr: onOpenAr,
+        ),
+      ),
     ),
   );
 }
 
 class NearbyRecommendationDetailsScreen extends StatelessWidget {
   final Recommendation recommendation;
+  final ARSite? arSite;
+  final Coordinates? userLocation;
+  final VoidCallback? onOpenAr;
 
   const NearbyRecommendationDetailsScreen({
     super.key,
     required this.recommendation,
+    this.arSite,
+    this.userLocation,
+    this.onOpenAr,
   });
+
+  Place get _bookmarkPlace => Place(
+    placeId: recommendation.placeId,
+    placeName: recommendation.name,
+    placeAddress: recommendation.address,
+    placeLatitude: recommendation.latitude,
+    placeLongitude: recommendation.longitude,
+    placeRating: recommendation.rating ?? 0,
+    placeTypes: [recommendation.category],
+    category: recommendation.category,
+  );
+
+  Future<void> _handleBookmark(
+    BuildContext context,
+    BookmarkVm viewModel,
+  ) async {
+    final result = await viewModel.toggleBookmark(
+      _bookmarkPlace,
+      itemType: 'attraction',
+    );
+    if (!context.mounted) return;
+
+    switch (result) {
+      case BookmarkResult.loginRequired:
+        final shouldLogin = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Log in to bookmark'),
+            content: const Text(
+              'You need to log in before you can save attractions to your '
+              'bookmarks.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('No'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Log in'),
+              ),
+            ],
+          ),
+        );
+        if (shouldLogin != true) {
+          viewModel.clearPendingBookmark();
+          return;
+        }
+        if (context.mounted) {
+          final loggedIn = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => const LoginScreen(returnOnSuccess: true),
+            ),
+          );
+          if (loggedIn == true && context.mounted) {
+            await viewModel.retryPendingBookmark();
+          }
+        }
+        return;
+      case BookmarkResult.added ||
+          BookmarkResult.removed ||
+          BookmarkResult.alreadyBookmarked ||
+          BookmarkResult.failed:
+        return;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final bookmarkViewModel = context.watch<BookmarkVm>();
+
     return Material(
       color: AppColors.surface,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -50,39 +142,44 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'ATTRACTION DETAILS',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        recommendation.name,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              color: AppColors.ink,
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                    ],
+                  child: Text(
+                    'ATTRACTION DETAILS',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                _CategoryChip(label: recommendation.category),
                 IconButton(
                   tooltip: 'Close details',
                   onPressed: () => Navigator.of(context).pop(),
                   icon: const Icon(Icons.keyboard_arrow_down_rounded),
                 ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              recommendation.name,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w800,
+                height: 1.12,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _CategoryChip(label: recommendation.category),
+                if (arSite != null) const ARAvailableBadge(),
               ],
             ),
             const SizedBox(height: 20),
@@ -145,8 +242,109 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
                 height: 1.55,
               ),
             ),
+            if (arSite != null && userLocation != null) ...[
+              const SizedBox(height: 22),
+              ARAvailabilityPanel(
+                site: arSite!,
+                userLocation: userLocation!,
+                onOpenAr: onOpenAr == null
+                    ? null
+                    : () {
+                        Navigator.of(context).pop();
+                        onOpenAr!();
+                      },
+              ),
+            ],
+            const SizedBox(height: 24),
+            _BookmarkButton(
+              isBookmarked: bookmarkViewModel.isBookmarked,
+              isLoading:
+                  bookmarkViewModel.isChecking || bookmarkViewModel.isSaving,
+              onPressed: () => _handleBookmark(context, bookmarkViewModel),
+            ),
+            if (bookmarkViewModel.statusMessage != null) ...[
+              const SizedBox(height: 10),
+              _BookmarkStatusMessage(
+                message: bookmarkViewModel.statusMessage!,
+                isError: bookmarkViewModel.errorMessage != null,
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BookmarkStatusMessage extends StatelessWidget {
+  final String message;
+  final bool isError;
+
+  const _BookmarkStatusMessage({required this.message, required this.isError});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isError ? AppColors.error : AppColors.primary;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          isError ? Icons.error_outline_rounded : Icons.check_circle_outline,
+          color: color,
+          size: 18,
+        ),
+        const SizedBox(width: 7),
+        Flexible(
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: color, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BookmarkButton extends StatelessWidget {
+  final bool isBookmarked;
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  const _BookmarkButton({
+    required this.isBookmarked,
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isBookmarked ? AppColors.primary : AppColors.accent;
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: isLoading ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color, width: 1.5),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(99),
+          ),
+        ),
+        icon: isLoading
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: color),
+              )
+            : Icon(
+                isBookmarked
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_border_rounded,
+              ),
+        label: Text(isBookmarked ? 'Bookmarked' : 'Bookmark'),
       ),
     );
   }
@@ -176,7 +374,7 @@ class _AttractionImage extends StatelessWidget {
                 fit: BoxFit.cover,
                 loadingBuilder: (context, child, progress) =>
                     progress == null ? child : placeholder,
-                errorBuilder: (_, _, _) => placeholder,
+                errorBuilder: (context, error, stackTrace) => placeholder,
               ),
       ),
     );
@@ -190,19 +388,24 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F5F1),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: const Color(0xFFBFE4DA)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.primary,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 240),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8F5F1),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: const Color(0xFFBFE4DA)),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.primary,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

@@ -39,11 +39,11 @@ class ItineraryRegenerationService {
     AIService? aiService,
     AiScheduleValidator? validator,
   })  : _aiService = aiService ?? AIService(
-          baiApiKey: ApiKeys.baiApiKey,
-          baiModel: ApiKeys.baiModel,
-          openRouterApiKey: ApiKeys.openRouterApiKey,
-          cohereApiKey: ApiKeys.cohereApiKey,
-        ),
+    baiApiKey: ApiKeys.baiApiKey,
+    baiModel: ApiKeys.baiModel,
+    openRouterApiKey: ApiKeys.openRouterApiKey,
+    cohereApiKey: ApiKeys.cohereApiKey,
+  ),
         _validator = validator ?? AiScheduleValidator();
 
   /// Regenerate [current] using its own candidate pool + the traveler's
@@ -143,7 +143,7 @@ class ItineraryRegenerationService {
           explorationTime: request.explorationTime ?? 'Standard',
           destinationOrder: request.destinations,
           allocatedDaysPerDestination:
-              request.daySplit.isNotEmpty ? request.daySplit : null,
+          request.daySplit.isNotEmpty ? request.daySplit : null,
           placeIdToDestination: placeIdToDestination,
         );
 
@@ -161,7 +161,7 @@ class ItineraryRegenerationService {
           debugPrint('Days: ${aiDays.length}');
           debugPrint('Candidates supplied: ${alternatives.length}');
           final generatedStops =
-              aiDays.fold<int>(0, (sum, d) => sum + d.schedule.length);
+          aiDays.fold<int>(0, (sum, d) => sum + d.schedule.length);
           debugPrint('Stops generated: $generatedStops');
           debugPrint('Must-visits: ${_verifiedMustVisitCount(aiDays, mustVisitIds)} / '
               '${mustVisitIds.length}');
@@ -187,7 +187,7 @@ class ItineraryRegenerationService {
         debugPrint('Days: ${aiDays.length}');
         debugPrint('Candidates supplied: ${alternatives.length}');
         final failedStops =
-            aiDays.fold<int>(0, (sum, d) => sum + d.schedule.length);
+        aiDays.fold<int>(0, (sum, d) => sum + d.schedule.length);
         debugPrint('Stops generated: $failedStops');
         debugPrint('Must-visits: ${_verifiedMustVisitCount(aiDays, mustVisitIds)} / '
             '${mustVisitIds.length}');
@@ -451,10 +451,10 @@ class ItineraryRegenerationService {
   }
 
   List<ScheduledDay> _toScheduledDays(
-    List<AIDaySchedule> aiDays,
-    TripDraft request,
-    ItineraryResult current,
-  ) {
+      List<AIDaySchedule> aiDays,
+      TripDraft request,
+      ItineraryResult current,
+      ) {
     final registry = current.placeRegistry;
     final startDate = request.startDate ?? DateTime.now();
     final result = <ScheduledDay>[];
@@ -551,9 +551,9 @@ class ItineraryRegenerationService {
   }
 
   Map<String, String> _placeIdToDestination(
-    ItineraryResult current,
-    TripDraft request,
-  ) {
+      ItineraryResult current,
+      TripDraft request,
+      ) {
     // The validator compares against allocatedDaysPerDestination keys
     // which are destination NAMES (e.g. "Kuala Lumpur"), not IDs.
     // We must return the matching name, not the DB ID.

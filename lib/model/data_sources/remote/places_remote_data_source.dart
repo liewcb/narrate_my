@@ -38,19 +38,13 @@ class PlacesRemoteDataSource {
 
     try {
       final response = await _client.get(url);
-
-      final data =
-      json.decode(response.body) as Map<String, dynamic>;
+      final data = json.decode(response.body) as Map<String, dynamic>;
 
       if (data['status'] == 'OK') {
-        final results =
-            data['results'] as List? ?? [];
-
+        final results = data['results'] as List? ?? [];
         return results
-            .whereType<Map<String, dynamic>>()
-            .map(
-              (json) => Place.fromGooglePlacesJson(json),
-        )
+            .cast<Map<String, dynamic>>()
+            .map(Place.fromGooglePlacesJson)
             .toList();
       }
 
@@ -60,12 +54,9 @@ class PlacesRemoteDataSource {
               '${data['error_message'] != null ? ' — ${data['error_message']}' : ''}',
         );
       }
-
       return [];
-    } catch (e) {
-      throw Exception(
-        'Failed to search nearby places: $e',
-      );
+    } catch (_) {
+      return [];
     }
   }
 

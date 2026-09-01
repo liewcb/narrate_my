@@ -13,7 +13,9 @@
     <application
         android:name="${applicationName}"
         android:label="narrate_my"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:hardwareAccelerated="true"
+        android:usesCleartextTraffic="true">
 
         <meta-data
             android:name="com.google.ar.core"
@@ -22,7 +24,7 @@
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="${MAPS_API_KEY}" />
+            android:value="AIzaSyCLg1gBrQOjcfJrg2YCbrLAiGoX602LMIQ" />
 
         <activity
             android:name=".MainActivity"

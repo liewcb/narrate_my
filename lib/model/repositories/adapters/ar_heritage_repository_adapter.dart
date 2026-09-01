@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../../../core/config/app_config.dart';
 import '../../data_sources/remote/ar_remote_data_source.dart';
+import '../../dto/attraction_dto.dart';
 import '../../entities/ar_object.dart';
 import '../../entities/ar_placement.dart';
 import '../interfaces/ar_heritage_repository.dart';
@@ -14,9 +15,9 @@ class SupabaseARHeritageRepositoryAdapter implements ARHeritageRepository {
   @override
   Future<StoryScript> getHeritageStory(String markerId, String landmarkName) async {
     try {
-      final dto = await _dataSource.fetchAttractionByMarkerId(markerId);
-      if (dto != null) {
-        return dto.toStoryScript(fallbackLandmarkName: landmarkName);
+      final attractionDto = await _dataSource.fetchAttractionDtoByMarkerId(markerId);
+      if (attractionDto != null) {
+        return attractionDto.toStoryScript(fallbackLandmarkName: landmarkName);
       }
     } catch (e) {
       debugPrint('Supabase getHeritageStory error: $e');

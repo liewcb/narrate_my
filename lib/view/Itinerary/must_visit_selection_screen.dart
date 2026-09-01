@@ -1,4 +1,3 @@
-// lib/view/Itinerary/must_visit_selection_screen.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
@@ -523,10 +522,10 @@ class _PlaceList extends StatelessWidget {
                 onPressed: isLoadingMore ? null : onLoadMore,
                 icon: isLoadingMore
                     ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
                     : const Icon(Icons.expand_more),
                 label: Text(isLoadingMore ? 'Loading...' : 'Load more places'),
                 style: OutlinedButton.styleFrom(
@@ -686,8 +685,8 @@ class _PlaceCard extends StatelessWidget {
                         title: const Text('Outside recommended hotspot'),
                         content: Text(
                           'This location is outside the recommended '
-                          'hotspot area.\nDistance from selected hotspot: '
-                          '${place.distanceKm?.toStringAsFixed(1)} km.',
+                              'hotspot area.\nDistance from selected hotspot: '
+                              '${place.distanceKm?.toStringAsFixed(1)} km.',
                         ),
                         actions: [
                           TextButton(

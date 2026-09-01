@@ -82,7 +82,7 @@ class AiCandidateContext {
       finalScore: finalScore,
       isMustVisit: isMustVisit,
       visitDurationMinutes:
-          visitDurationMinutes ?? effectiveVisitDurationMinutes,
+      visitDurationMinutes ?? effectiveVisitDurationMinutes,
       openingHours: openingHours,
       bestTimeSuggestion: bestTimeSuggestion,
       latitude: latitude,
@@ -94,22 +94,22 @@ class AiCandidateContext {
   }
 
   Map<String, dynamic> toJson() => {
-        'place_id': placeId,
-        'name': name,
-        'destination': destination,
-        'cluster_id': clusterId,
-        'category': category,
-        'rating': rating,
-        'is_must_visit': isMustVisit,
-        'visit_duration_minutes': effectiveVisitDurationMinutes,
-        'estimated_visit_minutes': estimatedVisitMinutes,
-        'ai_relevance_score': aiRelevanceScore,
-        'planning_priority': planningPriority,
-        'opening_hours': openingHours ?? 'unknown',
-        'best_time_suggestion': bestTimeSuggestion ?? 'unknown',
-        'latitude': latitude,
-        'longitude': longitude,
-      };
+    'place_id': placeId,
+    'name': name,
+    'destination': destination,
+    'cluster_id': clusterId,
+    'category': category,
+    'rating': rating,
+    'is_must_visit': isMustVisit,
+    'visit_duration_minutes': effectiveVisitDurationMinutes,
+    'estimated_visit_minutes': estimatedVisitMinutes,
+    'ai_relevance_score': aiRelevanceScore,
+    'planning_priority': planningPriority,
+    'opening_hours': openingHours ?? 'unknown',
+    'best_time_suggestion': bestTimeSuggestion ?? 'unknown',
+    'latitude': latitude,
+    'longitude': longitude,
+  };
 }
 
 /// Builds the structured DeepSeek prompt.
@@ -181,7 +181,7 @@ class AiPromptBuilder {
       for (final c in reserveCandidates) {
         buffer.writeln(
           '- ${c.placeId} | ${c.name} | score=${c.finalScore.toStringAsFixed(2)} '
-          '| cluster=${c.clusterId ?? '?'} | ${c.category ?? 'unknown'}',
+              '| cluster=${c.clusterId ?? '?'} | ${c.category ?? 'unknown'}',
         );
       }
       buffer.writeln('');
@@ -196,7 +196,7 @@ class AiPromptBuilder {
       for (final c in mustVisits) {
         buffer.writeln(
           '- place_id: ${c.placeId} | name: ${c.name} '
-          '| destination: ${c.destination} | mandatory: true',
+              '| destination: ${c.destination} | mandatory: true',
         );
       }
     }
@@ -217,9 +217,9 @@ class AiPromptBuilder {
           .join(', ');
       buffer.writeln(
         '- cluster ${cluster.dayIndex}: '
-        'center=(${cluster.center.latitude.toStringAsFixed(4)}, '
-        '${cluster.center.longitude.toStringAsFixed(4)}) '
-        'places: $names',
+            'center=(${cluster.center.latitude.toStringAsFixed(4)}, '
+            '${cluster.center.longitude.toStringAsFixed(4)}) '
+            'places: $names',
       );
     }
     buffer.writeln('');
@@ -229,7 +229,7 @@ class AiPromptBuilder {
     if (routeInfo == null || routeInfo.isEmpty) {
       buffer.writeln(
         '- no travel matrix provided. Rely on coordinates and clusters. '
-        'The validator will check route feasibility when data exists.',
+            'The validator will check route feasibility when data exists.',
       );
     } else {
       for (final entry in routeInfo.entries) {
@@ -242,7 +242,7 @@ class AiPromptBuilder {
     buffer.writeln('HARD CONSTRAINTS');
     buffer.writeln(
       '- Every day must stay within the exploration window: '
-      '${_windowText(request.explorationTime)}.',
+          '${_windowText(request.explorationTime)}.',
     );
     buffer.writeln('- Destination day allocation must be respected exactly.');
     buffer.writeln('- A verified must-visit must appear exactly once.');
@@ -254,14 +254,14 @@ class AiPromptBuilder {
     );
     buffer.writeln(
       '- Consider opening hours, visit duration, travel pace, '
-      'transportation mode, weather and user interests.',
+          'transportation mode, weather and user interests.',
     );
     buffer.writeln('');
 
     buffer.writeln(
       '- Return each day\'s stops in the intended chronological sequence '
-      '(stop 1 first, stop 2 second, ...). Do NOT emit a "stopOrder" field '
-      '— the array ordering IS the stop order and will be assigned by the system.',
+          '(stop 1 first, stop 2 second, ...). Do NOT emit a "stopOrder" field '
+          '— the array ordering IS the stop order and will be assigned by the system.',
     );
     buffer.writeln('');
 
@@ -339,9 +339,9 @@ class AiPromptBuilder {
           .join(', ');
       buffer.writeln(
         '- cluster ${cluster.dayIndex}: '
-        'center=(${cluster.center.latitude.toStringAsFixed(4)}, '
-        '${cluster.center.longitude.toStringAsFixed(4)}) '
-        'places: $names',
+            'center=(${cluster.center.latitude.toStringAsFixed(4)}, '
+            '${cluster.center.longitude.toStringAsFixed(4)}) '
+            'places: $names',
       );
     }
     buffer.writeln('');

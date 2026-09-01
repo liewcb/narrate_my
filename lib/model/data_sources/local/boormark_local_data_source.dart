@@ -257,41 +257,21 @@ class BookmarkLocalSource {
   // CACHE BOOKMARKS WITH PLACES
   // ============================================================
 
-  Future<void> cacheBookmarksWithPlaces(
-      List<BookmarkWithPlaceDTO> combined,
-      ) async {
+  /// Cache one confirmed remote result. This is deliberately called only
+  /// after Supabase has accepted (or returned) the bookmark.
+  Future<void> cacheBookmarkWithPlace(BookmarkWithPlaceDTO combined) async {
     final db = await _local.database;
-
-    final batch = db.batch();
-
-    for (final item in combined) {
-      // --------------------------------------------------------
-      // Cache bookmark
-      // --------------------------------------------------------
-
-      batch.insert(
-        'bookmarks',
-        BookmarkDTO
-            .fromEntity(item.bookmark)
-            .toMap(),
-        conflictAlgorithm:
-        ConflictAlgorithm.replace,
-      );
-
-      // --------------------------------------------------------
-      // Cache place
-      // --------------------------------------------------------
-
-      batch.insert(
+    await db.transaction((txn) async {
+      await txn.insert(
         'places',
-        PlaceDto
-            .fromEntity(item.place)
-            .toMap(),
-        conflictAlgorithm:
-        ConflictAlgorithm.replace,
+        PlaceDto.fromEntity(combined.place).toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
       );
-    }
-
-    await batch.commit();
+      await txn.insert(
+        'bookmarks',
+        BookmarkDTO.fromEntity(combined.bookmark).toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
   }
 }

@@ -15,6 +15,7 @@ enum StoryPlaybackState {
   stopped,
   playing,
   paused,
+  completed,
 }
 
 /// Karaoke-style subtitle model for real-time word-by-word follow-along highlighting

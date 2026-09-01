@@ -49,10 +49,10 @@ enum HotspotDistanceStatus {
   farFromDestination;
 
   String get label => switch (this) {
-        HotspotDistanceStatus.withinHotspot => 'WITHIN_HOTSPOT',
-        HotspotDistanceStatus.outsideHotspot => 'OUTSIDE_HOTSPOT',
-        HotspotDistanceStatus.farFromDestination => 'FAR_FROM_DESTINATION',
-      };
+    HotspotDistanceStatus.withinHotspot => 'WITHIN_HOTSPOT',
+    HotspotDistanceStatus.outsideHotspot => 'OUTSIDE_HOTSPOT',
+    HotspotDistanceStatus.farFromDestination => 'FAR_FROM_DESTINATION',
+  };
 }
 
 /// Computes the [HotspotDistanceStatus] of [placeKm] relative to the
@@ -116,7 +116,7 @@ class CandidatePool {
   /// automatically (backward-compatibility helper).
   CandidatePool.fromDailyGroups(List<DailyCandidateGroup> groups)
       : attractions =
-            groups.expand((g) => g.attractions).toList(growable: false),
+  groups.expand((g) => g.attractions).toList(growable: false),
         food = groups.expand((g) => g.food).toList(growable: false),
         dailyGroups = List.unmodifiable(groups);
 
@@ -232,7 +232,7 @@ class CandidateRetrievalService {
     final List<String> selectedInterests = request.interests;
 
     final List<String> interestTags =
-        InterestMapping.databaseTagsForInterests(selectedInterests);
+    InterestMapping.databaseTagsForInterests(selectedInterests);
 
     final attractionTypes = _buildAttractionTypeSet(selectedInterests);
 
@@ -246,24 +246,24 @@ class CandidateRetrievalService {
     // ============================================================
 
     final List<QueryDestination> destinations =
-        await _resolveDestinations(request);
+    await _resolveDestinations(request);
 
     // ============================================================
     // 3. RESOLVE SEARCH CENTRES (per-destination hotspots)
     // ============================================================
 
     final List<_SearchCenter> centers =
-        await _buildSearchCenters(destinations: destinations, interestTags: interestTags);
+    await _buildSearchCenters(destinations: destinations, interestTags: interestTags);
 
     if (ItineraryConstants.enableCandidateDebugLogs) {
       debugPrint(
         '📍 Search centres: ${centers.length} across '
-        '${destinations.length} destination(s)',
+            '${destinations.length} destination(s)',
       );
       for (final c in centers) {
         debugPrint(
           '   • ${c.sourceLabel} (${c.latitude}, ${c.longitude}) '
-          'radius=${c.radiusKm}km',
+              'radius=${c.radiusKm}km',
         );
       }
     }
@@ -287,9 +287,9 @@ class CandidateRetrievalService {
       if (ItineraryConstants.enableCandidateDebugLogs) {
         debugPrint(
           '[SEARCH] ${center.sourceLabel} '
-          '@ (${center.latitude}, ${center.longitude}) '
-          'radius=${center.radiusKm}km → '
-          '${raw.attractions.length} attr, ${raw.food.length} food',
+              '@ (${center.latitude}, ${center.longitude}) '
+              'radius=${center.radiusKm}km → '
+              '${raw.attractions.length} attr, ${raw.food.length} food',
         );
       }
 
@@ -311,9 +311,9 @@ class CandidateRetrievalService {
 
     debugPrint(
       '[MERGE] Raw results merged → '
-      '${mergedAttractions.length} unique attractions, '
-      '${mergedFood.length} unique food '
-      '(${seenIds.length} unique place_ids total)',
+          '${mergedAttractions.length} unique attractions, '
+          '${mergedFood.length} unique food '
+          '(${seenIds.length} unique place_ids total)',
     );
 
     // ============================================================
@@ -457,13 +457,13 @@ class CandidateRetrievalService {
       if (ItineraryConstants.enableCandidateDebugLogs) {
         debugPrint(
           '[HOTSPOT] ${destination.name} '
-          '(destination_id=${destination.destinationId ?? 'unknown'}): '
-          '${hotspots.length} hotspot(s) for tags $interestTags',
+              '(destination_id=${destination.destinationId ?? 'unknown'}): '
+              '${hotspots.length} hotspot(s) for tags $interestTags',
         );
         for (final h in hotspots) {
           debugPrint(
             '   ✓ ${h.id} ${h.hotspotName} '
-            'tags=${h.tags}',
+                'tags=${h.tags}',
           );
         }
       }
@@ -509,7 +509,7 @@ class CandidateRetrievalService {
     final String queryId = destination.destinationId ?? destination.name;
     try {
       final hotspots =
-          await _hotspotRepository.getHotspotsForDestination(queryId);
+      await _hotspotRepository.getHotspotsForDestination(queryId);
 
       if (hotspots.isEmpty) return const [];
 
@@ -532,38 +532,38 @@ class CandidateRetrievalService {
   }
 
   Future<_CenterResult> _fetchCenter(
-    _SearchCenter center,
-    List<String> attractionTypes,
-  ) async {
+      _SearchCenter center,
+      List<String> attractionTypes,
+      ) async {
     final double radiusMeters = center.radiusKm * 1000;
 
     if (ItineraryConstants.enableCandidateDebugLogs) {
       debugPrint(
         '[SEARCH] ${center.sourceLabel} '
-        '@ (${center.latitude}, ${center.longitude}) '
-        'radius=${center.radiusKm}km',
+            '@ (${center.latitude}, ${center.longitude}) '
+            'radius=${center.radiusKm}km',
       );
     }
 
     final (attractions, food) = await (
-      _placesDataSource.searchNearbyPlaces(
-        latitude: center.latitude,
-        longitude: center.longitude,
-        radiusMeters: radiusMeters,
-        types: attractionTypes,
-      ),
-      _placesDataSource.searchNearbyPlaces(
-        latitude: center.latitude,
-        longitude: center.longitude,
-        radiusMeters: radiusMeters,
-        types: foodTypes,
-      ),
+    _placesDataSource.searchNearbyPlaces(
+      latitude: center.latitude,
+      longitude: center.longitude,
+      radiusMeters: radiusMeters,
+      types: attractionTypes,
+    ),
+    _placesDataSource.searchNearbyPlaces(
+      latitude: center.latitude,
+      longitude: center.longitude,
+      radiusMeters: radiusMeters,
+      types: foodTypes,
+    ),
     ).wait;
 
     if (ItineraryConstants.enableCandidateDebugLogs) {
       debugPrint(
         '[RESULT] ${center.sourceLabel}: '
-        '${attractions.length} attr, ${food.length} food',
+            '${attractions.length} attr, ${food.length} food',
       );
     }
 
@@ -620,11 +620,11 @@ class CandidateRetrievalService {
   }
 
   List<Place> _applyBasicFiltering(
-    List<Place> places,
-    Set<String> globalSeenIds, {
-    required Set<String> allowedSpecificTypes,
-    required bool allowSpa,
-  }) {
+      List<Place> places,
+      Set<String> globalSeenIds, {
+        required Set<String> allowedSpecificTypes,
+        required bool allowSpa,
+      }) {
     final valid = <Place>[];
 
     for (final place in places) {
@@ -644,7 +644,7 @@ class CandidateRetrievalService {
 
       if (place.types.contains('establishment')) {
         final hasSpecificTag = place.types.any(
-          (t) => t != 'establishment' && allowedSpecificTypes.contains(t),
+              (t) => t != 'establishment' && allowedSpecificTypes.contains(t),
         );
         if (!hasSpecificTag) continue;
       }
@@ -901,10 +901,10 @@ class CandidateRetrievalService {
   ///
   /// Returns null when no candidate reaches the similarity threshold.
   Place? _findBestMatch(
-    List<Place> candidates,
-    String requestedName,
-    Coordinates? searchCenter,
-  ) {
+      List<Place> candidates,
+      String requestedName,
+      Coordinates? searchCenter,
+      ) {
     final normalized = requestedName.toLowerCase().trim();
     final words = normalized.split(RegExp(r'\s+')).where((w) => w.length > 2).toList();
 
@@ -971,12 +971,12 @@ class CandidateRetrievalService {
     final baseRadius = ItineraryConstants.searchRadiusKm * radiusMultiplier;
     final centers = destinations
         .map((d) => _SearchCenter(
-              sourceLabel: '${d.name} (expanded)',
-              latitude: d.latitude,
-              longitude: d.longitude,
-              radiusKm: baseRadius,
-              destinationId: d.destinationId,
-            ))
+      sourceLabel: '${d.name} (expanded)',
+      latitude: d.latitude,
+      longitude: d.longitude,
+      radiusKm: baseRadius,
+      destinationId: d.destinationId,
+    ))
         .toList();
 
     final results = await Future.wait(

@@ -9,9 +9,8 @@ import '../../../viewmodel/ar/ar_placement_viewmodel.dart';
 import 'widgets/ar_placement_top_bar.dart';
 import 'widgets/ar_scanning_guide.dart';
 import 'widgets/ar_storytelling_panel.dart';
-import 'widgets/ar_3d_viewer_overlay.dart';
 import 'widgets/ar_action_menu.dart';
-import 'widgets/video_player_overlay.dart';
+
 
 /// Screen corresponding to `AR Placement Screen` in the architecture diagram.
 /// Pure View layer with strict MVVM adherence.
@@ -23,7 +22,7 @@ class ARPlacementScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<ARPlacementViewModel>(
-      create: (_) => ARPlacementViewModel()..init(selectedMarker),
+      create: (context) => ARPlacementViewModel()..init(selectedMarker),
       child: const _ARPlacementContent(),
     );
   }
@@ -36,8 +35,8 @@ class _ARPlacementContent extends StatefulWidget {
   State<_ARPlacementContent> createState() => _ARPlacementContentState();
 }
 
-class _ARPlacementContentState extends State<_ARPlacementContent> {
-  final bool _isNativeViewReady = true;
+class _ARPlacementContentState extends State<_ARPlacementContent> with WidgetsBindingObserver {
+  bool _isNativeViewReady = true;
 
   static const _navItems = [
     BottomNavItem(
@@ -65,6 +64,22 @@ class _ARPlacementContentState extends State<_ARPlacementContent> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      setState(() => _isNativeViewReady = true);
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      setState(() => _isNativeViewReady = false);
+    }
   }
 
   @override
@@ -87,10 +102,21 @@ class _ARPlacementContentState extends State<_ARPlacementContent> {
           else
             const SizedBox.expand(child: ColoredBox(color: darkBg)),
 
-          // 2. 3D Landmark Model Viewer (Isolated in RepaintBoundary)
-          const AR3DViewerOverlay(),
+          // 1.5 AR Performance Shield: When 3D Model is active, occlude background AR surface to save GPU
+          Selector<ARPlacementViewModel, bool>(
+            selector: (context, model) => model.show3DLandmarkModel,
+            builder: (context, show3d, child) {
+              return IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: show3d ? 0.82 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: const ColoredBox(color: Color(0xFF0D1414)),
+                ),
+              );
+            },
+          ),
 
-          // 3. Top Navigation & Status Bar
+          // 2. Top Navigation & Status Bar
           const ARPlacementTopBar(),
 
           // 4. Plane Scanning & Placement Guide Prompt
@@ -98,8 +124,8 @@ class _ARPlacementContentState extends State<_ARPlacementContent> {
 
           // 5. Lightweight Non-blocking Model Placement Indicator
           Selector<ARPlacementViewModel, bool>(
-            selector: (_, model) => model.isModelLoading,
-            builder: (context, isLoading, _) {
+            selector: (context, model) => model.isModelLoading,
+            builder: (context, isLoading, child) {
               if (!isLoading) return const SizedBox.shrink();
               return Positioned(
                 bottom: 120,
@@ -148,9 +174,6 @@ class _ARPlacementContentState extends State<_ARPlacementContent> {
 
           // 7. Storytelling Narration Subtitles & Play Controls
           const ARStorytellingPanel(),
-
-          // 8. In-App Video Player Overlay
-          const VideoPlayerOverlay(),
         ],
       ),
       bottomNavigationBar: AppBottomNavBar(

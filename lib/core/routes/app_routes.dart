@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../view/Itinerary/my_itineraries_screen.dart';
 import '../../view/ai_assistant/travel_assistant_screen.dart';
-import '../../view/ar_screen.dart';
+import '../../view/ar/ar_exploration/ar_exploration_view.dart';
 import '../../view/recommendation/nearby_recommendation_screen.dart';
 import '../../view/profile_screen.dart';
 import '../widgets/app_bottom_navigation.dart';
@@ -23,11 +23,11 @@ class AppRoutes extends StatefulWidget {
 class _AppRoutesState extends State<AppRoutes> {
   int _index = 0;
 
-  static const _screens = [
-    ARScreen(),
-    MyItinerariesScreen(),
-    NearbyRecommendationScreen(),
-    ProfileScreen(),
+  List<Widget> _screens() => [
+    ARExplorationView(isActive: _index == 0),
+    const MyItinerariesScreen(),
+    NearbyRecommendationScreen(onOpenAr: () => setState(() => _index = 0)),
+    const ProfileScreen(),
   ];
 
   static const _items = [
@@ -76,7 +76,7 @@ class _AppRoutesState extends State<AppRoutes> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: IndexedStack(index: _index, children: _screens),
+            child: IndexedStack(index: _index, children: _screens()),
           ),
           if (showAiAssistant)
             Positioned(
