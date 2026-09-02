@@ -301,16 +301,24 @@ class Step5GenerationVM extends ChangeNotifier {
   String _generateId(String prefix) =>
       '${prefix}_${DateTime.now().microsecondsSinceEpoch}_${DateTime.now().millisecond}';
 
-  /// Derive the itinerary cover image URL from the first scheduled stop's
-  /// place photo — identical to `ItineraryFinalViewModel.heroImageUrl`.
+  /// Derive the itinerary cover image URL from the first scheduled stop
+  /// that has a valid photo reference. Searches all days and stops so a
+  /// photo is never missed just because the first stop lacks one.
   String? _coverImageUrl(ItineraryResult generated) {
-    final ref = generated.scheduledDays?.firstOrNull?.stops
-        .firstOrNull?.attraction.place.placePhotoRef;
-    if (ref == null) return null;
-    return 'https://maps.googleapis.com/maps/api/place/photo'
-        '?maxwidth=800'
-        '&photoreference=$ref'
-        '&key=${ApiKeys.googleMapsApiKey}';
+    final days = generated.scheduledDays;
+    if (days == null) return null;
+    for (final day in days) {
+      for (final stop in day.stops) {
+        final ref = stop.attraction.place.placePhotoRef;
+        if (ref != null && ref.isNotEmpty) {
+          return 'https://maps.googleapis.com/maps/api/place/photo'
+              '?maxwidth=800'
+              '&photoreference=$ref'
+              '&key=${ApiKeys.googleMapsApiKey}';
+        }
+      }
+    }
+    return null;
   }
 
   /// Build a TripRequest from the traveler's actual inputs.

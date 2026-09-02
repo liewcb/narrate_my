@@ -23,6 +23,8 @@ class GoogleMapsService {
     required double radius,
     required List<String> types,
   }) async {
+    _ensureApiKey();
+
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
       '?location=$latitude,$longitude'
@@ -54,6 +56,8 @@ class GoogleMapsService {
     double? longitude,
     double radius = 50000, // 50 km bias around the destination
   }) async {
+    _ensureApiKey();
+
     final params = StringBuffer('query=${Uri.encodeQueryComponent(query)}');
     if (latitude != null && longitude != null) {
       params.write('&location=$latitude,$longitude');
@@ -141,6 +145,8 @@ class GoogleMapsService {
 
   /// Get detailed place information by Google Place ID.
   Future<Place> getPlaceDetails(String placeId) async {
+    _ensureApiKey();
+
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/details/json'
       '?place_id=$placeId'
@@ -198,6 +204,19 @@ class GoogleMapsService {
   }
 
   // ==================== PRIVATE HELPERS ====================
+
+  /// Guards every Google Places request against a missing API key so a
+  /// configuration failure surfaces as a clear error instead of a silent
+  /// "0 places found" (which would hide the real problem).
+  void _ensureApiKey() {
+    if (googleMapsApiKey.isEmpty) {
+      throw StateError(
+        'Google Places API authentication failed. '
+        'Please check the GOOGLE_MAPS_API_KEY configuration '
+        '(set via --dart-define).',
+      );
+    }
+  }
 
   /// Calculate the great-circle distance between two coordinates using the Haversine formula.
   double _calculateDistance(Coordinates a, Coordinates b) {

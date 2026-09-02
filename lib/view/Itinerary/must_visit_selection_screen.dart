@@ -762,12 +762,14 @@ class _StickyFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool hasSelection = selectedCount > 0;
+    final String placeLabel = selectedCount == 1 ? 'Place' : 'Places';
+
     return Positioned(
       bottom: 0,
       left: 0,
       right: 0,
       child: Container(
-        // Alignment & Spacing: Strict 24px side padding grid line, 32px top margin padding
         padding: EdgeInsets.only(
           left: 24,
           right: 24,
@@ -780,38 +782,46 @@ class _StickyFooter extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.brandTerracotta,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0, // Simplification: Flat button aesthetic
-              ),
-              onPressed: onContinue,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "Continue with $selectedCount Places",
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+            // Only show Continue button when at least
+            // one Must-Visit place is selected.
+            if (hasSelection) ...[
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brandTerracotta,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 56),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward, size: 20),
-                ],
+                  elevation: 0,
+                ),
+                onPressed: onContinue,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continue with $selectedCount $placeLabel',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.arrow_forward,
+                      size: 20,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
+
+            // Skip is always available.
             GestureDetector(
               onTap: onSkip,
               child: const Text(
-                "Skip for now",
-                // Hierarchy: 14px regular secondary text
+                'Skip for now',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.normal,

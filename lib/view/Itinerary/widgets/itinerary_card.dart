@@ -25,7 +25,11 @@ class ItineraryCard extends StatelessWidget {
     final String planSummary =
         '${itinerary.totalDays} days • ${itinerary.interests.length} interests';
 
-    final bool isUpcoming = itinerary.status.toUpperCase() == 'UPCOMING';
+    final String status = itinerary.status.toUpperCase();
+
+    final bool isUpcoming = status == 'UPCOMING';
+    final bool isOngoing = status == 'ONGOING';
+    final bool isPast = status == 'PAST';
 
     final String imageUrl =
         itinerary.coverImageUrl ??
@@ -58,8 +62,8 @@ class ItineraryCard extends StatelessWidget {
                   child: Image.network(
                     imageUrl,
                     fit: BoxFit.cover,
-                    color: isUpcoming ? null : Colors.grey,
-                    colorBlendMode: isUpcoming ? null : BlendMode.saturation,
+                    color: isPast ? Colors.grey : null,
+                    colorBlendMode: isPast ? BlendMode.saturation : null,
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         color: AppColors.brandGrayLight,
@@ -91,9 +95,11 @@ class ItineraryCard extends StatelessWidget {
                         Icon(
                           isUpcoming
                               ? Icons.event_rounded
+                              : isOngoing
+                              ? Icons.play_circle_rounded
                               : Icons.history_rounded,
                           size: 13,
-                          color: isUpcoming ? primaryColor : subtitleColor,
+                          color: isPast ? subtitleColor : primaryColor,
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -101,7 +107,7 @@ class ItineraryCard extends StatelessWidget {
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: isUpcoming ? primaryColor : subtitleColor,
+                            color: isPast ? subtitleColor : primaryColor,
                           ),
                         ),
                       ],

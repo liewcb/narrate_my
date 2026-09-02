@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/app_theme.dart';
 import '../../viewmodel/Itinerary/my_itineraries_vm.dart';
 import 'manage_itinerary/manage_display_plan_screen.dart';
@@ -19,7 +19,7 @@ class _MyItinerariesScreenState extends State<MyItinerariesScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   // Hardcoded user ID – replace with real auth later
-  static const String _userId = '252f0924-192c-42fe-8643-881da7bbf285';
+  //static const String _userId = '252f0924-192c-42fe-8643-881da7bbf285';
 
   @override
   void dispose() {
@@ -29,9 +29,25 @@ class _MyItinerariesScreenState extends State<MyItinerariesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = Supabase.instance.client.auth.currentUser;
+
+    print('CURRENT USER: ${user?.id}');
+
+    if (user == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text('No user logged in'),
+        ),
+      );
+    }
+
     return ChangeNotifierProvider<MyItinerariesVM>(
-      create: (_) => MyItinerariesVM(userId: _userId)..load(),
-      child: _ItinerariesView(searchController: _searchController),
+      create: (_) => MyItinerariesVM(
+        userId: user.id,
+      )..load(),
+      child: _ItinerariesView(
+        searchController: _searchController,
+      ),
     );
   }
 }
