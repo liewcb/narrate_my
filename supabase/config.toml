@@ -1,0 +1,2 @@
+[functions.place-photo]
+verify_jwt = false

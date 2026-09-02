@@ -8,6 +8,7 @@ import '../../model/business_logic/itinerary_service/itinerary_validation_servic
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/trip_customization_vm.dart';
 import 'must_visit_selection_screen.dart';
+import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 
 class TripCustomizationScreen extends StatefulWidget {
   final TripDraft draft;
@@ -38,7 +39,8 @@ class _Step2TripStyleBody extends StatelessWidget {
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         backgroundColor: AppColors.background,
-        appBar: const _AppBar(step: 2),
+        // Replaced internal _AppBar with shared WizardAppBar
+        appBar: const WizardAppBar(step: 2),
         body: Stack(
           children: [
             SingleChildScrollView(
@@ -47,7 +49,8 @@ class _Step2TripStyleBody extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 8),
-                  const _ProgressBar(activeSteps: 2),
+                  // Replaced internal _ProgressBar with shared WizardProgressBar
+                  const WizardProgressBar(activeSteps: 2),
                   const SizedBox(height: 24),
                   _Header(vm: vm),
                   const SizedBox(height: 24),
@@ -132,95 +135,6 @@ class _Step2TripStyleBody extends StatelessWidget {
 }
 
 // ─── Private sub‑widgets for Step 2 ──────────────────────────
-
-class _AppBar extends StatelessWidget implements PreferredSizeWidget {
-  final int step;
-  const _AppBar({required this.step});
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: AppColors.background.withOpacity(0.9),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back, color: AppColors.brandCharcoal),
-              onPressed: () => Navigator.maybePop(context),
-              padding: EdgeInsets.zero,
-            ),
-            const Spacer(),
-            Text(
-              'STEP $step OF 4',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.2,
-                color: AppColors.outline,
-              ),
-            ),
-            // const Spacer(),
-            // IconButton(
-            //   icon: const Icon(Icons.more_horiz, color: AppColors.brandCharcoal),
-            //   onPressed: () {},
-            //   padding: EdgeInsets.zero,
-            // ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(56);
-}
-
-class _ProgressBar extends StatelessWidget {
-  final int activeSteps;
-  const _ProgressBar({required this.activeSteps});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 12,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            height: 2,
-            width: double.infinity,
-            color: AppColors.outlineLight.withOpacity(0.6),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(4, (i) {
-              final active = i < activeSteps;
-              return Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: active ? AppColors.brandGreen : AppColors.background,
-                  border: Border.all(
-                    color: active ? AppColors.brandGreen : AppColors.outlineLight,
-                    width: 2,
-                  ),
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.background, width: 2),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _Header extends StatelessWidget {
   final Step2TripStyleVM vm;
@@ -429,14 +343,9 @@ class _TravelDates extends StatelessWidget {
   Future<void> _pickRange(BuildContext context) async {
     final now = DateTime.now();
 
-    // ✅ FIX: Start date limited so full trip stays in forecast
-    final maxStartDate = vm.latestPossibleStartDate;
-
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
       firstDate: now,
-      // ✅ lastDate = today + forecast range
-      //    setDates() handles clamping to maxTripDays
       lastDate: vm.latestPossibleEndDate(),
       initialDateRange: vm.startDate != null && vm.endDate != null
           ? DateTimeRange(start: vm.startDate!, end: vm.endDate!)
@@ -480,14 +389,12 @@ class _TravelDates extends StatelessWidget {
         d == null ? 'Pick date' : DateFormat('MMM d, yyyy').format(d);
     final days = vm.totalDays;
 
-    // Weather coverage status
     final coverage = vm.weatherCoverage;
     final warning = vm.weatherWarning;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Section Header ──
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -519,7 +426,6 @@ class _TravelDates extends StatelessWidget {
         ),
         const SizedBox(height: 8),
 
-        // ── Date Cards ──
         GestureDetector(
           onTap: () => _pickRange(context),
           child: Row(
@@ -532,7 +438,6 @@ class _TravelDates extends StatelessWidget {
         ),
         const SizedBox(height: 6),
 
-        // ── Helper Text ──
         Text(
           vm.startDate != null
               ? 'Up to ${ItineraryValidationService.maxTripDays} days · tap to change'
@@ -540,13 +445,11 @@ class _TravelDates extends StatelessWidget {
           style: GoogleFonts.inter(fontSize: 12, color: AppColors.outline),
         ),
 
-        // ── Weather Coverage Badge ──
         if (coverage != WeatherCoverage.unknown) ...[
           const SizedBox(height: 8),
           _WeatherCoverageBadge(coverage: coverage),
         ],
 
-        // ── Weather Warning Banner ──
         if (warning != null) ...[
           const SizedBox(height: 8),
           Container(
@@ -640,7 +543,6 @@ class _TravelDates extends StatelessWidget {
   }
 }
 
-/// Small badge showing weather coverage status
 class _WeatherCoverageBadge extends StatelessWidget {
   final WeatherCoverage coverage;
   const _WeatherCoverageBadge({required this.coverage});
@@ -778,21 +680,9 @@ class _TravelPace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const paces = [
-      {
-        'icon': Icons.sailing_rounded,
-        'label': 'Slow',
-        'sub': '~2 spots/day',
-      },
-      {
-        'icon': Icons.directions_walk_rounded,
-        'label': 'Standard',
-        'sub': '~4 spots/day',
-      },
-      {
-        'icon': Icons.directions_run_rounded,
-        'label': 'Fast',
-        'sub': '~6 spots/day',
-      },
+      {'icon': Icons.sailing_rounded, 'label': 'Slow'},
+      {'icon': Icons.directions_walk_rounded, 'label': 'Standard'},
+      {'icon': Icons.directions_run_rounded, 'label': 'Fast'},
     ];
 
     return Column(
@@ -845,15 +735,7 @@ class _TravelPace extends StatelessWidget {
                           color: isSelected ? AppColors.brandGreen : AppColors.brandCharcoal,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        p['sub'] as String,
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: isSelected ? AppColors.brandGreen.withOpacity(0.8) : AppColors.outline,
-                        ),
-                      ),
+                      // The subtitle Text widget is removed
                     ],
                   ),
                 ),
@@ -865,7 +747,6 @@ class _TravelPace extends StatelessWidget {
     );
   }
 }
-
 class _Interests extends StatelessWidget {
   final Set<String> selected;
   final ValueChanged<String> onToggle;
@@ -941,8 +822,8 @@ class _Interests extends StatelessWidget {
                   color: isSelected
                       ? AppColors.brandGreen
                       : isDisabled
-                          ? AppColors.brandGrayLight
-                          : AppColors.white,
+                      ? AppColors.brandGrayLight
+                      : AppColors.white,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
                     color: isSelected
@@ -963,8 +844,8 @@ class _Interests extends StatelessWidget {
                       color: isSelected
                           ? Colors.white
                           : isDisabled
-                              ? AppColors.outline
-                              : AppColors.brandCharcoal,
+                          ? AppColors.outline
+                          : AppColors.brandCharcoal,
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -975,8 +856,8 @@ class _Interests extends StatelessWidget {
                         color: isSelected
                             ? Colors.white
                             : isDisabled
-                                ? AppColors.outline
-                                : AppColors.brandCharcoal,
+                            ? AppColors.outline
+                            : AppColors.brandCharcoal,
                       ),
                     ),
                   ],

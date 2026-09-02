@@ -18,27 +18,19 @@ class DestinationHotspotRepositoryImpl
         _remote = remote ?? DestinationHotspotRemoteSource();
 
   // ─── Public API ──────────────────────────────────────────────
-
   @override
   Future<List<DestinationHotspot>> getHotspotsForDestination(
       String destinationId,
       ) async {
-    // Local-first
-    try {
-      final localDtos = await _local.getForDestination(destinationId);
-      if (localDtos.isNotEmpty) {
-        return localDtos.map((dto) => dto.toDomain()).toList();
-      }
-    } catch (e) {
-      debugPrint('[HotspotRepo] Local read failed: $e');
-    }
-
-    // Remote fallback
+    // ─── REMOTE-ONLY (local caching disabled) ──────────────────
+    // Previously: local-first with fallback to remote.
+    // The local table migration is pending, so we bypass it entirely.
     try {
       final remoteDtos = await _remote.fetchForDestination(destinationId);
-      if (remoteDtos.isNotEmpty) {
-        await _local.insertDtos(remoteDtos);
-      }
+      // (Optional) If you later want to re-enable caching, uncomment:
+      // if (remoteDtos.isNotEmpty) {
+      //   await _local.insertDtos(remoteDtos);
+      // }
       return remoteDtos.map((dto) => dto.toDomain()).toList();
     } catch (e) {
       debugPrint('[HotspotRepo] Remote fetch failed: $e');

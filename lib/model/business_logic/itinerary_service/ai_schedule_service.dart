@@ -118,7 +118,7 @@ class AiScheduleService {
           // produced a "no matching element" crash. Now we match
           // case-insensitively and skip (not crash) on unknown IDs.
           final originalAttraction = selectedDailyPlaces.cast<ScoredAttraction?>().firstWhere(
-            (a) => a?.place.placeId.toLowerCase() == placeId.toLowerCase(),
+                (a) => a?.place.placeId.toLowerCase() == placeId.toLowerCase(),
             orElse: () => null,
           );
 
@@ -273,7 +273,7 @@ class AiScheduleService {
     final rebuilt = <AIScheduleStop>[];
     var cursorMin = windowStartMin;
     final preferredEndMin =
-        ItineraryConstants.preferredActivityEndMinute(window, travelPace);
+    ItineraryConstants.preferredActivityEndMinute(window, travelPace);
 
     // Use the AI schedule order, but we can also fall back to stopFacts if needed.
     // We'll use the AI's list as the primary source.
@@ -294,9 +294,9 @@ class AiScheduleService {
         duration = factDuration > 0
             ? factDuration
             : ItineraryConstants.baseDurationForCategory(
-                factCategory,
-                ItineraryConstants.defaultDurationMinutes,
-              );
+          factCategory,
+          ItineraryConstants.defaultDurationMinutes,
+        );
       }
       duration = _paceAdjustedDuration(duration, travelPace);
 
@@ -377,7 +377,7 @@ class AiScheduleService {
     // Allow up to a soft maximum, but we'll try to fit as many as possible.
     final maxStops = ItineraryConstants.maxStopsPerDay;
     final preferredEndMin =
-        ItineraryConstants.preferredActivityEndMinute(window, travelPace);
+    ItineraryConstants.preferredActivityEndMinute(window, travelPace);
 
     final stops = <AIScheduleStop>[];
     var cursorMin = windowStartMin;

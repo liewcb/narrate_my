@@ -225,8 +225,8 @@ class ScoringService {
       for (final s in pool.take(10)) {
         debugPrint(
           '[SCORING]   ${s.score.toStringAsFixed(2)} | ${s.place.name} '
-          '| interest=${s.matchedInterest} | '
-          'mustVisit=${s.isMustVisit}',
+              '| interest=${s.matchedInterest} | '
+              'mustVisit=${s.isMustVisit}',
         );
       }
     }
@@ -244,9 +244,9 @@ class ScoringService {
   /// The score reflects the strongest single match: a place matching one
   /// interest well receives a meaningful score rather than a diluted one.
   double _calculateInterestScore(
-    List<String> placeTypes,
-    List<String> selectedInterests,
-  ) {
+      List<String> placeTypes,
+      List<String> selectedInterests,
+      ) {
     if (selectedInterests.isEmpty || placeTypes.isEmpty) return 0.0;
 
     final placeTypeSet = placeTypes.map((t) => t.toLowerCase()).toSet();
@@ -276,9 +276,9 @@ class ScoringService {
   // ============================================================
 
   String _findMatchedInterest(
-    List<String> placeTypes,
-    List<String> selectedInterests,
-  ) {
+      List<String> placeTypes,
+      List<String> selectedInterests,
+      ) {
     for (final interest in selectedInterests) {
       final types = InterestMapping.getGoogleTypesForInterest(interest);
       if (placeTypes.any(types.contains)) return interest;

@@ -83,9 +83,9 @@ class ClusteringService {
   /// Moves any empty cluster to a real place (re-using the original
   /// nearest-place correction).
   void _ensureNonEmpty(
-    List<List<ScoredAttraction>> clusters,
-    List<ScoredAttraction> scored,
-  ) {
+      List<List<ScoredAttraction>> clusters,
+      List<ScoredAttraction> scored,
+      ) {
     for (int i = 0; i < clusters.length; i++) {
       if (clusters[i].isNotEmpty) continue;
       final nearestIdx = _findNearestPlaceToCentroid(scored, _calculateCenter(clusters[i]));

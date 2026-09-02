@@ -3,9 +3,11 @@ import 'dart:ui'; // For BackdropFilter
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/config/api_keys.dart';
+import '../../../core/services/google_maps_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../model/entities/itinerary_stop.dart';
+import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/edit_stop_vm.dart';
 
 /// Edits the traveler's progress for a single stop.
@@ -78,6 +80,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
     _skipReasonController =
         TextEditingController(text: widget.stop.skipReason ?? '');
+    _viewModel.refreshTimeOptions();
   }
 
   @override
@@ -107,6 +110,10 @@ class _EditStopScreenState extends State<EditStopScreen> {
               children: [
                 _buildCompactHero(),
                 const SizedBox(height: 24),
+                if (!_viewModel.isReadOnly) ...[
+                  _buildLocationSection(),
+                  const SizedBox(height: 24),
+                ],
                 _buildTimeAndDuration(),
                 const SizedBox(height: 24),
                 _buildStopStatus(),
@@ -166,21 +173,21 @@ class _EditStopScreenState extends State<EditStopScreen> {
                 letterSpacing: -0.5,
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: _viewModel.isSaving ? null : () => _save(context),
-                child: Text(
-                  "Save",
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: _terracotta,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-            ],
+            // actions: [
+            //   TextButton(
+            //     onPressed: _viewModel.isSaving ? null : () => _save(context),
+            //     child: Text(
+            //       "Save",
+            //       style: TextStyle(
+            //         fontFamily: 'Inter',
+            //         fontSize: 14,
+            //         fontWeight: FontWeight.w500,
+            //         color: _terracotta,
+            //       ),
+            //     ),
+            //   ),
+            //   const SizedBox(width: 12),
+            // ],
           ),
         ),
       ),
@@ -320,19 +327,140 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
+  // ─── Location (Change Location) ─────────────────────────────
+
+  Widget _buildLocationSection() {
+    final place = _viewModel.stop.place;
+    final address = place?.address;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
+          child: Text(
+            "LOCATION",
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+              color: _textMuted,
+            ),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _surfaceCard,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              )
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.location_on_outlined,
+                    size: 20,
+                    color: AppColors.accent,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          place?.name ?? _viewModel.stop.placeId,
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        if (address != null && address.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            address,
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              color: AppColors.inkFaint,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _viewModel.isSaving ? null : _openLocationSearch,
+                  icon: const Icon(Icons.search, size: 18),
+                  label: const Text('Change Location'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    side: const BorderSide(color: AppColors.accent),
+                    minimumSize: const Size(0, 44),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Opens the Search Maps style location picker and replaces the current
+  /// stop's place with the selected one via the ViewModel.
+  Future<void> _openLocationSearch() async {
+    final selected = await showModalBottomSheet<Place>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _LocationSearchSheet(),
+    );
+    if (selected == null || !mounted) return;
+
+    final ok = await _viewModel.changePlace(selected);
+    if (!mounted) return;
+    if (ok) {
+      _hasChanges = true;
+      setState(() {});
+      _showMessage(context, 'Location updated successfully.');
+    } else {
+      _showMessage(
+        context,
+        'Unable to update location: '
+        '${_viewModel.error ?? 'please try again.'}',
+      );
+    }
+  }
+
   Widget _buildTimeAndDuration() {
-    final stop = _viewModel.stop;
-    final timeFormat = DateFormat('HH:mm');
-    final hours = stop.durationMinutes ~/ 60;
-    final minutes = stop.durationMinutes % 60;
-    final durationLabel = hours > 0 && minutes > 0
-        ? '${hours}h ${minutes}m'
-        : hours > 0
-            ? '${hours}h'
-            : '${minutes}m';
+    final timeFormat = DateFormat('hh:mm a');
 
     final editedStart = _viewModel.editedStartTime;
     final editedEnd = _viewModel.editedEndTime;
+    final readOnly = _viewModel.isReadOnly;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -351,7 +479,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
           ),
         ),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: _surfaceCard,
             borderRadius: BorderRadius.circular(16),
@@ -363,128 +491,289 @@ class _EditStopScreenState extends State<EditStopScreen> {
               )
             ],
           ),
-          child: IntrinsicHeight(
-            child: Row(
-              children: [
-                // Start & End Time
-                Expanded(
-                  flex: 3,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Editable Start Time
-                      GestureDetector(
-                        onTap: _viewModel.isReadOnly
-                            ? null
-                            : () => _pickStartTime(context),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.schedule,
-                              color: Colors.grey.shade400,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              timeFormat.format(editedStart),
-                              style: TextStyle(
-                                color: _terracotta,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (!_viewModel.isReadOnly) ...[
-                              const SizedBox(width: 4),
-                              Icon(
-                                Icons.edit,
-                                color: Colors.grey.shade400,
-                                size: 14,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.arrow_forward,
-                        color: Colors.grey.shade300,
-                        size: 16,
-                      ),
-                      // Read-only End Time (derived from start + duration)
-                      Text(
-                        timeFormat.format(editedEnd),
-                        style: TextStyle(
-                          color: _terracotta,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Start Time dropdown
+              _buildStartTimeDropdown(timeFormat, readOnly),
+              const SizedBox(height: 12),
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: Colors.grey.shade100,
+              ),
+              const SizedBox(height: 12),
+              // Duration dropdown
+              _buildDurationDropdown(readOnly),
+              const SizedBox(height: 16),
+              // Derived end time (read-only)
+              Row(
+                children: [
+                  const Icon(
+                    Icons.arrow_forward,
+                    color: AppColors.inkFaint,
+                    size: 16,
                   ),
-                ),
-
-                // Divider
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                  child: VerticalDivider(
-                    color: Colors.grey.shade100,
-                    thickness: 1,
+                  const SizedBox(width: 8),
+                  Text(
+                    'End Time',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _textMuted,
+                    ),
                   ),
-                ),
-
-                // Duration (unchanged)
-                Expanded(
-                  flex: 2,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.timelapse,
-                            color: Colors.grey.shade400,
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            durationLabel,
-                            style: TextStyle(
-                              color: _terracotta,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  const SizedBox(width: 8),
+                  Text(
+                    '${timeFormat.format(editedStart)} → '
+                    '${timeFormat.format(editedEnd)}',
+                    style: TextStyle(
+                      color: _terracotta,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  /// Opens the standard time picker and applies the selection to the
-  /// ViewModel's temporary state (end time auto-derived from duration).
-  Future<void> _pickStartTime(BuildContext context) async {
+  Widget _buildStartTimeDropdown(DateFormat timeFormat, bool readOnly) {
+    final options = _viewModel.availableStartTimes;
     final current = _viewModel.editedStartTime;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: current.hour, minute: current.minute),
+    final selected = options.contains(current)
+        ? current
+        : (options.isNotEmpty ? options.first : null);
+
+    return Row(
+      children: [
+        const Icon(
+          Icons.schedule,
+          color: AppColors.inkFaint,
+          size: 18,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'START TIME',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: _textMuted,
+                ),
+              ),
+              const SizedBox(height: 4),
+              if (readOnly)
+                Text(
+                  timeFormat.format(current),
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<DateTime>(
+                    value: selected,
+                    isExpanded: true,
+                    icon: const Icon(
+                      Icons.arrow_drop_down,
+                      color: AppColors.inkFaint,
+                    ),
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                    items: [
+                      for (final t in options)
+                        DropdownMenuItem<DateTime>(
+                          value: t,
+                          child: Text(timeFormat.format(t)),
+                        ),
+                    ],
+                    onChanged: _viewModel.isSaving
+                        ? null
+                        : (value) {
+                            if (value != null) {
+                              _onStartTimeSelected(value);
+                            }
+                          },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
-    if (picked == null) return;
-    final applied = _viewModel.setStartTime(DateTime(
-      current.year,
-      current.month,
-      current.day,
-      picked.hour,
-      picked.minute,
-    ));
+  }
+
+  Widget _buildDurationDropdown(bool readOnly) {
+    final options = _viewModel.availableDurations;
+    final current = _viewModel.editedDurationMinutes;
+    final selected = options.contains(current)
+        ? current
+        : (options.isNotEmpty ? options.first : null);
+
+    return Row(
+      children: [
+        const Icon(
+          Icons.timelapse,
+          color: AppColors.inkFaint,
+          size: 18,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'VISIT DURATION',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: _textMuted,
+                ),
+              ),
+              const SizedBox(height: 4),
+              if (readOnly)
+                Text(
+                  _durationLabel(current),
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: selected,
+                    isExpanded: true,
+                    icon: const Icon(
+                      Icons.arrow_drop_down,
+                      color: AppColors.inkFaint,
+                    ),
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                    items: [
+                      for (final d in options)
+                        DropdownMenuItem<int>(
+                          value: d,
+                          child: Text(_durationLabel(d)),
+                        ),
+                    ],
+                    onChanged: _viewModel.isSaving
+                        ? null
+                        : (value) {
+                            if (value != null) {
+                              _onDurationSelected(value);
+                            }
+                          },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Human-readable duration label, e.g. 90 → "1 hr 30 min".
+  String _durationLabel(int minutes) {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    if (h > 0 && m > 0) return '$h hr $m min';
+    if (h > 0) return '$h hr';
+    return '$m min';
+  }
+
+  /// Applies a dropdown start-time selection via the ViewModel, then asks
+  /// the traveler to confirm before persisting.
+  Future<void> _onStartTimeSelected(DateTime picked) async {
+    if (_viewModel.isSaving) return;
+    final applied = await _viewModel.setStartTime(picked);
+    if (!mounted) return;
     if (!applied) {
-      _showMessage(context, _viewModel.error ?? 'Invalid start time.');
+      _showMessage(
+        context,
+        'Unable to update time: ${_viewModel.error ?? 'invalid start time.'}',
+      );
+      return;
+    }
+
+    final confirmed = await _confirmTimeChange(context);
+    if (!mounted) return;
+    if (confirmed != true) {
+      _viewModel.resetTimeEdits();
+      _showMessage(context, 'Time change cancelled.');
+      return;
+    }
+
+    final saved = await _viewModel.saveTimeChanges();
+    if (!mounted) return;
+    if (saved) {
+      _hasChanges = true;
+      setState(() {});
+      _showMessage(context, 'Stop time updated successfully.');
+    } else {
+      _showMessage(
+        context,
+        'Unable to update time: ${_viewModel.error ?? 'please try again.'}',
+      );
+    }
+  }
+
+  /// Applies a dropdown duration selection via the ViewModel, then asks the
+  /// traveler to confirm before persisting.
+  Future<void> _onDurationSelected(int picked) async {
+    if (_viewModel.isSaving) return;
+    final applied = await _viewModel.setDuration(picked);
+    if (!mounted) return;
+    if (!applied) {
+      final reason = _viewModel.error ?? 'invalid duration.';
+      _showMessage(context, 'Unable to update duration: $reason');
+      return;
+    }
+
+    final confirmed = await _confirmDurationChange(context);
+    if (!mounted) return;
+    if (confirmed != true) {
+      _viewModel.resetTimeEdits();
+      _showMessage(context, 'Duration change cancelled.');
+      return;
+    }
+
+    final saved = await _viewModel.saveTimeChanges();
+    if (!mounted) return;
+    if (saved) {
+      _hasChanges = true;
+      setState(() {});
+      _showMessage(context, 'Visit duration updated successfully.');
+    } else {
+      _showMessage(
+        context,
+        'Unable to update duration: '
+        '${_viewModel.error ?? 'please try again.'}',
+      );
     }
   }
 
@@ -631,7 +920,11 @@ class _EditStopScreenState extends State<EditStopScreen> {
       setState(() {});
       _showMessage(context, _statusSuccessMessage(target));
     } else {
-      _showMessage(context, _viewModel.error ?? 'Unable to update status.');
+      _showMessage(
+        context,
+        'Unable to update status: '
+        '${_viewModel.error ?? 'please try again.'}',
+      );
     }
   }
 
@@ -835,7 +1128,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
                     title: const Text('Remove this stop?'),
                     content: const Text(
                       'This will remove the stop from the itinerary. '
-                      'The schedule and route will not be recalculated.',
+                      'The affected schedule and route will be recalculated.',
                     ),
                     actions: [
                       TextButton(
@@ -851,8 +1144,16 @@ class _EditStopScreenState extends State<EditStopScreen> {
                 );
                 if (confirmed == true && mounted) {
                   final ok = await _viewModel.deleteStop();
-                  if (ok && mounted) {
+                  if (!mounted) return;
+                  if (ok) {
+                    _showMessage(context, 'Stop removed from itinerary.');
                     Navigator.pop(context, true);
+                  } else {
+                    _showMessage(
+                      context,
+                      'Unable to remove the stop: '
+                      '${_viewModel.error ?? 'please try again.'}',
+                    );
                   }
                 }
               },
@@ -908,19 +1209,50 @@ class _EditStopScreenState extends State<EditStopScreen> {
   }
 
   Future<bool?> _confirmTimeChange(BuildContext context) {
-    final timeFormat = DateFormat('HH:mm');
+    final timeFormat = DateFormat('hh:mm a');
     final from = '${timeFormat.format(_viewModel.stop.startTime)} – '
         '${timeFormat.format(_viewModel.stop.endTime)}';
     final to = '${timeFormat.format(_viewModel.editedStartTime)} – '
         '${timeFormat.format(_viewModel.editedEndTime)}';
 
+    String message;
+    if (_viewModel.hasDurationChanges) {
+      message = 'Change this stop from\n$from'
+          '\n(${_durationLabel(_viewModel.stop.durationMinutes)})\n'
+          '\nto\n$to\n'
+          '(${_durationLabel(_viewModel.editedDurationMinutes)})?\n\n'
+          'This will update the scheduled time for this stop.';
+    } else {
+      message = 'Change this stop from\n$from\n\nto\n$to?\n\n'
+          'This will update the scheduled time for this stop.';
+    }
+
     return showConfirmationDialog(
       context: context,
       title: 'Confirm Time Change?',
-      message: 'Change this stop from\n$from\n\nto\n$to?\n\n'
-          'This will update the scheduled time for this stop.',
+      message: message,
       confirmLabel: 'Confirm',
       icon: Icons.schedule_rounded,
+      iconBgColor: AppColors.surface2,
+      iconColor: AppColors.accent,
+      confirmColor: AppColors.accent,
+    );
+  }
+
+  Future<bool?> _confirmDurationChange(BuildContext context) {
+    final timeFormat = DateFormat('hh:mm a');
+    final from = _durationLabel(_viewModel.stop.durationMinutes);
+    final to = _durationLabel(_viewModel.editedDurationMinutes);
+    final start = timeFormat.format(_viewModel.editedStartTime);
+    final end = timeFormat.format(_viewModel.editedEndTime);
+
+    return showConfirmationDialog(
+      context: context,
+      title: 'Confirm Duration Change?',
+      message: 'Change visit duration from\n$from\n\nto\n$to?\n\n'
+          'New schedule: $start → $end',
+      confirmLabel: 'Confirm',
+      icon: Icons.timelapse_rounded,
       iconBgColor: AppColors.surface2,
       iconColor: AppColors.accent,
       confirmColor: AppColors.accent,
@@ -930,6 +1262,267 @@ class _EditStopScreenState extends State<EditStopScreen> {
   void _showMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  LOCATION SEARCH SHEET (reuses the existing GoogleMapsService search)
+// ═══════════════════════════════════════════════════════════════════════
+
+class _LocationSearchSheet extends StatefulWidget {
+  const _LocationSearchSheet();
+
+  @override
+  State<_LocationSearchSheet> createState() => _LocationSearchSheetState();
+}
+
+class _LocationSearchSheetState extends State<_LocationSearchSheet> {
+  final GoogleMapsService _mapsService = GoogleMapsService();
+  final TextEditingController _queryController = TextEditingController();
+
+  List<Place> _results = [];
+  bool _isSearching = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _queryController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      setState(() {
+        _results = [];
+        _error = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _error = null;
+    });
+
+    try {
+      final results = await _mapsService.searchTextPlaces(query: trimmed);
+      if (!mounted) return;
+      setState(() {
+        _results = results;
+        if (results.isEmpty) {
+          _error = 'No places found. Try a different search.';
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _results = [];
+        _error = 'Could not search places. Check your connection.';
+      });
+    } finally {
+      if (mounted) setState(() => _isSearching = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.moduleBorder,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Change Location',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _queryController,
+              textInputAction: TextInputAction.search,
+              onSubmitted: _search,
+              decoration: InputDecoration(
+                hintText: 'Search restaurants or attractions...',
+                hintStyle: const TextStyle(color: AppColors.inkFaint),
+                prefixIcon: const Icon(Icons.search, color: AppColors.inkFaint),
+                suffixIcon: _queryController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _queryController.clear();
+                          _search('');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: AppColors.bg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.moduleBorder),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.moduleBorder),
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            if (_isSearching)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.inkFaint,
+                  ),
+                ),
+              )
+            else if (_results.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  'Search for a new location to replace this stop.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+                ),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.5,
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _results.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final place = _results[index];
+                    return _LocationResultTile(
+                      place: place,
+                      onTap: () => Navigator.pop(context, place),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LocationResultTile extends StatelessWidget {
+  final Place place;
+  final VoidCallback onTap;
+
+  const _LocationResultTile({required this.place, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = place.photoReference != null
+        ? 'https://maps.googleapis.com/maps/api/place/photo'
+            '?maxwidth=200&photoreference=${place.photoReference}'
+            '&key=${ApiKeys.googleMapsApiKey}'
+        : null;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.moduleBorder),
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 52,
+                height: 52,
+                color: AppColors.surface2,
+                child: photoUrl != null
+                    ? Image.network(
+                        photoUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.place,
+                          color: AppColors.inkFaint,
+                        ),
+                      )
+                    : const Icon(Icons.place, color: AppColors.inkFaint),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    place.placeName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  if (place.placeAddress.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      place.placeAddress,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.inkFaint,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 20, color: AppColors.inkFaint),
+          ],
+        ),
+      ),
     );
   }
 }

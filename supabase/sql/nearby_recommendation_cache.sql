@@ -31,8 +31,8 @@ grant select, insert, update, delete
   on table public.nearby_recommendation_cache
   to service_role;
 
--- A conservative app-side budget prevents a test session with many unique
--- location/preference combinations from exhausting the provider quota.
+-- A conservative shared AI budget prevents Nearby and AR recommendation
+-- sessions with many unique contexts from exhausting the provider quota.
 create table if not exists public.nearby_recommendation_ai_usage (
   id bigint generated always as identity primary key,
   cache_key text not null,

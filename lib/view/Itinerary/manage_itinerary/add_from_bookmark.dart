@@ -1,10 +1,8 @@
-// lib/view/Itinerary/manage_itinerary/add_from_bookmark.dart
 import 'dart:ui';
 import 'package:flutter/material.dart';
-
+import '../../../core/services/database_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/dto/bookmark_with_place_dto.dart';
-import '../../../model/repositories/adapters/bookmark_repository_adapter.dart';
 import '../../../model/repositories/interfaces/bookmark_repository.dart';
 
 class AddFromBookmarksScreen extends StatefulWidget {
@@ -17,7 +15,7 @@ class AddFromBookmarksScreen extends StatefulWidget {
 }
 
 class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
-  final BookmarkRepository _repo = BookmarkRepositoryImpl();
+  final BookmarkRepository _repo = DatabaseManager().bookmarkRepository;
 
   List<BookmarkWithPlaceDTO> _bookmarks = [];
   final Set<String> _selectedPlaceIds = {};

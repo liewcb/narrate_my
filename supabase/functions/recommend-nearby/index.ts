@@ -9,7 +9,7 @@ const PRIMARY_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_MODEL") ??
   "gemini-3.5-flash-lite";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_FALLBACK_MODEL") ??
   "gemini-3.6-flash";
-const PROMPT_VERSION = "nearby-v2-preference-cache";
+const PROMPT_VERSION = "nearby-v3-server-places";
 const DEFAULT_RADIUS_KM = 10;
 const CACHE_TTL_HOURS = numberFromEnv("RECOMMENDATION_CACHE_TTL_HOURS", 24);
 const CACHE_STALE_DAYS = numberFromEnv("RECOMMENDATION_CACHE_STALE_DAYS", 7);
@@ -30,6 +30,11 @@ interface RecommendationItem {
   address: string | null;
   reason: string;
   rank: number;
+  place_id?: string;
+  latitude?: number;
+  longitude?: number;
+  rating?: number;
+  photo_reference?: string;
 }
 
 interface CacheRecord {
@@ -59,6 +64,8 @@ Deno.serve(async (req) => {
     const supabaseUrl = requiredEnv("SUPABASE_URL");
     const serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
     const geminiApiKey = requiredEnv("GEMINI_RECOMMENDATION_API_KEY");
+    const placesApiKey = requiredEnv("GOOGLE_PLACES_API_KEY");
+    const photoSigningSecret = requiredEnv("PLACES_PHOTO_SIGNING_SECRET");
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -123,13 +130,13 @@ Deno.serve(async (req) => {
       cachedRecommendations.length > 0 &&
       Date.parse(cached.expires_at) > now
     ) {
-      return recommendationResponse(cachedRecommendations, {
+      return await recommendationResponse(cachedRecommendations, {
         source: "supabase_cache",
         modelName: cached.model_name,
         cachedAt: cached.created_at,
         radiusKm,
         usedDefaultPreferences,
-      });
+      }, supabaseUrl, photoSigningSecret);
     }
 
     // Bootstrap the new cache from a compatible successful log. This avoids
@@ -143,23 +150,43 @@ Deno.serve(async (req) => {
       preferences,
     });
     if (loggedRecommendations) {
-      await saveCache({
-        supabase,
-        cacheKey,
-        latitudeBucket,
-        longitudeBucket,
-        radiusKm,
-        preferenceHash,
-        recommendations: loggedRecommendations.recommendations,
-        modelName: loggedRecommendations.modelName,
-      });
-      return recommendationResponse(loggedRecommendations.recommendations, {
-        source: "recommendation_log_cache",
-        modelName: loggedRecommendations.modelName,
-        cachedAt: loggedRecommendations.createdAt,
-        radiusKm,
-        usedDefaultPreferences,
-      });
+      try {
+        const resolvedLoggedRecommendations = await resolveRecommendations({
+          recommendations: loggedRecommendations.recommendations,
+          latitude,
+          longitude,
+          radiusKm,
+          apiKey: placesApiKey,
+        });
+        if (resolvedLoggedRecommendations.length > 0) {
+          await saveCache({
+            supabase,
+            cacheKey,
+            latitudeBucket,
+            longitudeBucket,
+            radiusKm,
+            preferenceHash,
+            recommendations: resolvedLoggedRecommendations,
+            modelName: loggedRecommendations.modelName,
+          });
+          return await recommendationResponse(
+            resolvedLoggedRecommendations,
+            {
+              source: "recommendation_log_cache",
+              modelName: loggedRecommendations.modelName,
+              cachedAt: loggedRecommendations.createdAt,
+              radiusKm,
+              usedDefaultPreferences,
+            },
+            supabaseUrl,
+            photoSigningSecret,
+          );
+        }
+      } catch (error) {
+        // An old recommendation log may contain a place Google can no longer
+        // resolve. Continue to Gemini instead of failing the whole request.
+        console.error("Recommendation-log Places enrichment failed:", error);
+      }
     }
 
     const prompt = buildPrompt({ latitude, longitude, radiusKm, preferences });
@@ -171,6 +198,13 @@ Deno.serve(async (req) => {
         apiKey: geminiApiKey,
         prompt,
       });
+      const resolvedRecommendations = await resolveRecommendations({
+        recommendations: generated.recommendations,
+        latitude,
+        longitude,
+        radiusKm,
+        apiKey: placesApiKey,
+      });
 
       await saveCache({
         supabase,
@@ -179,7 +213,7 @@ Deno.serve(async (req) => {
         longitudeBucket,
         radiusKm,
         preferenceHash,
-        recommendations: generated.recommendations,
+        recommendations: resolvedRecommendations,
         modelName: generated.modelName,
       });
 
@@ -190,32 +224,32 @@ Deno.serve(async (req) => {
         longitude,
         preferences,
         prompt,
-        recommendations: generated.recommendations,
+        recommendations: resolvedRecommendations,
         cacheKey,
         modelName: generated.modelName,
         latencyMs: Date.now() - startTime,
       });
 
-      return recommendationResponse(generated.recommendations, {
+      return await recommendationResponse(resolvedRecommendations, {
         source: "gemini",
         modelName: generated.modelName,
         cachedAt: new Date().toISOString(),
         radiusKm,
         usedDefaultPreferences,
-      });
+      }, supabaseUrl, photoSigningSecret);
     } catch (error) {
       // Stale-while-error: an expired result is still safer and more useful
       // than an empty map when Gemini is unavailable or quota-limited.
       if (cached && cachedRecommendations.length > 0) {
         const ageMs = now - Date.parse(cached.created_at);
         if (ageMs <= CACHE_STALE_DAYS * 24 * 60 * 60 * 1000) {
-          return recommendationResponse(cachedRecommendations, {
+          return await recommendationResponse(cachedRecommendations, {
             source: "stale_supabase_cache",
             modelName: cached.model_name,
             cachedAt: cached.created_at,
             radiusKm,
             usedDefaultPreferences,
-          });
+          }, supabaseUrl, photoSigningSecret);
         }
       }
 
@@ -228,6 +262,12 @@ Deno.serve(async (req) => {
               : "The AI recommendation service is temporarily unavailable.",
           },
           { status },
+        );
+      }
+      if (error instanceof PlacesRequestError) {
+        return Response.json(
+          { error: "Nearby place details are temporarily unavailable." },
+          { status: 503 },
         );
       }
       throw error;
@@ -383,6 +423,162 @@ async function findCompatibleRecommendationLog({
     };
   }
   return null;
+}
+
+async function resolveRecommendations({
+  recommendations,
+  latitude,
+  longitude,
+  radiusKm,
+  apiKey,
+}: {
+  recommendations: RecommendationItem[];
+  latitude: number;
+  longitude: number;
+  radiusKm: number;
+  apiKey: string;
+}): Promise<RecommendationItem[]> {
+  const errors: unknown[] = [];
+  const resolved = await Promise.all(
+    recommendations.map(async (recommendation) => {
+      try {
+        const place = await searchPlace({
+          recommendation,
+          latitude,
+          longitude,
+          radiusKm,
+          apiKey,
+        });
+        if (!place) return null;
+        return {
+          ...recommendation,
+          place_id: place.id,
+          address: place.formattedAddress ?? recommendation.address,
+          latitude: place.location.latitude,
+          longitude: place.location.longitude,
+          ...(place.rating == null ? {} : { rating: place.rating }),
+          ...(place.photoReference == null
+            ? {}
+            : { photo_reference: place.photoReference }),
+        } satisfies RecommendationItem;
+      } catch (error) {
+        errors.push(error);
+        console.error(
+          `Unable to resolve Google Place for ${recommendation.name}:`,
+          error,
+        );
+        return null;
+      }
+    }),
+  );
+
+  const usable = resolved
+    .filter((item): item is RecommendationItem => item != null)
+    .map((item, index) => ({ ...item, rank: index + 1 }));
+  if (usable.length === 0) {
+    const firstError = errors[0];
+    if (firstError instanceof PlacesRequestError) throw firstError;
+    throw new PlacesRequestError(
+      503,
+      "Google Places could not verify any recommended locations.",
+    );
+  }
+  return usable;
+}
+
+async function searchPlace({
+  recommendation,
+  latitude,
+  longitude,
+  radiusKm,
+  apiKey,
+}: {
+  recommendation: RecommendationItem;
+  latitude: number;
+  longitude: number;
+  radiusKm: number;
+  apiKey: string;
+}): Promise<{
+  id: string;
+  formattedAddress: string | null;
+  location: { latitude: number; longitude: number };
+  rating: number | null;
+  photoReference: string | null;
+} | null> {
+  const query = [recommendation.name, recommendation.address]
+    .filter((value) => value && String(value).trim())
+    .join(", ");
+  const response = await fetch(
+    "https://places.googleapis.com/v1/places:searchText",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": [
+          "places.id",
+          "places.displayName",
+          "places.formattedAddress",
+          "places.location",
+          "places.rating",
+          "places.photos",
+        ].join(","),
+      },
+      body: JSON.stringify({
+        textQuery: query,
+        maxResultCount: 5,
+        locationBias: {
+          circle: {
+            center: { latitude, longitude },
+            radius: clamp(radiusKm * 1000, 1, 50000),
+          },
+        },
+      }),
+    },
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new PlacesRequestError(
+      response.status,
+      data?.error?.message ?? "Google Places Text Search failed.",
+    );
+  }
+
+  const places = Array.isArray(data?.places) ? data.places : [];
+  if (places.length === 0) return null;
+  const targetName = normaliseName(recommendation.name);
+  const matched = places.find((place: Record<string, unknown>) => {
+    const displayName = (place.displayName as Record<string, unknown> | null)
+      ?.text;
+    const candidateName = normaliseName(String(displayName ?? ""));
+    return candidateName === targetName || candidateName.includes(targetName) ||
+      targetName.includes(candidateName);
+  }) ?? places[0];
+  const location = matched.location as Record<string, unknown> | undefined;
+  const resolvedLatitude = Number(location?.latitude);
+  const resolvedLongitude = Number(location?.longitude);
+  if (!Number.isFinite(resolvedLatitude) ||
+    !Number.isFinite(resolvedLongitude)) {
+    return null;
+  }
+  const photos = Array.isArray(matched.photos) ? matched.photos : [];
+  const photoReference = photos[0]?.name == null
+    ? null
+    : String(photos[0].name).trim() || null;
+  const rating = Number(matched.rating);
+
+  return {
+    id: String(matched.id ?? "").trim(),
+    formattedAddress: matched.formattedAddress == null
+      ? null
+      : String(matched.formattedAddress).trim() || null,
+    location: {
+      latitude: resolvedLatitude,
+      longitude: resolvedLongitude,
+    },
+    rating: Number.isFinite(rating) ? rating : null,
+    photoReference,
+  };
 }
 
 async function saveCache({
@@ -592,7 +788,7 @@ async function saveRecommendationLog({
   if (error) console.error("Recommendation log error:", error);
 }
 
-function recommendationResponse(
+async function recommendationResponse(
   recommendations: RecommendationItem[],
   meta: {
     source: string;
@@ -601,9 +797,25 @@ function recommendationResponse(
     radiusKm: number;
     usedDefaultPreferences: boolean;
   },
-) {
+  supabaseUrl: string,
+  photoSigningSecret: string,
+): Promise<Response> {
+  const recommendationsWithPhotos = await Promise.all(
+    recommendations.map(async (recommendation) => ({
+      ...recommendation,
+      ...(recommendation.photo_reference == null
+        ? {}
+        : {
+          image_url: await buildSignedPhotoUrl(
+            supabaseUrl,
+            recommendation.photo_reference,
+            photoSigningSecret,
+          ),
+        }),
+    })),
+  );
   return Response.json({
-    recommendations,
+    recommendations: recommendationsWithPhotos,
     meta: {
       source: meta.source,
       model_name: meta.modelName,
@@ -663,16 +875,89 @@ function validateRecommendations(value: unknown): RecommendationItem[] {
     .filter((item) => item && typeof item === "object")
     .map((item, index) => {
       const row = item as Record<string, unknown>;
+      const latitude = optionalNumber(row.latitude);
+      const longitude = optionalNumber(row.longitude);
+      const rating = optionalNumber(row.rating);
+      const rank = optionalNumber(row.rank);
       return {
         name: String(row.name ?? "").trim(),
         category: String(row.category ?? "").trim(),
         address: row.address == null ? null : String(row.address).trim(),
         reason: String(row.reason ?? "").trim(),
-        rank: index + 1,
+        rank: rank == null ? index + 1 : Math.max(1, Math.trunc(rank)),
+        ...(optionalString(row.place_id) == null
+          ? {}
+          : { place_id: optionalString(row.place_id)! }),
+        ...(latitude == null ? {} : { latitude }),
+        ...(longitude == null ? {} : { longitude }),
+        ...(rating == null ? {} : { rating }),
+        ...(optionalString(row.photo_reference) == null
+          ? {}
+          : { photo_reference: optionalString(row.photo_reference)! }),
       };
     })
     .filter((item) => item.name && item.category && item.reason)
     .slice(0, 7);
+}
+
+async function buildSignedPhotoUrl(
+  supabaseUrl: string,
+  photoReference: string,
+  signingSecret: string,
+): Promise<string> {
+  // The phone cache is fresh for 24 hours. Keep its image links usable for
+  // that full period, with a small allowance for clock skew and network time.
+  const expires = Math.floor(Date.now() / 1000) + 25 * 60 * 60;
+  const signature = await hmacSha256(
+    `${photoReference}|${expires}`,
+    signingSecret,
+  );
+  const url = new URL(`${supabaseUrl}/functions/v1/place-photo`);
+  url.searchParams.set("resource", photoReference);
+  url.searchParams.set("expires", String(expires));
+  url.searchParams.set("signature", signature);
+  return url.toString();
+}
+
+async function hmacSha256(value: string, secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(value),
+  );
+  return bytesToBase64Url(new Uint8Array(signature));
+}
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+}
+
+function optionalString(value: unknown): string | null {
+  const text = value == null ? "" : String(value).trim();
+  return text || null;
+}
+
+function optionalNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normaliseName(value: string): string {
+  return value.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
 }
 
 function cleanArray(value: unknown): string[] {
@@ -728,8 +1013,21 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 class GeminiRequestError extends Error {
-  constructor(public readonly status: number, message: string) {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
     super(message);
+    this.status = status;
     this.name = "GeminiRequestError";
+  }
+}
+
+class PlacesRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = "PlacesRequestError";
   }
 }

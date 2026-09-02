@@ -8,11 +8,8 @@ class ItineraryCard extends StatelessWidget {
   final Itinerary itinerary;
   final VoidCallback onTap;
 
-  const ItineraryCard({
-    Key? key,
-    required this.itinerary,
-    required this.onTap,
-  }) : super(key: key);
+  const ItineraryCard({Key? key, required this.itinerary, required this.onTap})
+    : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +27,8 @@ class ItineraryCard extends StatelessWidget {
 
     final bool isUpcoming = itinerary.status.toUpperCase() == 'UPCOMING';
 
-    final String imageUrl = itinerary.coverImageUrl ??
+    final String imageUrl =
+        itinerary.coverImageUrl ??
         'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=800&q=80';
 
     return Container(
@@ -79,7 +77,10 @@ class ItineraryCard extends StatelessWidget {
                   top: 12,
                   right: 12,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.92),
                       borderRadius: BorderRadius.circular(20),
@@ -88,7 +89,9 @@ class ItineraryCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          isUpcoming ? Icons.event_rounded : Icons.history_rounded,
+                          isUpcoming
+                              ? Icons.event_rounded
+                              : Icons.history_rounded,
                           size: 13,
                           color: isUpcoming ? primaryColor : subtitleColor,
                         ),
@@ -128,7 +131,11 @@ class ItineraryCard extends StatelessWidget {
                   // Metadata Row 1: Date Range
                   Row(
                     children: [
-                      Icon(Icons.calendar_month_rounded, size: 15, color: subtitleColor),
+                      Icon(
+                        Icons.calendar_month_rounded,
+                        size: 15,
+                        color: subtitleColor,
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
@@ -180,8 +187,18 @@ class ItineraryCard extends StatelessWidget {
 
   String _monthShort(int month) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return months[month - 1];
   }

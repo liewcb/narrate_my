@@ -56,4 +56,12 @@ class ItineraryStopRemoteSource {
         .delete()
         .eq('itinerary_id', itineraryId);
   }
+
+  Future<void> deleteForDay(String itineraryId, int dayIndex) async {
+    await _client
+        .from('itinerary_stops')
+        .delete()
+        .eq('itinerary_id', itineraryId)
+        .eq('day_index', dayIndex);
+  }
 }

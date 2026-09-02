@@ -2,9 +2,9 @@ import '../entities/recommendation.dart';
 
 /// Transport model for the `recommend-nearby` Edge Function response.
 ///
-/// Gemini currently guarantees the descriptive fields. Location and photo
-/// fields are optional because older function responses do not include them;
-/// the repository enriches those responses through Google Places.
+/// The Edge Function generates the descriptive fields and enriches them with
+/// Google Places metadata. The mobile app therefore never needs the Places
+/// web-service API key.
 class RecommendationDto {
   final String? placeId;
   final String name;

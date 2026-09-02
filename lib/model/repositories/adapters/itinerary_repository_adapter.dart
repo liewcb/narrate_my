@@ -16,10 +16,20 @@ class ItineraryRepositoryImpl implements ItineraryRepository {
   })  : _remoteClient = remoteClient ?? Supabase.instance.client,
         _localDbService = localDbService ?? LocalDatabaseService();
 
-  // ---------- Local-First Reads ----------
+  // ---------- Remote-First Reads (Supabase is the source of truth) ----------
 
   @override
   Future<List<Itinerary>> getUserItineraries(String userId) async {
+    // 1. Remote first
+    try {
+      final remote = await fetchUserItinerariesFromRemote(userId);
+      if (remote.isNotEmpty) return remote;
+    } catch (e) {
+      debugPrint('[ItineraryRepo] Remote read failed: $e');
+    }
+
+    // 2. Local cache fallback (offline)
+    debugPrint('[ItineraryRepo] Attempting local cache fallback');
     try {
       final db = await _localDbService.database;
       final maps = await db.query(
@@ -28,21 +38,27 @@ class ItineraryRepositoryImpl implements ItineraryRepository {
         whereArgs: [userId],
         orderBy: 'created_at DESC',
       );
-
       if (maps.isNotEmpty) {
         return maps.map((map) => ItineraryDTO.fromMap(map).toEntity()).toList();
       }
     } catch (e) {
-      // Missing/stale table — fall through to the remote source.
       debugPrint('[ItineraryRepo] Local read failed: $e');
     }
 
-    // Fallback to remote fetch if local cache is empty or unavailable
-    return await fetchUserItinerariesFromRemote(userId);
+    return const [];
   }
 
   @override
   Future<Itinerary> getItinerary(String itineraryId) async {
+    // 1. Remote first
+    try {
+      return await fetchItineraryFromRemote(itineraryId);
+    } catch (e) {
+      debugPrint('[ItineraryRepo] Remote read failed: $e');
+    }
+
+    // 2. Local cache fallback (offline)
+    debugPrint('[ItineraryRepo] Attempting local cache fallback');
     try {
       final db = await _localDbService.database;
       final maps = await db.query(
@@ -51,17 +67,14 @@ class ItineraryRepositoryImpl implements ItineraryRepository {
         whereArgs: [itineraryId],
         limit: 1,
       );
-
       if (maps.isNotEmpty) {
         return ItineraryDTO.fromMap(maps.first).toEntity();
       }
     } catch (e) {
-      // Missing/stale table — fall through to the remote source.
       debugPrint('[ItineraryRepo] Local read failed: $e');
     }
 
-    // Fallback to remote fetch if not found locally
-    return await fetchItineraryFromRemote(itineraryId);
+    throw Exception('Itinerary not found and remote is unavailable.');
   }
 
   // ---------- Remote Direct Fetching & Sync ----------
@@ -81,9 +94,9 @@ class ItineraryRepositoryImpl implements ItineraryRepository {
           .map((json) => ItineraryDTO.fromMap(json).toEntity())
           .toList();
     } catch (e) {
-      // Remote unavailable — fall back to the local cache below.
+      // Remote unavailable — rethrow so the caller decides the fallback.
       debugPrint('[ItineraryRepo] Remote fetch failed: $e');
-      return await getUserItineraries(userId);
+      rethrow;
     }
 
     // Cache results locally (best-effort — a stale-schema DB must not
@@ -131,31 +144,36 @@ class ItineraryRepositoryImpl implements ItineraryRepository {
     return itinerary;
   }
 
-  // ---------- Writes (Dual Sync) ----------
+  // ---------- Writes (Remote-First, SQLite cache) ----------
 
   @override
   Future<Itinerary> createItinerary(Itinerary itinerary) async {
     final dto = ItineraryDTO.fromEntity(itinerary);
 
-    // Save locally (source of truth for offline-first UX)
-    final db = await _localDbService.database;
-    await db.insert(
-      'itineraries',
-      dto.toMapForLocal(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-
-    // Sync to Remote (best-effort — local save must never fail the flow)
+    // Save to Remote first (source of truth)
     try {
       final response = await _remoteClient
           .from('itineraries')
           .insert(dto.toMapForRemote())
           .select()
           .single();
-      return ItineraryDTO.fromMap(response).toEntity();
+      final created = ItineraryDTO.fromMap(response).toEntity();
+
+      // Remote success → write-through to the local cache (best-effort).
+      try {
+        final db = await _localDbService.database;
+        await db.insert(
+          'itineraries',
+          ItineraryDTO.fromEntity(created).toMapForLocal(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } catch (e) {
+        debugPrint('[ItineraryRepo] Local cache write failed: $e');
+      }
+      return created;
     } catch (e) {
       debugPrint('[ItineraryRepo] Remote create failed: $e');
-      return itinerary;
+      rethrow;
     }
   }
 
@@ -163,16 +181,9 @@ class ItineraryRepositoryImpl implements ItineraryRepository {
   Future<Itinerary> updateItinerary(Itinerary itinerary) async {
     final dto = ItineraryDTO.fromEntity(itinerary);
 
-    // Save locally (source of truth)
-    final db = await _localDbService.database;
-    await db.update(
-      'itineraries',
-      dto.toMapForLocal(),
-      where: 'itinerary_id = ?',
-      whereArgs: [itinerary.itineraryId],
-    );
-
-    // Sync to Remote (best-effort)
+    // Save to Remote first (source of truth). On failure, STOP — do not
+    // touch the local cache so the caller can surface the error.
+    late final Itinerary updated;
     try {
       final response = await _remoteClient
           .from('itineraries')
@@ -180,24 +191,30 @@ class ItineraryRepositoryImpl implements ItineraryRepository {
           .eq('itinerary_id', itinerary.itineraryId)
           .select()
           .single();
-      return ItineraryDTO.fromMap(response).toEntity();
+      updated = ItineraryDTO.fromMap(response).toEntity();
     } catch (e) {
       debugPrint('[ItineraryRepo] Remote update failed: $e');
-      return itinerary;
+      rethrow;
     }
+
+    // Remote success → write-through to the local cache (best-effort).
+    try {
+      final db = await _localDbService.database;
+      await db.update(
+        'itineraries',
+        ItineraryDTO.fromEntity(updated).toMapForLocal(),
+        where: 'itinerary_id = ?',
+        whereArgs: [itinerary.itineraryId],
+      );
+    } catch (e) {
+      debugPrint('[ItineraryRepo] Local cache update failed: $e');
+    }
+    return updated;
   }
 
   @override
   Future<void> deleteItinerary(String itineraryId) async {
-    // Delete locally
-    final db = await _localDbService.database;
-    await db.delete(
-      'itineraries',
-      where: 'itinerary_id = ?',
-      whereArgs: [itineraryId],
-    );
-
-    // Delete remotely (best-effort)
+    // 1. Delete remotely first (source of truth)
     try {
       await _remoteClient
           .from('itineraries')
@@ -205,6 +222,19 @@ class ItineraryRepositoryImpl implements ItineraryRepository {
           .eq('itinerary_id', itineraryId);
     } catch (e) {
       debugPrint('[ItineraryRepo] Remote delete failed: $e');
+      rethrow;
+    }
+
+    // 2. Delete locally on remote success (best-effort)
+    try {
+      final db = await _localDbService.database;
+      await db.delete(
+        'itineraries',
+        where: 'itinerary_id = ?',
+        whereArgs: [itineraryId],
+      );
+    } catch (e) {
+      debugPrint('[ItineraryRepo] Local delete failed: $e');
     }
   }
 

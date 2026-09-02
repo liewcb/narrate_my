@@ -6,10 +6,12 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_final_vm.dart';
 import 'add_place_screen.dart';
 import 'edit_itinerary_screen.dart';
 import 'my_itineraries_screen.dart';
+import 'widgets/view_place_detail_screen.dart';
 
 class ItineraryFinalScreen extends StatefulWidget {
   final ItineraryResult result;
@@ -20,7 +22,8 @@ class ItineraryFinalScreen extends StatefulWidget {
   final DateTime tripStartDate;
   final Future<void> Function()? onRegenerate;
   final Future<ItineraryResult> Function()? onRegenerateAlternatives;
-  final Future<bool> Function()? onSave;
+  final String userId;
+  final TripDraft? draft;
 
   const ItineraryFinalScreen({
     super.key,
@@ -32,7 +35,8 @@ class ItineraryFinalScreen extends StatefulWidget {
     required this.tripStartDate,
     this.onRegenerate,
     this.onRegenerateAlternatives,
-    this.onSave,
+    this.userId = '252f0924-192c-42fe-8643-881da7bbf285',
+    this.draft,
   });
 
   @override
@@ -56,7 +60,8 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
       tripStartDate: widget.tripStartDate,
       regenerateRequest: widget.onRegenerate,
       regenerateAlternatives: widget.onRegenerateAlternatives,
-      saveRequest: widget.onSave,
+      userId: widget.userId,
+      draft: widget.draft,
     );
     final days = _vm.days;
     _dayKeys = List.generate(days.length, (_) => GlobalKey());
@@ -91,14 +96,32 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
   /// Persist the itinerary via the ViewModel, then navigate to the saved
   /// itinerary list on success.
   Future<void> _handleSave() async {
-    await _vm.save();
-    if (_vm.isSaved && mounted) {
+    debugPrint('[FINAL SAVE] Button pressed');
+    debugPrint('[FINAL SAVE] canSave=${_vm.canSave}, '
+        'isSaving=${_vm.isSaving}, itineraryId=${_vm.itineraryId}');
+    if (!_vm.canSave) {
+      debugPrint('[FINAL SAVE] Cannot save: itinerary is not valid or empty.');
+      return;
+    }
+
+    debugPrint('[FINAL SAVE] Calling ViewModel.save()');
+    final saved = await _vm.save();
+    debugPrint('[FINAL SAVE] ViewModel.save() completed. saved=$saved, '
+        'isSaved=${_vm.isSaved}');
+    if (!mounted) return;
+
+    if (saved && _vm.isSaved) {
+      debugPrint('[FINAL SAVE] Navigation started');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => const MyItinerariesScreen(),
         ),
       );
+      debugPrint('[FINAL SAVE] Navigation completed');
+    } else {
+      debugPrint('[FINAL SAVE] Save did not succeed; staying on final screen. '
+          'saveMessage=${_vm.saveMessage}');
     }
   }
 
@@ -108,32 +131,6 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
       value: _vm,
       child: Scaffold(
         backgroundColor: AppColors.bg,
-        appBar: PreferredSize(
-          preferredSize: const Size.fromHeight(kToolbarHeight),
-          child: Stack(
-            children: [
-              Positioned(
-                right: 16,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: TextButton.icon(
-                    onPressed: _handleDiscard,
-                    icon: const Icon(Icons.close, size: 18, color: AppColors.error),
-                    label: const Text(
-                      'Discard',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.error,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
         body: ListenableBuilder(
           listenable: _vm,
           builder: (context, _) {
@@ -299,7 +296,7 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
 //  SUB-WIDGETS
 // ═══════════════════════════════════════════════════════════════════
 
-class _HeroSection extends StatelessWidget {
+class _HeroSection extends StatefulWidget {
   final String title;
   final String dateRange;
   final String places;
@@ -315,16 +312,26 @@ class _HeroSection extends StatelessWidget {
   });
 
   @override
+  State<_HeroSection> createState() => _HeroSectionState();
+}
+
+class _HeroSectionState extends State<_HeroSection> {
+  bool _isLoading = true;
+  bool _hasError = false;
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 380,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (imageUrl != null)
-            Image.network(imageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder())
+          // If imageUrl is null or empty, show placeholder immediately
+          if (widget.imageUrl == null || widget.imageUrl!.isEmpty)
+            _placeholder()
           else
-            _placeholder(),
+            _buildImageWithLoading(),
+          // Gradient overlay (unchanged)
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -339,24 +346,7 @@ class _HeroSection extends StatelessWidget {
               ),
             ),
           ),
-          Positioned(
-            top: 24,
-            left: 20,
-            right: 20,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const SizedBox.shrink(),
-                Row(
-                  children: [
-                    _roundIconButton(Icons.share, () {}),
-                    const SizedBox(width: 8),
-                    _roundIconButton(Icons.more_horiz, () {}),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          // Title and badges (unchanged)
           Positioned(
             bottom: 24,
             left: 24,
@@ -368,12 +358,12 @@ class _HeroSection extends StatelessWidget {
                   children: [
                     _badge('Editable', Colors.white.withOpacity(0.2), Colors.white),
                     const SizedBox(width: 8),
-                    _badge('$days Days', AppColors.accent, Colors.white),
+                    _badge('${widget.days} Days', AppColors.accent, Colors.white),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  title,
+                  widget.title,
                   style: GoogleFonts.playfairDisplay(
                     fontSize: 32,
                     fontWeight: FontWeight.w700,
@@ -381,14 +371,14 @@ class _HeroSection extends StatelessWidget {
                     color: Colors.white,
                   ),
                 ),
-                if (dateRange.isNotEmpty) ...[
+                if (widget.dateRange.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Row(
                     children: [
                       const Icon(Icons.calendar_today, size: 16, color: Colors.white70),
                       const SizedBox(width: 6),
                       Text(
-                        '$dateRange • $places places',
+                        '${widget.dateRange} • ${widget.places} places',
                         style: const TextStyle(fontSize: 13, color: Colors.white70),
                       ),
                     ],
@@ -398,6 +388,57 @@ class _HeroSection extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildImageWithLoading() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Image
+        Image.network(
+          widget.imageUrl!,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) {
+              // Image loaded
+              _isLoading = false;
+              return child;
+            }
+            // Still loading
+            return _loadingPlaceholder();
+          },
+          errorBuilder: (context, error, stackTrace) {
+            _hasError = true;
+            _isLoading = false;
+            return _placeholder();
+          },
+        ),
+        // Show loading spinner if still loading
+        if (_isLoading)
+          Center(
+            child: CircularProgressIndicator(
+              color: Colors.white.withOpacity(0.8),
+              strokeWidth: 2,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _loadingPlaceholder() {
+    return Container(
+      color: AppColors.surface2,
+      child: const Center(
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white54,
+          ),
+        ),
       ),
     );
   }
@@ -426,25 +467,6 @@ class _HeroSection extends StatelessWidget {
           fontWeight: FontWeight.bold,
           letterSpacing: 1.2,
           color: textColor,
-        ),
-      ),
-    );
-  }
-
-  Widget _roundIconButton(IconData icon, VoidCallback onPressed) {
-    return BackdropFilter(
-      filter: ui.ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.2),
-          shape: BoxShape.circle,
-        ),
-        child: IconButton(
-          icon: Icon(icon, color: Colors.white, size: 24),
-          onPressed: onPressed,
-          padding: EdgeInsets.zero,
         ),
       ),
     );
@@ -797,55 +819,59 @@ class _StopItem extends StatelessWidget {
               const SizedBox(height: 6),
 
               // Card
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: isFirst ? AppColors.surface2 : Colors.transparent,
-                  borderRadius: BorderRadius.circular(AppRadius.card),
-                  border: isFirst ? null : Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
-                ),
-                child: Row(
-                  children: [
-                    if (stop.imageUrl != null)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          stop.imageUrl!,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _fallbackImage(),
-                        ),
-                      )
-                    else
-                      _fallbackImage(),
-                    const SizedBox(width: 12),
+              InkWell(
+                onTap: () => _openPlaceDetail(context),
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isFirst ? AppColors.surface2 : Colors.transparent,
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                    border: isFirst ? null : Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
+                  ),
+                  child: Row(
+                    children: [
+                      if (stop.imageUrl != null)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            stop.imageUrl!,
+                            width: 56,
+                            height: 56,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _fallbackImage(),
+                          ),
+                        )
+                      else
+                        _fallbackImage(),
+                      const SizedBox(width: 12),
 
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            stop.name,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.ink,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              stop.name,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.ink,
+                              ),
                             ),
-                          ),
-                          Text(
-                            stop.type,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.inkFaint,
+                            Text(
+                              stop.type,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.inkFaint,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    if (isActive)
-                      Icon(Icons.drag_indicator, color: AppColors.inkFaint, size: 18),
-                  ],
+                      if (isActive)
+                        Icon(Icons.drag_indicator, color: AppColors.inkFaint, size: 18),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -853,6 +879,29 @@ class _StopItem extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// Opens the existing ViewPlaceDetailScreen for this stop's place.
+  ///
+  /// Uses the current stop's actual Google place ID and the already-joined
+  /// [Place] (no new Google Places search, no direct Supabase access).
+  void _openPlaceDetail(BuildContext context) {
+    if (stop.placeId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Place details are unavailable.')),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ViewPlaceDetailScreen(
+          placeId: stop.placeId,
+          initialPlace: stop.place,
+          showStatusToggle: false,
+        ),
+      ),
     );
   }
 

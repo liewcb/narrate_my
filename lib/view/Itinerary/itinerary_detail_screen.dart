@@ -81,7 +81,6 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   late final List<GlobalKey> _dayKeys;
 
-  // â”€â”€â”€ Mock Database Fetch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<ItineraryData> _fetchItinerary(String id) async {
     // Simulate network delay
     await Future.delayed(const Duration(milliseconds: 600));
