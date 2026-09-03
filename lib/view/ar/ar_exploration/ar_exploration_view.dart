@@ -184,69 +184,6 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
   }
 }
 
-class _DebugHud extends StatelessWidget {
-  const _DebugHud({required this.vm});
-  final ARExplorationViewModel vm;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: 12,
-      right: 12,
-      bottom: 96,
-      child: Container(
-        constraints: const BoxConstraints(maxHeight: 260),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.75),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: SingleChildScrollView(
-          child: DefaultTextStyle(
-            style: const TextStyle(
-              color: Colors.greenAccent,
-              fontSize: 11,
-              fontFamily: 'monospace',
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'you: ${vm.userLat?.toStringAsFixed(6)}, ${vm.userLng?.toStringAsFixed(6)}',
-                ),
-                Text('heading: ${vm.deviceHeadingDegrees.toStringAsFixed(1)}°'),
-                Text(
-                  'fetched from DB (within scan radius): ${vm.rawFetchedCount}',
-                ),
-                Text('within activation_radius: ${vm.nearbyMarkers.length}'),
-                Text(
-                  'primary (in FOV + facing): ${vm.primaryMarker?.name ?? "none"}',
-                ),
-                const Divider(color: Colors.white24),
-                for (final m in vm.allComputedMarkers)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      '${m.name}: dist=${m.distanceMeters?.toStringAsFixed(1)}m '
-                      'bearing=${m.bearingFromUser?.toStringAsFixed(1)}° '
-                      'facing=${m.isFacing} '
-                      'inRadius=${m.isWithinActivationRadius}',
-                    ),
-                  ),
-                if (vm.allComputedMarkers.isEmpty)
-                  const Text(
-                    '(no rows returned by the DB query at all — check RLS policies)',
-                    style: TextStyle(color: Colors.orangeAccent),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// [A1] Permission Denied
 class _PermissionDeniedView extends StatelessWidget {
   const _PermissionDeniedView({this.message});
