@@ -4,26 +4,27 @@ import '../../../../model/entities/ar_object.dart';
 /// UC100 BF-5: "System displays a notification banner at the top of the
 /// screen indicating the number of nearby markers detected." (REQ_101_4)
 ///
-/// Collapsed: a white pill showing the count. Tapping it expands a dark
-/// panel listing every nearby marker, grouped into distance bands
-/// (<80m, <150m, ...), each row showing a category icon + name + distance.
+/// Collapsed by default: tapping the pill toggles the panel open/closed.
+/// When expanded, a dark panel lists every nearby marker, grouped into
+/// distance bands (<80m, <150m, ...), each row showing a category icon +
+/// name + distance. Rows are display-only — no tap action, no narration
+/// trigger here. Starting narration only happens via tapping a marker
+/// rendered in the camera view ([ARMarkerOverlay]'s `onTapMarker`).
 class ARNotificationBanner extends StatefulWidget {
   const ARNotificationBanner({
     super.key,
     required this.markers,
-    this.onTapMarker,
   });
 
   /// Already sorted nearest-first by the ViewModel.
   final List<ARMarker> markers;
-  final ValueChanged<ARMarker>? onTapMarker;
 
   @override
   State<ARNotificationBanner> createState() => _ARNotificationBannerState();
 }
 
 class _ARNotificationBannerState extends State<ARNotificationBanner> {
-  bool _expanded = true;
+  bool _expanded = false;
 
   // Distance bucket ceilings shown in the reference design (<80m, <150m).
   // Extend this list if you expect markers farther out.
@@ -142,11 +143,7 @@ class _ARNotificationBannerState extends State<ARNotificationBanner> {
                         for (final m in groups[ceiling]!)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 10),
-                            child: _MarkerRow(
-                              marker: m,
-                              icon: _iconFor(m),
-                              onTap: () => widget.onTapMarker?.call(m),
-                            ),
+                            child: _MarkerRow(marker: m, icon: _iconFor(m)),
                           ),
                       ],
                       Center(
@@ -171,12 +168,14 @@ class _ARNotificationBannerState extends State<ARNotificationBanner> {
   }
 }
 
+/// Display-only row — no tap/gesture handling of any kind. Narration is
+/// started exclusively by tapping a marker rendered in the camera view
+/// (see [ARMarkerOverlay]'s `onTapMarker`), never from this list.
 class _MarkerRow extends StatelessWidget {
-  const _MarkerRow({required this.marker, required this.icon, this.onTap});
+  const _MarkerRow({required this.marker, required this.icon});
 
   final ARMarker marker;
   final IconData icon;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -184,41 +183,37 @@ class _MarkerRow extends StatelessWidget {
         ? '--'
         : '${marker.distanceMeters!.round()}m';
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 17, color: const Color(0xFFDE8A46)),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                marker.name,
-                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
-                overflow: TextOverflow.ellipsis,
-              ),
+            child: Icon(icon, size: 17, color: const Color(0xFFDE8A46)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              marker.name,
+              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+              overflow: TextOverflow.ellipsis,
             ),
-            Text(
-              distanceLabel,
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-          ],
-        ),
+          ),
+          Text(
+            distanceLabel,
+            style: const TextStyle(color: Colors.white54, fontSize: 13),
+          ),
+        ],
       ),
     );
   }
