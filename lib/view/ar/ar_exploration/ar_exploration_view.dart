@@ -128,12 +128,16 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
         ARViewState.ready => Stack(
           fit: StackFit.expand,
           children: [
-            ARCameraView(active: _cameraActive),
-            ARMarkerOverlay(
-              nearbyMarkers: vm.nearbyMarkers,
-              primaryMarker: vm.primaryMarker,
-              deviceHeadingDegrees: vm.deviceHeadingDegrees,
-              onTapMarker: (marker) => _navigateToPlacement(context, marker),
+            RepaintBoundary(
+              child: ARCameraView(active: _cameraActive),
+            ),
+            RepaintBoundary(
+              child: ARMarkerOverlay(
+                nearbyMarkers: vm.nearbyMarkers,
+                primaryMarker: vm.primaryMarker,
+                deviceHeadingDegrees: vm.deviceHeadingDegrees,
+                onTapMarker: (marker) => _navigateToPlacement(context, marker),
+              ),
             ),
             Positioned(
               top: 0,
@@ -282,9 +286,9 @@ class _DebugHud extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
                       '${m.name}: dist=${m.distanceMeters?.toStringAsFixed(1)}m '
-                      'bearing=${m.bearingFromUser?.toStringAsFixed(1)}° '
-                      'facing=${m.isFacing} '
-                      'inRadius=${m.isWithinActivationRadius}',
+                          'bearing=${m.bearingFromUser?.toStringAsFixed(1)}° '
+                          'facing=${m.isFacing} '
+                          'inRadius=${m.isWithinActivationRadius}',
                     ),
                   ),
                 if (vm.allComputedMarkers.isEmpty)

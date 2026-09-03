@@ -22,12 +22,26 @@ class AppRoutes extends StatefulWidget {
 
 class _AppRoutesState extends State<AppRoutes> {
   int _index = 0;
+  final Set<int> _visitedTabs = {0};
+
+  Widget _buildTabScreen(int tabIndex) {
+    if (!_visitedTabs.contains(tabIndex)) {
+      return const SizedBox.shrink();
+    }
+    return switch (tabIndex) {
+      0 => ARExplorationView(isActive: _index == 0),
+      1 => const MyItinerariesScreen(),
+      2 => NearbyRecommendationScreen(onOpenAr: () => setState(() => _index = 0)),
+      3 => const ProfileScreen(),
+      _ => const SizedBox.shrink(),
+    };
+  }
 
   List<Widget> _screens() => [
-    ARExplorationView(isActive: _index == 0),
-    const MyItinerariesScreen(),
-    NearbyRecommendationScreen(onOpenAr: () => setState(() => _index = 0)),
-    const ProfileScreen(),
+    _buildTabScreen(0),
+    _buildTabScreen(1),
+    _buildTabScreen(2),
+    _buildTabScreen(3),
   ];
 
   static const _items = [
@@ -99,7 +113,10 @@ class _AppRoutesState extends State<AppRoutes> {
       bottomNavigationBar: AppBottomNavBar(
         items: _items,
         currentIndex: _index,
-        onTap: (index) => setState(() => _index = index),
+        onTap: (index) => setState(() {
+          _visitedTabs.add(index);
+          _index = index;
+        }),
       ),
     );
   }

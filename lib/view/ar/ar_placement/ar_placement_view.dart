@@ -50,8 +50,6 @@ class _ARPlacementContent extends StatefulWidget {
 
 class _ARPlacementContentState extends State<_ARPlacementContent>
     with WidgetsBindingObserver {
-  bool _isNativeViewReady = true;
-
   static const _navItems = [
     BottomNavItem(
       icon: Icons.camera_alt_outlined,
@@ -89,33 +87,51 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      setState(() => _isNativeViewReady = true);
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      setState(() => _isNativeViewReady = false);
+    if (!mounted) return;
+    final vm = context.read<ARPlacementViewModel>();
+
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // Screen locked or app sent to background: pause narration audio and AR session
+      vm.pauseStorytelling();
+      vm.pauseARSession();
+    } else if (state == AppLifecycleState.resumed) {
+      // Screen unlocked: safely reset drifted node while preserving story progress
+      vm.resetToScanningAfterLockscreen();
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) {
+          vm.resumeARSession();
+        }
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final vm = context.read<ARPlacementViewModel>();
+    final hasStarted = context.select<ARPlacementViewModel, bool>(
+      (m) => m.hasStartedStorytelling,
+    );
     const darkBg = Color(0xFF142121);
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: darkBg,
+    return PopScope(
+      canPop: !hasStarted,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (hasStarted) {
+          context.read<ARPlacementViewModel>().stopStorytelling();
+        }
+      },
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        backgroundColor: Colors.transparent,
       body: Stack(
         fit: StackFit.expand,
         children: [
           // 1. Base Layer: ARCore Native Surface
-          if (_isNativeViewReady)
-            ARView(
-              onARViewCreated: vm.onARViewCreated,
-              planeDetectionConfig: PlaneDetectionConfig.horizontal,
-            )
-          else
-            const SizedBox.expand(child: ColoredBox(color: darkBg)),
+          ARView(
+            onARViewCreated: vm.onARViewCreated,
+            planeDetectionConfig: PlaneDetectionConfig.horizontal,
+          ),
 
           // 1.5 AR Performance Shield: When 3D Model is active, occlude background AR surface to save GPU
           Selector<ARPlacementViewModel, bool>(
@@ -212,6 +228,7 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
           }
         },
       ),
-    );
-  }
+    ),
+  );
+ }
 }

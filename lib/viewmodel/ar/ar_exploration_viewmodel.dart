@@ -66,18 +66,21 @@ class ARExplorationViewModel extends ChangeNotifier {
       return;
     }
 
-    state = ARViewState.loading;
+    // 🚀 Instant Camera Launch: Immediately enter ready state so camera viewfinder mounts on Frame 1
+    state = ARViewState.ready;
     notifyListeners();
 
     try {
+      _sceneSub?.cancel();
       _sceneSub = _explorationService.sceneStream.listen(_onScene);
-      await _explorationService.start();
-      state = ARViewState.ready;
+      unawaited(_explorationService.start().catchError((e) {
+        debugPrint('ARExplorationService background start error: $e');
+      }));
     } catch (e) {
       state = ARViewState.error;
       errorMessage = e.toString();
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   /// Re-run the permission check after the tourist returns from Settings

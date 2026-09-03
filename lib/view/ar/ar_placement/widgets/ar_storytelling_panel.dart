@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../model/entities/ar_placement.dart';
 import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
@@ -15,25 +16,33 @@ class ARStorytellingPanel extends StatelessWidget {
 
     return Selector<ARPlacementViewModel, ({
       bool isPlaced,
+      bool hasAvatarInScene,
       bool hasStarted,
       String subtitle,
       StoryPlaybackState playbackState,
       bool show3d,
+      String? model3dPath,
     })>(
       selector: (context, vm) => (
         isPlaced: vm.isAvatarPlaced,
+        hasAvatarInScene: vm.hasAvatarInScene,
         hasStarted: vm.hasStartedStorytelling,
         subtitle: vm.currentSubtitle,
         playbackState: vm.playbackState,
         show3d: vm.show3DLandmarkModel,
+        model3dPath: vm.model3dPath,
       ),
       builder: (context, data, child) {
-        if (!data.isPlaced) return const SizedBox.shrink();
+        if (!data.hasStarted) return const SizedBox.shrink();
 
         final isPlaying = data.playbackState == StoryPlaybackState.playing;
         final isPaused = data.playbackState == StoryPlaybackState.paused;
         final isCompleted = data.playbackState == StoryPlaybackState.completed;
         final bool show3DModel = data.show3d && (isPlaying || isPaused || isCompleted);
+        final bool hasModelAsset = data.model3dPath != null && data.model3dPath!.trim().isNotEmpty;
+        if (hasModelAsset && !show3DModel) {
+          rootBundle.load(data.model3dPath!).ignore();
+        }
 
         final String actionLabel = isPlaying
             ? "Pause"
@@ -43,46 +52,86 @@ class ARStorytellingPanel extends StatelessWidget {
             : (isCompleted ? Icons.replay : Icons.play_arrow);
 
         return Positioned.fill(
-          child: Visibility(
-            visible: data.hasStarted,
-            maintainState: true,
-            maintainAnimation: true,
-            maintainSize: false,
-            maintainSemantics: false,
-            maintainInteractivity: false,
-            child: Padding(
-              padding: EdgeInsets.only(
-                top: topPadding,
-                bottom: 16,
-                left: 16,
-                right: 16,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. Top Subtitle Box (Displays narration & completion message)
-                  _buildSubtitleCard(context, data, accentOrange, isPlaying, isPaused, isCompleted),
+          child: Padding(
+            padding: EdgeInsets.only(
+              top: topPadding,
+              bottom: 16,
+              left: 16,
+              right: 16,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 1. Top Subtitle Box (Displays narration & completion message)
+                _buildSubtitleCard(context, data, accentOrange, isPlaying, isPaused, isCompleted),
 
-                  const SizedBox(height: 10),
+                const SizedBox(height: 10),
 
-                  // 2. 3D Model Viewport (Only rendered when story playback has started)
-                  if (show3DModel)
-                    const Expanded(
-                      child: AR3DViewerOverlay(),
-                    )
-                  else
-                    const Spacer(),
+                // 2. 3D Model Viewport (Mounted on-demand to prevent GPU memory exhaustion & ANR)
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Active 3D Model: Only mounted when user toggles 3D model, preventing native WebView from obscuring camera
+                      if (hasModelAsset && show3DModel)
+                        const AR3DViewerOverlay(),
 
-                  const SizedBox(height: 12),
+                      // Single clean prompt if avatar needs to be re-placed after lockscreen
+                      if (!show3DModel && !data.hasAvatarInScene)
+                        _buildReScanSurfacePrompt(),
+                    ],
+                  ),
+                ),
 
-                  // 3. Bottom Play / Pause / Replay / Stop Controls
-                  _buildBottomControls(context, isPlaying, actionIcon, actionLabel),
-                ],
-              ),
+                const SizedBox(height: 12),
+
+                // 3. Bottom Play / Pause / Replay / Stop Controls
+                _buildBottomControls(context, isPlaying, actionIcon, actionLabel),
+              ],
             ),
           ),
         );
       },
+    );
+  }
+
+  /// Semi-transparent overlay prompt guiding the user to tap to place Manja and continue story
+  Widget _buildReScanSurfacePrompt() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF142121).withValues(alpha: 0.88),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.8), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.touch_app, color: Colors.amberAccent, size: 26),
+            SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                "Tap ground to place Manja & continue story",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

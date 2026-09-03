@@ -15,6 +15,7 @@
         android:label="narrate_my"
         android:icon="@mipmap/ic_launcher"
         android:hardwareAccelerated="true"
+        android:largeHeap="true"
         android:usesCleartextTraffic="true">
 
         <meta-data

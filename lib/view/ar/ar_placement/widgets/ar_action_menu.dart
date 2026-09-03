@@ -12,14 +12,20 @@ class ARActionMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     const primaryTeal = Color(0xFF2E656A);
 
-    return Selector<
-      ARPlacementViewModel,
-      ({bool isPlaced, bool hasStarted, String? videoUrl, String landmarkName})
-    >(
+    return Selector<ARPlacementViewModel, ({
+      bool isPlaced,
+      bool hasAvatarInScene,
+      bool hasStarted,
+      String? videoUrl,
+      String? videoUrlBackup,
+      String landmarkName,
+    })>(
       selector: (context, vm) => (
         isPlaced: vm.isAvatarPlaced,
+        hasAvatarInScene: vm.hasAvatarInScene,
         hasStarted: vm.hasStartedStorytelling,
         videoUrl: vm.videoUrl,
+        videoUrlBackup: vm.videoUrlBackup,
         landmarkName: vm.landmarkName,
       ),
       builder: (context, data, child) {
@@ -27,6 +33,45 @@ class ARActionMenu extends StatelessWidget {
 
         return Stack(
           children: [
+            // Center prompt if avatar is not yet placed in scene
+            if (!data.hasAvatarInScene)
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF142121).withValues(alpha: 0.78),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.6), width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.touch_app, color: Colors.amberAccent, size: 24),
+                      SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          "Move device & tap surface to place Manja",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             // Bottom Action buttons
             Positioned(
               bottom: 16,
@@ -91,6 +136,7 @@ class ARActionMenu extends StatelessWidget {
                                 MaterialPageRoute(
                                   builder: (_) => VideoPlayerScreen(
                                     videoUrl: data.videoUrl,
+                                    videoUrlBackup: data.videoUrlBackup,
                                     landmarkName: data.landmarkName,
                                   ),
                                 ),
