@@ -72,23 +72,29 @@ class ARMarkerOverlay extends StatelessWidget {
       fadeEnd: pitchToleranceDegrees,
     );
 
-    if (verticalFactor <= 0) {
-      return const SizedBox.shrink();
-    }
-
     // Draw farthest-first so a closer marker never ends up hidden behind
     // a farther one that happens to land at a similar screen position —
     // still every marker renders at its real, un-nudged position.
     final markers = [...nearbyMarkers]
       ..sort((a, b) => (b.distanceMeters ?? 0).compareTo(a.distanceMeters ?? 0));
 
-    return AnimatedOpacity(
-      duration: _animDuration,
-      opacity: verticalFactor,
-      child: Stack(
-        children: [
-          for (final marker in markers) _buildMarker(context, marker, size),
-        ],
+    // The layer stays mounted at all times, even at opacity 0 — swapping
+    // it out for a `SizedBox.shrink()` once the pitch left the tolerance
+    // window would drop AnimatedOpacity's animation state, so the very
+    // next re-entry into the tolerance window would pop straight to its
+    // target opacity instead of fading in. Staying mounted keeps every
+    // pitch up/down crossing a continuous, symmetric fade.
+    return IgnorePointer(
+      ignoring: verticalFactor <= 0,
+      child: AnimatedOpacity(
+        duration: _animDuration,
+        curve: Curves.easeInOut,
+        opacity: verticalFactor,
+        child: Stack(
+          children: [
+            for (final marker in markers) _buildMarker(context, marker, size),
+          ],
+        ),
       ),
     );
   }

@@ -51,8 +51,6 @@ class _ARExplorationScaffold extends StatefulWidget {
 }
 
 class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
-  bool _showDebugHud =
-      true; // default ON while you're diagnosing; flip to false later
   bool _hasInitialized = false;
 
   /// Whether ARCameraView is allowed to hold the physical camera open.
@@ -133,6 +131,7 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
               nearbyMarkers: vm.nearbyMarkers,
               primaryMarker: vm.primaryMarker,
               deviceHeadingDegrees: vm.deviceHeadingDegrees,
+              devicePitchDegrees: vm.devicePitchDegrees,
               onTapMarker: (marker) => _navigateToPlacement(context, marker),
             ),
             Positioned(
@@ -141,61 +140,8 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
               right: 0,
               child: ARNotificationBanner(
                 markers: vm.nearbyMarkers,
-                onTapMarker: (marker) => _navigateToPlacement(context, marker),
               ),
             ),
-            Positioned(
-              top: 104,
-              right: 12,
-              child: IconButton(
-                icon: Icon(
-                  _showDebugHud ? Icons.bug_report : Icons.bug_report_outlined,
-                  color: Colors.white,
-                ),
-                onPressed: () => setState(() => _showDebugHud = !_showDebugHud),
-              ),
-            ),
-            // Testing for Marker
-            Positioned(
-              bottom: 25,
-              left: 20,
-              right: 20,
-              child: Center(
-                child: SizedBox(
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      elevation: 6,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                    ),
-                    icon: const Icon(Icons.science_outlined, size: 20),
-                    onPressed: () {
-                      const dummyMarker = ARMarker(
-                        markerId: 'MK003',
-                        latitude: 3.15750,
-                        longitude: 101.71160,
-                        name: 'The Skybridge',
-                        activationRadiusMeters: 80,
-                      );
-                      _navigateToPlacement(context, dummyMarker);
-                    },
-                    label: const Text(
-                      '🧪 Test AR Placement (Mock Marker)',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (_showDebugHud) _DebugHud(vm: vm),
           ],
         ),
       },
@@ -235,69 +181,6 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
       setState(() => _cameraActive = true);
       vm.resume();
     }
-  }
-}
-
-class _DebugHud extends StatelessWidget {
-  const _DebugHud({required this.vm});
-  final ARExplorationViewModel vm;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: 12,
-      right: 12,
-      bottom: 96,
-      child: Container(
-        constraints: const BoxConstraints(maxHeight: 260),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.75),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: SingleChildScrollView(
-          child: DefaultTextStyle(
-            style: const TextStyle(
-              color: Colors.greenAccent,
-              fontSize: 11,
-              fontFamily: 'monospace',
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'you: ${vm.userLat?.toStringAsFixed(6)}, ${vm.userLng?.toStringAsFixed(6)}',
-                ),
-                Text('heading: ${vm.deviceHeadingDegrees.toStringAsFixed(1)}°'),
-                Text(
-                  'fetched from DB (within scan radius): ${vm.rawFetchedCount}',
-                ),
-                Text('within activation_radius: ${vm.nearbyMarkers.length}'),
-                Text(
-                  'primary (in FOV + facing): ${vm.primaryMarker?.name ?? "none"}',
-                ),
-                const Divider(color: Colors.white24),
-                for (final m in vm.allComputedMarkers)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      '${m.name}: dist=${m.distanceMeters?.toStringAsFixed(1)}m '
-                      'bearing=${m.bearingFromUser?.toStringAsFixed(1)}° '
-                      'facing=${m.isFacing} '
-                      'inRadius=${m.isWithinActivationRadius}',
-                    ),
-                  ),
-                if (vm.allComputedMarkers.isEmpty)
-                  const Text(
-                    '(no rows returned by the DB query at all — check RLS policies)',
-                    style: TextStyle(color: Colors.orangeAccent),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
