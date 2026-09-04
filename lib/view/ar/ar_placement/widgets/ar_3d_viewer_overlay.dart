@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:provider/provider.dart';
-import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../../viewmodel/ar/ar_placement_vm.dart';
 
 /// Standalone 3D Landmark Model Viewport Widget with persistent loading shield and GPU optimizations.
 class AR3DViewerOverlay extends StatefulWidget {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../../viewmodel/ar/ar_placement_vm.dart';
 
 /// Top bar displaying Landmark title, Back button, and LIVE / Mode indicators
 class ARPlacementTopBar extends StatelessWidget {

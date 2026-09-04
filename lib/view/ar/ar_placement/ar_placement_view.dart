@@ -5,7 +5,7 @@ import 'package:ar_flutter_plugin_plus/datatypes/config_planedetection.dart';
 
 import '../../../core/widgets/app_bottom_navigation.dart';
 import '../../../model/entities/ar_object.dart';
-import '../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../viewmodel/ar/ar_placement_vm.dart';
 import '../../../viewmodel/ar/ar_recommendation_vm.dart';
 import 'widgets/ar_placement_top_bar.dart';
 import 'widgets/ar_scanning_guide.dart';

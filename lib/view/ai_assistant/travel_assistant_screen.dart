@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/entities/ai_attraction_context.dart';
 import '../../model/entities/ai_chat_message.dart';
-import '../../viewmodel/ai_assistant/ai_travel_assistant_view_model.dart';
+import '../../viewmodel/ai_assistant/ai_travel_assistant_vm.dart';
 
 /// UC500 chat screen. Gemini is called securely through a Supabase Edge
 /// Function; no Gemini key exists in Flutter code.

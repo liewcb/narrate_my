@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
-import '../../../viewmodel/ar/ar_exploration_viewmodel.dart';
+import '../../../viewmodel/ar/ar_exploration_vm.dart';
 import '../../../model/entities/ar_object.dart';
 import '../ar_placement/ar_placement_view.dart';
 import 'widgets/ar_camera_view.dart';

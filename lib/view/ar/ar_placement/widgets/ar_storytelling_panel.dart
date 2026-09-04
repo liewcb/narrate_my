@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../model/entities/ar_placement.dart';
-import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../../viewmodel/ar/ar_placement_vm.dart';
 import 'ar_3d_viewer_overlay.dart';
 
 /// Storytelling overlay managing subtitles, 3D model viewport, and narration controls

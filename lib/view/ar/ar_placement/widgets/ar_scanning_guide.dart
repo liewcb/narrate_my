@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../../viewmodel/ar/ar_placement_vm.dart';
 
 /// Scanning prompt guiding the user to move the device and tap on detected planes
 class ARScanningGuide extends StatelessWidget {

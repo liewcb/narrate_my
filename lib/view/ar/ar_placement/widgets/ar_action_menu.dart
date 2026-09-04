@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../../viewmodel/ar/ar_placement_vm.dart';
 import '../../../../viewmodel/ar/ar_recommendation_vm.dart';
 import 'video_player_overlay.dart';
 
