@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
 
+import '../../model/business_logic/ai_travel_assistant_service/ai_bookmark_place_resolver.dart';
 import '../../model/business_logic/ai_travel_assistant_service/ai_travel_assistant_service.dart';
 import '../../model/entities/ai_attraction_context.dart';
 import '../../model/entities/ai_chat_message.dart';
+import '../../model/entities/place.dart';
 import '../../model/repositories/adapters/ai_travel_assistant_repository_adapter.dart';
 import '../../model/repositories/interfaces/ai_travel_assistant_repository.dart';
 
@@ -10,40 +12,54 @@ import '../../model/repositories/interfaces/ai_travel_assistant_repository.dart'
 class AiTravelAssistantViewModel extends ChangeNotifier {
   AiTravelAssistantViewModel({
     AiTravelAssistantRepository? repository,
+    AiBookmarkPlaceResolver? bookmarkPlaceResolver,
     AiAttractionContext? initialContext,
+    this.resolveBookmarkPlacesFromQuestions = true,
   })  : _service = AiTravelAssistantService(
     repository ?? SupabaseAiTravelAssistantRepositoryAdapter(),
   ),
+        _bookmarkPlaceResolver =
+            bookmarkPlaceResolver ?? AiBookmarkPlaceResolver(),
         _attractionContext = initialContext {
     _messages = [_greeting()];
   }
 
   final AiTravelAssistantService _service;
+  final AiBookmarkPlaceResolver _bookmarkPlaceResolver;
+  final bool resolveBookmarkPlacesFromQuestions;
 
   late List<AiChatMessage> _messages;
   AiAttractionContext? _attractionContext;
   bool _isSending = false;
   bool _isSummarizing = false;
+  bool _isResolvingBookmarkPlaces = false;
   String? _errorMessage;
   String? _conversationSummary;
   String? _summaryErrorMessage;
+  List<Place> _bookmarkCandidates = const [];
 
   List<AiChatMessage> get messages => List.unmodifiable(_messages);
   AiAttractionContext? get attractionContext => _attractionContext;
   bool get isSending => _isSending;
   bool get isSummarizing => _isSummarizing;
+  bool get isResolvingBookmarkPlaces => _isResolvingBookmarkPlaces;
   String? get errorMessage => _errorMessage;
   String? get conversationSummary => _conversationSummary;
   String? get summaryErrorMessage => _summaryErrorMessage;
+  List<Place> get bookmarkCandidates =>
+      List.unmodifiable(_bookmarkCandidates);
   bool get canSummarize =>
       _messages.any((message) => message.sender == AiChatMessageSender.tourist);
 
   Future<void> sendQuestion(String question) async {
     if (_isSending || _isSummarizing) return;
 
-    final normalizedQuestion = question.trim();
-    if (normalizedQuestion.isEmpty) {
-      _addSystemMessage('Please type a question before sending.');
+    late final String normalizedQuestion;
+    try {
+      normalizedQuestion = _service.validateQuestion(question);
+    } on AiAssistantValidationException catch (error) {
+      _errorMessage = error.message;
+      _addSystemMessage(error.message);
       return;
     }
 
@@ -58,7 +74,9 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
       ),
     );
     _conversationSummary = null;
+    _bookmarkCandidates = const [];
     _isSending = true;
+    _isResolvingBookmarkPlaces = false;
     _errorMessage = null;
     notifyListeners();
 
@@ -74,6 +92,21 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
           sender: AiChatMessageSender.assistant,
         ),
       );
+
+      if (resolveBookmarkPlacesFromQuestions) {
+        _isSending = false;
+        _isResolvingBookmarkPlaces = true;
+        notifyListeners();
+
+        try {
+          _bookmarkCandidates =
+              await _bookmarkPlaceResolver.resolveQuestion(normalizedQuestion);
+        } catch (error, stackTrace) {
+          debugPrint('AI bookmark place resolution failed: $error');
+          debugPrintStack(stackTrace: stackTrace);
+          _bookmarkCandidates = const [];
+        }
+      }
     } on AiAssistantValidationException catch (error) {
       _errorMessage = error.message;
       _addSystemMessage(error.message, shouldNotify: false);
@@ -83,6 +116,7 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
       _addSystemMessage(message, shouldNotify: false);
     } finally {
       _isSending = false;
+      _isResolvingBookmarkPlaces = false;
       notifyListeners();
     }
   }
@@ -139,6 +173,8 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
     _errorMessage = null;
     _conversationSummary = null;
     _summaryErrorMessage = null;
+    _bookmarkCandidates = const [];
+    _isResolvingBookmarkPlaces = false;
     notifyListeners();
   }
 

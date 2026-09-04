@@ -54,6 +54,7 @@ dependencies:
   # --- Nearby Recommendations ---
   google_maps_flutter: ^2.18.0 # Google map displayed on the Nearby screen
   http: ^1.6.0                # Google Places metadata and attraction photos
+  url_launcher: ^6.3.2        # Open AI-requested destinations in Google Maps
 
   # --- Module 5: User Profile & Language Management (UC400-403) ---
   google_fonts: ^6.2.1         # Nunito typeface, matches the design canvas

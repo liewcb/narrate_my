@@ -19,10 +19,13 @@ import '../../model/business_logic/ar_placement_service/ar_placement_service.dar
 /// and storytelling narration state machine.
 class ARPlacementViewModel extends ChangeNotifier {
   final ARPlacementService _placementService;
+  final ValueChanged<bool>? onStorytellingActivityChanged;
   bool _disposed = false;
 
-  ARPlacementViewModel({ARPlacementService? placementService})
-    : _placementService = placementService ?? ARPlacementService();
+  ARPlacementViewModel({
+    ARPlacementService? placementService,
+    this.onStorytellingActivityChanged,
+  }) : _placementService = placementService ?? ARPlacementService();
 
   // --- State Variables ---
   PlacementState _placementState = PlacementState.initializing;
@@ -87,6 +90,7 @@ class ARPlacementViewModel extends ChangeNotifier {
     _show3DLandmarkModel = false;
     _showVideoPlayer = false;
     _hasStartedStorytelling = false;
+    onStorytellingActivityChanged?.call(false);
     _playbackState = StoryPlaybackState.stopped;
     notifyListeners();
 
@@ -104,7 +108,8 @@ class ARPlacementViewModel extends ChangeNotifier {
     );
 
     // Pre-warm the landmark 3D model asset in memory in the background for fast loading
-    final landmarkGlb = _placementService.narrationService.currentScript?.model3dPath;
+    final landmarkGlb =
+        _placementService.narrationService.currentScript?.model3dPath;
     if (landmarkGlb != null && landmarkGlb.startsWith('assets/')) {
       unawaited(rootBundle.load(landmarkGlb));
     }
@@ -125,6 +130,9 @@ class ARPlacementViewModel extends ChangeNotifier {
       state,
     ) {
       _playbackState = state;
+      if (state == StoryPlaybackState.completed) {
+        onStorytellingActivityChanged?.call(false);
+      }
       notifyListeners();
     });
 
@@ -224,7 +232,8 @@ class ARPlacementViewModel extends ChangeNotifier {
     // Keep _hasStartedStorytelling intact so progress is never lost!
     if (!_hasStartedStorytelling) {
       _currentSubtitle =
-          _placementService.narrationService.currentScript?.initialGreeting ?? "";
+          _placementService.narrationService.currentScript?.initialGreeting ??
+          "";
     }
     _placementState = PlacementState.scanning;
     notifyListeners();
@@ -308,7 +317,9 @@ class ARPlacementViewModel extends ChangeNotifier {
           if (_hasStartedStorytelling && _wasPlayingBeforeLock) {
             _wasPlayingBeforeLock = false;
             Future.delayed(const Duration(milliseconds: 600), () {
-              if (!_disposed && _isAvatarPlaced && _playbackState == StoryPlaybackState.paused) {
+              if (!_disposed &&
+                  _isAvatarPlaced &&
+                  _playbackState == StoryPlaybackState.paused) {
                 togglePlayPause();
               }
             });
@@ -329,6 +340,7 @@ class ARPlacementViewModel extends ChangeNotifier {
   /// Opens the Storytelling flow (Initial state: Play button visible, 3D model hidden)
   void openStorytellingMenu() {
     _hasStartedStorytelling = true;
+    onStorytellingActivityChanged?.call(true);
     _playbackState = StoryPlaybackState.stopped;
     _show3DLandmarkModel = false;
     _currentSubtitle =
@@ -343,6 +355,7 @@ class ARPlacementViewModel extends ChangeNotifier {
       _placementService.narrationService.pause();
     } else {
       _hasStartedStorytelling = true;
+      onStorytellingActivityChanged?.call(true);
       _show3DLandmarkModel =
           true; // 3D model only appears after user taps Play / Resume
       _placementService.narrationService.play();
@@ -360,6 +373,7 @@ class ARPlacementViewModel extends ChangeNotifier {
   void stopStorytelling() {
     _placementService.narrationService.stop();
     _hasStartedStorytelling = false;
+    onStorytellingActivityChanged?.call(false);
     _show3DLandmarkModel = false;
     _currentSubtitle = "";
     notifyListeners();
@@ -407,13 +421,14 @@ class ARPlacementViewModel extends ChangeNotifier {
       _isCapturingSnapshot = true;
       notifyListeners();
 
-      final imageProvider = await arSessionManager!
-          .snapshot()
-          .timeout(const Duration(milliseconds: 4500));
+      final imageProvider = await arSessionManager!.snapshot().timeout(
+        const Duration(milliseconds: 4500),
+      );
       if (imageProvider is MemoryImage) {
         await Gal.putImageBytes(
           imageProvider.bytes,
-          name: 'NarrateMY_${landmarkName.replaceAll(RegExp(r'\s+'), '_')}_${DateTime.now().millisecondsSinceEpoch}',
+          name:
+              'NarrateMY_${landmarkName.replaceAll(RegExp(r'\s+'), '_')}_${DateTime.now().millisecondsSinceEpoch}',
         );
         return true;
       }
@@ -430,6 +445,7 @@ class ARPlacementViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    onStorytellingActivityChanged?.call(false);
     _subtitleSub?.cancel();
     _playbackSub?.cancel();
 

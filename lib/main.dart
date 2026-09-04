@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'core/ai_assistant/global_ai_assistant.dart';
 import 'core/accessibility/accessibility_vm.dart';
 import 'core/localization/locale_vm.dart';
 import 'core/routes/app_routes.dart';
@@ -34,6 +35,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AccessibilityVm()),
         ChangeNotifierProvider(create: (_) => LocaleVm()),
+        ChangeNotifierProvider(create: (_) => GlobalAiAssistantController()),
       ],
       child: Builder(
         builder: (context) {
@@ -49,6 +51,7 @@ class MyApp extends StatelessWidget {
           // never missed even by a screen that forgets to.
           context.watch<LocaleVm>();
           return MaterialApp(
+            navigatorKey: rootNavigatorKey,
             title: 'narrate_my',
             theme: AppTheme.light,
             // REQ_503_6 Visual Assistance: scales text app-wide from one
@@ -62,9 +65,11 @@ class MyApp extends StatelessWidget {
               final scale = accessibility.visualAssistanceEnabled
                   ? baseScale * AccessibilityVm.visualAssistanceScale
                   : baseScale;
-              return MediaQuery(
-                data: mq.copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!,
+              return GlobalAiAssistantHost(
+                child: MediaQuery(
+                  data: mq.copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
               );
             },
             // No app-wide login gate: guests can browse AR/Itinerary/Nearby

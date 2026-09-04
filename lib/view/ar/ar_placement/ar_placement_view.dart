@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:ar_flutter_plugin_plus/ar_flutter_plugin_plus.dart';
 import 'package:ar_flutter_plugin_plus/datatypes/config_planedetection.dart';
 
+import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../core/widgets/app_bottom_navigation.dart';
 import '../../../model/entities/ar_object.dart';
 import '../../../viewmodel/ar/ar_placement_vm.dart';
@@ -30,7 +31,11 @@ class ARPlacementScreen extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<ARPlacementViewModel>(
-          create: (_) => ARPlacementViewModel()..init(selectedMarker),
+          create: (context) => ARPlacementViewModel(
+            onStorytellingActivityChanged: context
+                .read<GlobalAiAssistantController>()
+                .setStorytellingActive,
+          )..init(selectedMarker),
         ),
         ChangeNotifierProvider<ARRecommendationVm>(
           create: (_) => ARRecommendationVm(cameraMarkerIds: cameraMarkerIds),
@@ -90,7 +95,8 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
     if (!mounted) return;
     final vm = context.read<ARPlacementViewModel>();
 
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       // Screen locked or app sent to background: pause narration audio and AR session
       vm.pauseStorytelling();
       vm.pauseARSession();
@@ -111,8 +117,6 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
     final hasStarted = context.select<ARPlacementViewModel, bool>(
       (m) => m.hasStartedStorytelling,
     );
-    const darkBg = Color(0xFF142121);
-
     return PopScope(
       canPop: !hasStarted,
       onPopInvokedWithResult: (didPop, result) {
@@ -124,111 +128,111 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
       child: Scaffold(
         extendBodyBehindAppBar: true,
         backgroundColor: Colors.transparent,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 1. Base Layer: ARCore Native Surface
-          ARView(
-            onARViewCreated: vm.onARViewCreated,
-            planeDetectionConfig: PlaneDetectionConfig.horizontal,
-          ),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. Base Layer: ARCore Native Surface
+            ARView(
+              onARViewCreated: vm.onARViewCreated,
+              planeDetectionConfig: PlaneDetectionConfig.horizontal,
+            ),
 
-          // 1.5 AR Performance Shield: When 3D Model is active, occlude background AR surface to save GPU
-          Selector<ARPlacementViewModel, bool>(
-            selector: (context, model) => model.show3DLandmarkModel,
-            builder: (context, show3d, child) {
-              return IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: show3d ? 0.82 : 0.0,
-                  duration: const Duration(milliseconds: 250),
-                  child: const ColoredBox(color: Color(0xFF0D1414)),
-                ),
-              );
-            },
-          ),
+            // 1.5 AR Performance Shield: When 3D Model is active, occlude background AR surface to save GPU
+            Selector<ARPlacementViewModel, bool>(
+              selector: (context, model) => model.show3DLandmarkModel,
+              builder: (context, show3d, child) {
+                return IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: show3d ? 0.82 : 0.0,
+                    duration: const Duration(milliseconds: 250),
+                    child: const ColoredBox(color: Color(0xFF0D1414)),
+                  ),
+                );
+              },
+            ),
 
-          // 2. Top Navigation & Status Bar
-          const ARPlacementTopBar(),
+            // 2. Top Navigation & Status Bar
+            const ARPlacementTopBar(),
 
-          // 4. Plane Scanning & Placement Guide Prompt
-          const ARScanningGuide(),
+            // 4. Plane Scanning & Placement Guide Prompt
+            const ARScanningGuide(),
 
-          // 5. Lightweight Non-blocking Model Placement Indicator
-          Selector<ARPlacementViewModel, bool>(
-            selector: (context, model) => model.isModelLoading,
-            builder: (context, isLoading, child) {
-              if (!isLoading) return const SizedBox.shrink();
-              return Positioned(
-                bottom: 120,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF142121).withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.4),
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.amberAccent,
+            // 5. Lightweight Non-blocking Model Placement Indicator
+            Selector<ARPlacementViewModel, bool>(
+              selector: (context, model) => model.isModelLoading,
+              builder: (context, isLoading, child) {
+                if (!isLoading) return const SizedBox.shrink();
+                return Positioned(
+                  bottom: 120,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF142121).withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            blurRadius: 10,
                           ),
-                        ),
-                        SizedBox(width: 10),
-                        Text(
-                          "Placing Manja on ground...",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.amberAccent,
+                            ),
                           ),
-                        ),
-                      ],
+                          SizedBox(width: 10),
+                          Text(
+                            "Placing Manja on ground...",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
 
-          // 6. Action Menu (Shown when Avatar placed & before storytelling starts)
-          const ARActionMenu(),
+            // 6. Action Menu (Shown when Avatar placed & before storytelling starts)
+            const ARActionMenu(),
 
-          // 7. Storytelling Narration Subtitles & Play Controls
-          const ARStorytellingPanel(),
+            // 7. Storytelling Narration Subtitles & Play Controls
+            const ARStorytellingPanel(),
 
-          // 8. Contextual recommendations shown without unmounting ARCore.
-          const ARRecommendationOverlay(),
-        ],
+            // 8. Contextual recommendations shown without unmounting ARCore.
+            const ARRecommendationOverlay(),
+          ],
+        ),
+        bottomNavigationBar: AppBottomNavBar(
+          items: _navItems,
+          currentIndex: 0,
+          onTap: (index) {
+            if (index == 0) {
+              // Already on AR
+            } else {
+              Navigator.pop(context);
+            }
+          },
+        ),
       ),
-      bottomNavigationBar: AppBottomNavBar(
-        items: _navItems,
-        currentIndex: 0,
-        onTap: (index) {
-          if (index == 0) {
-            // Already on AR
-          } else {
-            Navigator.pop(context);
-          }
-        },
-      ),
-    ),
-  );
- }
+    );
+  }
 }
