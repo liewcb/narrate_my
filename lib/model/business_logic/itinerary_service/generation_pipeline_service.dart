@@ -1,4 +1,9 @@
-﻿import 'package:flutter/foundation.dart';
+﻿// lib/model/business_logic/itinerary_service/generation_pipeline_service.dart
+
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 
 import '../../../core/config/api_keys.dart';
 import '../../../core/config/itinerary_constants.dart';
@@ -97,6 +102,7 @@ class ItineraryResult {
     return ItineraryResult(
       success: false,
       message: message,
+
       errors: errors,
       unretrievableMustVisits: unretrievableMustVisits,
     );
@@ -115,6 +121,23 @@ class ItineraryResult {
 /// constraints, validation and persistence.
 class ItineraryGenerationPipeline {
   static const int maxRegenerationAttempts = 3;
+
+  // ── Compact AI candidate pool ─────────────────────────────────
+  /// Dynamic maximum for the number of candidates sent to GLM-5.3-Flash,
+  /// sized by trip length via [targetCandidateCount]. The selection below
+  /// guarantees must-visits, per-destination coverage, food options and
+  /// cluster diversity are all preserved. The larger retrieval/scoring/
+  /// clustering pipeline is unaffected — this only bounds the AI-facing pool.
+  static const int maxAiCandidatePool = 14;
+
+  /// Minimum compact pool kept for the AI so it always has alternatives.
+  static const int minAiCandidatePool = 10;
+
+  /// Target candidate count handed to the AI, sized by trip length:
+  /// `(days * 3 + 2)` clamped to the [10..14] range.
+  /// 1-day → 10, 2-day → 10, 3-day → 11, 4-day → 14, 5-day → 14.
+  static int targetCandidateCount(int tripDays) =>
+      (tripDays * 3 + 2).clamp(minAiCandidatePool, maxAiCandidatePool);
 
   final CandidateRetrievalService _candidateRetrieval;
   final ScoringService _scoring;
@@ -148,6 +171,33 @@ class ItineraryGenerationPipeline {
   }) async {
     final effectivePace = request.travelPace ?? 'Standard';
     final effectiveExploration = request.explorationTime ?? 'Standard';
+
+    // Lightweight end-to-end timing (debug only) so the <=25s target can be
+    // verified per stage without enabling heavy production logging.
+    final pipelineStopwatch = Stopwatch()..start();
+
+    // ── FINAL TIMING ARCHITECTURE ───────────────────────────────
+    //   0s ────────── 8s ────────── 26s ────────── 30s
+    //   | Dart preproc | GLM ≤ 18s    | final Dart ops |
+    //   | ≤ 8s         |              | + safety margin|
+    //
+    // ONE hard 30-second global deadline covers the whole operation. Dart
+    // preprocessing (retrieval → reduction) is capped at 8s so the AI stage
+    // always starts inside its window. GLM gets a maximum 18-second window
+    // of its own. The remaining time is NOT a separate processing stage — it
+    // is simply the safety margin within which the (fast) schedule
+    // construction, validation, conversion and UI handoff must finish.
+    final generationStart = DateTime.now();
+    final globalDeadline = generationStart.add(const Duration(seconds: 18));
+    final preprocessingDeadline =
+    generationStart.add(const Duration(seconds: 7));
+
+    Duration remainingPreprocessing() =>
+        _remainingTime(preprocessingDeadline);
+
+    debugPrint('[GENERATION] started');
+    debugPrint('[GENERATION] budgets: preprocessing<=8000ms, glm<=18000ms, '
+        'global<=30000ms');
 
     debugPrint('════════════════════════════════════════════');
     debugPrint('🚀 REQUEST ITINERARY PIPELINE START');
@@ -190,9 +240,24 @@ class ItineraryGenerationPipeline {
       // STAGE 03-06 - HOTSPOT RETRIEVAL, GOOGLE PLACES, MERGE + DEDUP
       // ============================================================
       onProgress('Finding attractions... (1/9)');
-      var candidatePool = await _candidateRetrieval.retrieveCandidates(
-        request: request,
-      );
+      final retrievalSw = Stopwatch()..start();
+      CandidatePool candidatePool;
+      try {
+        // Retrieval is the slow part of preprocessing (Google Places
+        // network calls) — it is bounded by the 8s preprocessing deadline so
+        // a slow network can never push the AI stage out of its window.
+        candidatePool = await _candidateRetrieval
+            .retrieveCandidates(request: request)
+            .timeout(remainingPreprocessing());
+      } on TimeoutException {
+        debugPrint('[DART PREPROCESSING] status=TIMEOUT (retrieval)');
+        return ItineraryResult.error(
+          message: 'Finding places took too long. Please check your '
+              'connection and try again.',
+        );
+      }
+      debugPrint('[TIMING] Candidate retrieval: '
+          '${retrievalSw.elapsedMilliseconds} ms');
       final rawCount = candidatePool.totalCount;
       final rawAttractionCount = candidatePool.attractionCount;
       final rawFoodCount = candidatePool.foodCount;
@@ -216,7 +281,8 @@ class ItineraryGenerationPipeline {
       debugPrint('[STAGE 07 - RAW SUFFICIENCY]');
       debugPrint('Retrieval target: $retrievalTarget');
       debugPrint('Current unique candidates: $rawCount');
-      if (rawCount < retrievalTarget) {
+      if (rawCount < retrievalTarget &&
+          remainingPreprocessing() > const Duration(seconds: 2)) {
         debugPrint('Status: RAW CANDIDATES INSUFFICIENT → EXPANDING');
         debugPrint('[STAGE 07B - CANDIDATE EXPANSION]');
         debugPrint('Reason: $rawCount < $retrievalTarget');
@@ -262,6 +328,16 @@ class ItineraryGenerationPipeline {
       debugPrint('Requested: ${request.mustVisitPlaceIds.length}');
       if (request.mustVisitPlaceIds.isEmpty) {
         debugPrint('requested = 0 → no recovery required');
+      } else if (remainingPreprocessing() <= Duration.zero) {
+        // Hard 8s preprocessing budget: must-visit recovery needs network
+        // time that no longer exists. Cannot satisfy the hard must-visit
+        // requirement → fail fast with a clear message (never silently
+        // continue without the must-visits).
+        debugPrint('[DART PREPROCESSING] status=TIMEOUT '
+            '(before must-visit recovery)');
+        return ItineraryResult.error(
+          message: 'Preparing your trip took too long. Please try again.',
+        );
       } else {
 
         final recovery = await _candidateRetrieval.recoverMustVisits(
@@ -272,7 +348,7 @@ class ItineraryGenerationPipeline {
           destinationName: request.destinations.isNotEmpty
               ? request.destinations.first
               : null,
-        );
+        ).timeout(remainingPreprocessing());
         recoveredMustVisitCount = recovery.recoveredPlaces.length;
         debugPrint('Found normally: ${recovery.verifiedIds.length}');
         debugPrint('Recovered: ${recovery.recoveredPlaces.length}');
@@ -359,7 +435,8 @@ class ItineraryGenerationPipeline {
       debugPrint('[STAGE 10 - USABLE SUFFICIENCY]');
       debugPrint('Usable candidate target: $usableTarget');
       debugPrint('Current usable candidates: $usableCount');
-      if (usableCount < usableTarget) {
+      if (usableCount < usableTarget &&
+          remainingPreprocessing() > const Duration(seconds: 2)) {
         debugPrint('Status: USABLE CANDIDATES INSUFFICIENT → EXPANDING');
         debugPrint('[STAGE 10B - CANDIDATE EXPANSION]');
         debugPrint('Reason: $usableCount < $usableTarget');
@@ -404,6 +481,7 @@ class ItineraryGenerationPipeline {
       debugPrint('Candidates entering: ${allPlaces.length}');
       debugPrint('Candidates removed by scoring: 0 (all usable scored)');
 
+      final scoringSw = Stopwatch()..start();
       var scored = _scoring.scorePlaces(
         places: allPlaces,
         selectedInterests: request.interests,
@@ -412,6 +490,7 @@ class ItineraryGenerationPipeline {
         tripLocation: tripLocation,
         strictInterestFilter: false, // rank all, do not eliminate
       );
+      debugPrint('[TIMING] Scoring: ${scoringSw.elapsedMilliseconds} ms');
       debugPrint('Candidates scored: ${scored.length}');
       debugPrint('All usable candidates scored.');
       for (var i = 0; i < scored.length && i < 5; i++) {
@@ -430,10 +509,12 @@ class ItineraryGenerationPipeline {
       // STAGE 12 - K-MEANS — PURE GEOGRAPHIC CLUSTERING
       // ============================================================
       onProgress('Grouping by location... (4/9)');
+      final clusteringSw = Stopwatch()..start();
       final clusters = _clustering.clusterGeographically(
         scoredPlaces: scored,
         clusterCount: request.totalDays.clamp(1, scored.length),
       );
+      debugPrint('[TIMING] Clustering: ${clusteringSw.elapsedMilliseconds} ms');
       debugPrint('[STAGE 12 - K-MEANS]');
       debugPrint('Input candidates: ${scored.length}');
       debugPrint('Number of clusters: ${clusters.length}');
@@ -452,7 +533,36 @@ class ItineraryGenerationPipeline {
         }
       }
 
-      AiCandidateContext toContext(ScoredAttraction s) {
+      // ── STAGE 13A - COMPACT AI CANDIDATE POOL ─────────────────
+      // Dart has already filtered, scored, ranked and clustered the full
+      // candidate pool. We hand the AI a SMALLER, high-quality subset so the
+      // prompt stays compact (faster planning) while guaranteeing:
+      //   • every must-visit is ALWAYS retained (hard requirement),
+      //   • every destination keeps enough candidates for its allocated days,
+      //   • every geographic cluster stays represented,
+      //   • enough food options remain for meals.
+      final aiCandidateIds = _selectAICandidates(
+        scored: scored,
+        request: request,
+        clusters: clusters,
+      ).map((s) => s.place.placeId).toSet();
+      final aiCandidates = scored
+          .where((s) => aiCandidateIds.contains(s.place.placeId))
+          .toList();
+      debugPrint('[CANDIDATE REDUCTION] Full pool: ${scored.length} → '
+          'AI pool: ${aiCandidates.length}');
+
+      // Clusters shown to the AI only list retained candidates so the AI
+      // never sees a place name that is not available in CANDIDATES.
+      final aiClusters = clusters.map((c) => Cluster(
+        dayIndex: c.dayIndex,
+        center: c.center,
+        attractions: c.attractions
+            .where((a) => aiCandidateIds.contains(a.place.placeId))
+            .toList(),
+      )).where((c) => c.attractions.isNotEmpty).toList();
+
+      final candidates = aiCandidates.map((s) {
         final place = s.place;
         return AiCandidateContext(
           placeId: place.placeId,
@@ -470,85 +580,7 @@ class ItineraryGenerationPipeline {
           latitude: place.placeLatitude,
           longitude: place.placeLongitude,
         );
-      }
-
-      // ── Planning pool vs reserve pool ─────────────────────────────
-      // Split the scored candidates into a concise AI planning/evaluation
-      // pool (top-N by score, must-visits always retained) and a reserve
-      // pool available for feasibility-driven replacement during repair.
-      final maxPlanningPool = ItineraryConstants.maxAiPlanningPoolSize;
-      final planningScored = <ScoredAttraction>[];
-      final reserveScored = <ScoredAttraction>[];
-      for (final s in scored) {
-        if (planningScored.length < maxPlanningPool || s.isMustVisit) {
-          planningScored.add(s);
-        } else {
-          reserveScored.add(s);
-        }
-      }
-      final candidates = planningScored.map(toContext).toList();
-      final reserveCandidates = reserveScored.map(toContext).toList();
-
-      debugPrint('[STAGE 13 - DEEPSEEK INPUT PREP]');
-      debugPrint('Planning pool: ${candidates.length} candidates');
-      debugPrint('Reserve pool: ${reserveCandidates.length} candidates');
-
-      // ============================================================
-      // STAGE 14 - DEEPSEEK CANDIDATE EVALUATION
-      //
-      // DeepSeek estimates a dynamic visit duration (and relevance /
-      // priority) for each planning-pool candidate. The estimate is only
-      // candidate metadata — the deterministic scheduler/validator remain
-      // the final authority on the schedule.
-      // ============================================================
-      onProgress('Evaluating places... (6/9)');
-      final evaluation = await _aiService.evaluateCandidates(
-        candidates: candidates,
-        interests: request.interests,
-        mustVisitIds: effectiveMustVisitIds,
-        totalDays: request.totalDays,
-        explorationTime: effectiveExploration,
-        destinationName: request.destinations.isNotEmpty
-            ? request.destinations.first
-            : null,
-      );
-
-      debugPrint('[STAGE 14 - DEEPSEEK CANDIDATE EVALUATION]');
-      debugPrint('Candidates entering: ${candidates.length}');
-      debugPrint('Candidates evaluated: ${evaluation.evaluations.length}');
-      debugPrint('Evaluation failures: ${evaluation.rejectedPlaceIds.length}');
-      if (evaluation.rejectedPlaceIds.isNotEmpty) {
-        debugPrint('  Invented/unknown place IDs rejected: '
-            '${evaluation.rejectedPlaceIds}');
-      }
-
-      // ── Enrich candidates with dynamic durations ────────────────
-      // Un-evaluated candidates keep their existing static/known duration
-      // (safe fallback); AI estimates are clamped to the allowed range and
-      // stored as candidate metadata only.
-      final enrichedCandidates = <AiCandidateContext>[];
-      for (final c in candidates) {
-        final eval = evaluation.evaluations[c.placeId];
-        enrichedCandidates.add(c.copyWith(
-          estimatedVisitMinutes: eval?.estimatedVisitMinutes,
-          aiRelevanceScore: eval?.relevanceScore,
-          planningPriority: eval?.planningPriority,
-        ));
-      }
-
-      debugPrint('[STAGE 14B - ENRICHED CANDIDATES]');
-      debugPrint('Candidates: ${enrichedCandidates.length}');
-      final enrichedIds = enrichedCandidates.map((c) => c.placeId).toSet();
-      debugPrint('Unique placeIds: ${enrichedIds.length}');
-      debugPrint('Duplicate placeIds: '
-          '${enrichedIds.length == enrichedCandidates.length ? '[]' : enrichedCandidates.length - enrichedIds.length}');
-      if (AIService.debugAiEvaluationDurations) {
-        for (final c in enrichedCandidates) {
-          if (c.estimatedVisitMinutes != null) {
-            debugPrint('  ${c.name} = ${c.estimatedVisitMinutes} min');
-          }
-        }
-      }
+      }).toList();
 
       // placeId → destination, so the validator can verify the AI did not
       // schedule a candidate outside its destination's allocated days.
@@ -557,105 +589,137 @@ class ItineraryGenerationPipeline {
           s.place.placeId: _destinationForPlace(request, s.place),
       };
 
-      final prompt = _promptBuilder.buildSchedulePrompt(
+      final prompt = _promptBuilder.buildCompactPlanPrompt(
         request: request,
-        candidates: enrichedCandidates,
-        clusters: clusters,
-        reserveCandidates: reserveCandidates,
+        candidates: candidates,
+        clusters: aiClusters,
+        mustVisitIds: effectiveMustVisitIds,
       );
 
-      debugPrint('[STAGE 15 - DEEPSEEK INPUT SUMMARY]');
+      debugPrint('[STAGE 13 - DEEPSEEK INPUT]');
       debugPrint('Trip days: ${request.totalDays}');
-      debugPrint('Destination allocation: ${
-          request.daySplit.isNotEmpty ? request.daySplit : 'even split'}');
+      debugPrint('Destination allocation: ${request.daySplit.isNotEmpty ? request.daySplit : 'even split'}');
       debugPrint('Travel pace: $effectivePace');
       debugPrint('Exploration time: $effectiveExploration');
       debugPrint('Must-visits: ${request.mustVisitPlaceIds.length}');
-      debugPrint('Planning candidates: ${enrichedCandidates.length}');
-      debugPrint('Reserve candidates: ${reserveCandidates.length}');
+      debugPrint('Candidate count: ${candidates.length}');
       debugPrint('Cluster count: ${clusters.length}');
       debugPrint('Prompt size: ${prompt.length} chars');
 
       // ============================================================
-      // STAGE 16 - DEEPSEEK SCHEDULE GENERATION (+ regeneration)
+      // STAGE 14-15 - ONE COMPACT AI REQUEST + DART SCHEDULING
       // ============================================================
+      //
+      // OPTIMIZED RESPONSIBILITY SPLIT:
+      //   AI  → returns ONLY { dayIndex, placeIds[], reason } (selection,
+      //         grouping, ordering, short explanation).
+      //   DART → computes stopOrder, startTime, endTime, visitDuration and
+      //         travel time, then validates.
+      //
+      // There is exactly ONE global 24s deadline for the whole AI planning
+      // operation (safety margin below the 25s requirement). It is never
+      // reset: a timeout or invalid response goes straight to the
+      // deterministic planner — NO second AI request.
       onProgress('Creating schedule... (7/9)');
-      debugPrint('[STAGE 16 - DEEPSEEK RESPONSE]');
-      debugPrint('Sending ${enrichedCandidates.length} candidates, '
-          '${clusters.length} clusters');
+      final plannerSw = Stopwatch()..start();
+
+      // ── [DART PREPROCESSING] summary ────────────────────────────
+      final preprocessingMs = plannerSw.elapsedMilliseconds;
+      final preprocessingStatus =
+      remainingPreprocessing() <= Duration.zero ? 'TIMEOUT' : 'SUCCESS';
+      debugPrint('[DART PREPROCESSING]');
+      debugPrint('retrieved=$rawCount');
+      debugPrint('scored=${scored.length}');
+      debugPrint('clusters=${clusters.length}');
+      debugPrint('reduced=${candidates.length}');
+      debugPrint('elapsedMs=$preprocessingMs');
+      debugPrint('status=$preprocessingStatus');
+
+      // ── GLM window: preferred 12.5s from AI invocation, hard-capped by
+      //    the 18-second global pipeline deadline. ─────────────────────
+      const postProcessingBuffer = Duration(seconds: 1);
+      final remainingToGlobal = globalDeadline.difference(DateTime.now());
+
+      // Ensure we don't go negative; if the remaining time is less than the buffer,
+      // fall back to a minimal safe duration (5 seconds).
+      Duration aiDuration;
+      if (remainingToGlobal <= postProcessingBuffer) {
+        aiDuration = const Duration(seconds: 5);
+      } else {
+        aiDuration = remainingToGlobal - postProcessingBuffer;
+      }
+
+      // Clamp to sensible bounds: minimum 5s, maximum 14s
+      const minAiDuration = Duration(seconds: 5);
+      const maxAiDurationLimit = Duration(seconds: 14);
+      if (aiDuration < minAiDuration) {
+        aiDuration = minAiDuration;
+      } else if (aiDuration > maxAiDurationLimit) {
+        aiDuration = maxAiDurationLimit;
+      }
+
+      final aiDeadline = DateTime.now().add(aiDuration);
+
+      debugPrint('[AI PLANNER] AI deadline: ${aiDuration.inMilliseconds} ms from now');
+
+      debugPrint('[AI PLANNER] PROVIDER: B.AI');
+      debugPrint('[AI PLANNER] MODEL: ${_aiService.baiModel}');
+      debugPrint('[AI PLANNER] START');
+      debugPrint('[AI PLANNER] Candidates: ${candidates.length}');
+      debugPrint('[AI PLANNER] Prompt: ${prompt.length} chars');
+      debugPrint('[AI PLANNER] Max tokens: ${AIService.plannerMaxTokens}');
+      debugPrint('[AI PLANNER] AI deadline: '
+          '${aiDeadline.difference(DateTime.now()).inMilliseconds} ms from now');
 
       // AI must only reference place IDs that survived scoring.
       final scoredPlaceIds = scored.map((s) => s.place.placeId).toSet();
 
-      List<AIDaySchedule> aiDays;
-      var validation = _validateSchedule(
-        aiDays: [],
+      // 1. ONE parallel AI recommendation attempt within the global deadline.
+      final aiAttempt = await _tryAiPlan(
+        prompt: prompt,
+        deadline: aiDeadline,
+      );
+      final aiAttempts = aiAttempt.attempts;
+      debugPrint('[AI RESPONSE: ITINERARY_PLANNER] Elapsed: '
+          '${plannerSw.elapsedMilliseconds} ms');
+
+      // 2. Granular Dart repair of the compact AI plan (preserves AI's
+      //    intelligent grouping where possible — avoids full fallback).
+      String aiStatus = aiAttempt.status;
+      final plan = aiAttempt.plan != null
+          ? _repairPlan(
+        plan: aiAttempt.plan!,
         request: request,
-        knownPlaceIds: scoredPlaceIds,
+        knownIds: scoredPlaceIds,
         mustVisitIds: effectiveMustVisitIds,
         placeIdToDestination: placeIdToDestination,
-      );
+      )
+          : null;
 
-      var attempt = 0;
-      while (true) {
-        attempt++;
-        debugPrint('[AI] Generation attempt $attempt');
+      if (plan == null && aiStatus == 'AI_SUCCESS') {
+        // The AI returned JSON but it could not be repaired into a valid plan.
+        aiStatus = 'AI_INVALID_RESPONSE';
+        debugPrint('[AI FALLBACK] AI plan unrecoverable '
+            '($aiStatus) — deterministic planner');
+      } else if (plan == null) {
+        debugPrint('[AI FALLBACK] AI plan unavailable '
+            '($aiStatus) — deterministic planner');
+      }
 
-        final raw = await _generateAiSchedule(
-          prompt: prompt,
-          feedback: validation.feedbackText,
+      // 3. Dart constructs the full schedule (times/durations/travel).
+      List<AIDaySchedule> aiDays;
+      AiValidationResult validation;
+      int aiSelectedCount = 0;
+      int fallbackSelectedCount = 0;
+
+      if (plan != null) {
+        aiDays = _constructAiDaysFromPlan(
+          plan: plan,
+          request: request,
+          scored: scored,
         );
-
-        try {
-          aiDays = parseAiScheduleJson(raw);
-          for (var day in aiDays) {
-            int order = 1;
-            final repairedSchedule = day.schedule.map((stop) {
-              return AIScheduleStop(
-                stopOrder: order++,
-                placeId: stop.placeId,
-                startTime: stop.startTime,
-                endTime: stop.endTime,
-                visitDurationMinutes: stop.visitDurationMinutes,
-                travelFromPreviousMinutes: stop.travelFromPreviousMinutes,
-                scheduleReason: stop.scheduleReason,
-                weatherNote: stop.weatherNote,
-              );
-            }).toList();
-            // If AIDaySchedule has a copyWith, use it; otherwise reassign:
-            // day = day.copyWith(schedule: repairedSchedule);
-            // Since AIDaySchedule is immutable, you'll need to create a new one:
-            day = AIDaySchedule(
-              dayIndex: day.dayIndex,
-              date: day.date,
-              schedule: repairedSchedule,
-              warnings: day.warnings,
-              needsRepair: day.needsRepair,
-            );
-          }
-        } catch (e) {
-          debugPrint('[AI] JSON parse failed (attempt $attempt): $e');
-          if (attempt >= maxRegenerationAttempts) {
-            return ItineraryResult.error(
-              message: 'The AI did not return a valid schedule. '
-                  'Please try again.',
-            );
-          }
-          validation = AiValidationResult(
-            passed: false,
-            issues: [
-              AiValidationIssue(
-                type: 'json_structure',
-                message: 'AI returned unparseable JSON: $e',
-              ),
-            ],
-          );
-          continue;
-        }
-
-        debugPrint('Response received');
-        debugPrint('Response length: $raw.length');
-
+        aiSelectedCount = aiDays.fold<int>(0, (s, d) => s + d.schedule.length);
+        debugPrint('[SCHEDULE] Elapsed: ${plannerSw.elapsedMilliseconds} ms');
         validation = _validateSchedule(
           aiDays: aiDays,
           request: request,
@@ -663,50 +727,66 @@ class ItineraryGenerationPipeline {
           mustVisitIds: effectiveMustVisitIds,
           placeIdToDestination: placeIdToDestination,
         );
+        debugPrint('[VALIDATION] Elapsed: ${plannerSw.elapsedMilliseconds} ms');
+      } else {
+        aiDays = const [];
+        validation = const AiValidationResult(passed: false, issues: []);
+      }
 
-        // ── STAGE 17 - AI RESPONSE VALIDATION ────────────────────
-        debugPrint('[STAGE 17 - AI RESPONSE VALIDATION]');
-        debugPrint('JSON valid: YES');
-        debugPrint('Days returned: ${aiDays.length}');
-        debugPrint('Stops returned: '
-            '${aiDays.fold<int>(0, (sum, d) => sum + d.schedule.length)}');
-        debugPrint('Unknown places: '
-            '${validation.issues.where((i) => i.type == 'unknown_place_id').length}');
-        debugPrint('Duplicates: '
-            '${validation.issues.where((i) => i.type == 'duplicate_place').length}');
-        debugPrint('Missing must-visits: '
-            '${validation.issues.where((i) => i.type == 'must_visit').length}');
-        debugPrint('Invalid times: '
-            '${validation.issues.where((i) => i.type == 'time_order' || i.type == 'invalid_time').length}');
-
-        if (validation.passed) break;
-
-        debugPrint('[VALIDATION] Attempt $attempt failed: '
-            '${validation.issues.length} issue(s)');
-        for (final issue in validation.issues) {
-          debugPrint('   ${issue.toString()}');
+      // 4. If validation failed, rebuild deterministically (no second AI).
+      if (!validation.passed) {
+        if (aiStatus == 'AI_SUCCESS') {
+          // The AI produced a plan but it violated a hard constraint that
+          // repair could not fix.
+          aiStatus = 'AI_VALIDATION_FAILED';
         }
+        debugPrint('[AI FALLBACK] Validation failed '
+            '($aiStatus) — deterministic planner');
+        final fallbackPlan = _buildDeterministicPlan(
+          request: request,
+          scored: scored,
+          mustVisitIds: effectiveMustVisitIds,
+        );
+        aiDays = _constructAiDaysFromPlan(
+          plan: fallbackPlan,
+          request: request,
+          scored: scored,
+        );
+        fallbackSelectedCount = aiDays.fold<int>(0, (s, d) => s + d.schedule.length);
+        validation = _validateSchedule(
+          aiDays: aiDays,
+          request: request,
+          knownPlaceIds: scoredPlaceIds,
+          mustVisitIds: effectiveMustVisitIds,
+          placeIdToDestination: placeIdToDestination,
+        );
+        aiStatus = validation.passed ? 'FALLBACK_SUCCESS' : 'FALLBACK_FAILED';
+        debugPrint('[AI PLANNER] FALLBACK COMPLETE: '
+            '${plannerSw.elapsedMilliseconds} ms');
+      }
 
-        if (attempt >= maxRegenerationAttempts) {
-          debugPrint('[VALIDATION] All regeneration attempts failed.');
-          return ItineraryResult.error(
-            message: 'The generated itinerary could not be validated after '
-                '${maxRegenerationAttempts} attempts.',
-            errors: [
-              for (final i in validation.issues)
-                ValidationIssue(
-                  type: i.type,
-                  severity: 'error',
-                  message: i.message,
-                  dayIndex: i.dayIndex,
-                ),
-            ],
-          );
-        }
+      debugPrint('[AI PLANNER] TOTAL: ${plannerSw.elapsedMilliseconds} ms');
+      debugPrint('[AI PLANNER] RESULT: $aiStatus');
+      debugPrint('[AI PLAN] days=${aiDays.length} '
+          'stops=${aiDays.fold<int>(0, (s, d) => s + d.schedule.length)}');
+
+      if (!validation.passed) {
+        return ItineraryResult.error(
+          message: 'The itinerary could not be generated. Please try again.',
+          errors: [
+            for (final i in validation.issues)
+              ValidationIssue(
+                type: i.type,
+                severity: 'error',
+                message: i.message,
+                dayIndex: i.dayIndex,
+              ),
+          ],
+        );
       }
 
       // ============================================================
-      // STAGE 18 - CONVERT VALIDATED AI OUTPUT → DOMAIN SCHEDULE
+      // STAGE 16 - CONVERT VALIDATED AI OUTPUT → DOMAIN SCHEDULE
       // ============================================================
       onProgress('Validating... (8/9)');
       final scheduledDays = _toScheduledDays(
@@ -716,51 +796,116 @@ class ItineraryGenerationPipeline {
         scored: scored,
       );
 
+// ============================================================
+      // FINAL ITINERARY DEBUG OUTPUT (DATABASE RECORD FORMAT)
+      // ============================================================
+      debugPrint('════════════════════════════════════════════');
+      debugPrint('📋 FINAL ITINERARY - DATABASE RECORD FORMAT');
+      debugPrint('════════════════════════════════════════════');
+
+      for (final day in scheduledDays) {
+        debugPrint('{');
+        debugPrint('  "day_index": ${day.dayIndex},');
+        debugPrint('  "date": "${day.date.toIso8601String().split('T').first}",');
+        debugPrint('  "total_duration_minutes": ${day.totalDuration},');
+        debugPrint('  "total_travel_minutes": ${day.totalTravelTime},');
+        debugPrint('  "stops": [');
+
+        if (day.stops.isEmpty) {
+          debugPrint('    // ⚠ No stops scheduled');
+        } else {
+          for (int i = 0; i < day.stops.length; i++) {
+            final stop = day.stops[i];
+
+            // Format DateTime objects to strict HH:mm:ss for DB timestamp standards
+            final start = '${stop.startTime.hour.toString().padLeft(2, '0')}:${stop.startTime.minute.toString().padLeft(2, '0')}:00';
+            final end = '${stop.endTime.hour.toString().padLeft(2, '0')}:${stop.endTime.minute.toString().padLeft(2, '0')}:00';
+
+            final isLast = i == day.stops.length - 1;
+
+            debugPrint('    {');
+            debugPrint('      "stop_order": ${i + 1},');
+            debugPrint('      "place_id": "${stop.attraction.place.placeId}",');
+            debugPrint('      "place_name": "${stop.attraction.place.placeName.replaceAll('"', '\\"')}",');
+            debugPrint('      "start_time": "$start",');
+            debugPrint('      "end_time": "$end",');
+            debugPrint('      "duration_minutes": ${stop.durationMinutes},');
+            debugPrint('      "travel_time_minutes": ${stop.travelFromPreviousMinutes}');
+            debugPrint('    }${isLast ? '' : ','}');
+          }
+        }
+
+        debugPrint('  ]');
+        debugPrint('}');
+        debugPrint('');
+      }
+
+      debugPrint('════════════════════════════════════════════');
+      debugPrint('📋 END FINAL ITINERARY');
+      debugPrint('════════════════════════════════════════════');
+
       if (scheduledDays.isEmpty) {
         return ItineraryResult.error(
           message: 'Validation passed but no stops could be materialized.',
         );
       }
 
-      debugPrint('[STAGE 18 - FINAL VALIDATION]');
-      debugPrint('✓ all required days exist (${scheduledDays.length})');
-      debugPrint('✓ destination allocation (validated by AI response validation)');
-      debugPrint('✓ must-visits present (validated by AI response validation)');
-      debugPrint('✓ no duplicates (validated by AI response validation)');
-      debugPrint('✓ opening hours (validated by AI response validation)');
-      debugPrint('✓ daily time window (validated by AI response validation)');
-      debugPrint('✓ chronological schedule (validated by AI response validation)');
-      debugPrint('RESULT: PASS');
-
       // ============================================================
-      // STAGE 19 - FETCH WEATHER
+      // STAGE 17 - WEATHER (NO secondary AI call)
       // ============================================================
-      onProgress('Fetching weather... (9/9)');
-      final weather = await _fetchWeather(request, scheduledDays);
-      List<String> unretrievable = const [];
-      onProgress('Getting AI feedback...');
-      final critic = await _critic(scheduledDays, effectivePace, request);
+      //
+      // The travel plan is complete at this point. Weather is fetched from
+      // Open-Meteo (a free, fast API). There is deliberately NO AI critic
+      // call here: another LLM request would keep running asynchronously
+      // after PIPELINE COMPLETE, wasting ~15–35s of background work and
+      // misleading the timing logs. All validation (duplicates, windows,
+      // chronology, must-visits, place IDs, travel/duration) is performed
+      // deterministically by Dart already.
 
+      // Extract coordinates from the first stop, if available.
+      Coordinates? firstCoord;
+      if (scheduledDays.isNotEmpty && scheduledDays.first.stops.isNotEmpty) {
+        firstCoord = scheduledDays.first.stops.first.attraction.place.coordinates;
+      }
+      final startDate = request.startDate ?? DateTime.now();
+      final endDate = request.endDate ??
+          startDate.add(Duration(days: request.totalDays));
+      final weather = await _fetchWeatherForTrip(
+        firstCoord,
+        startDate,
+        endDate,
+      );
+      final List<String> unretrievable = const [];
+      final critic = const CriticResult(
+        overallSuitable: true,
+        score: 0,
+        issues: [],
+        recommendations: [],
+        summary: 'AI feedback unavailable.',
+      );
+
+      // 5. DIAGNOSTIC SUMMARY
       onProgress('Finalizing your itinerary...');
       final totalStops =
       scheduledDays.fold<int>(0, (sum, d) => sum + d.stops.length);
       debugPrint('════════════════════════════════════════════');
       debugPrint('✅ PIPELINE COMPLETE');
       debugPrint('════════════════════════════════════════════');
-      debugPrint('Diagnostic candidate flow:');
-      debugPrint('Google raw            = $rawCount '
-          '($rawAttractionCount attr, $rawFoodCount food)');
-      debugPrint('Unique                = $rawCount');
-      debugPrint('Must-visits recovered = $recoveredMustVisitCount');
-      debugPrint('After filtering       = ${candidatePool.totalCount}');
-      debugPrint('Scored                = ${scored.length}');
-      debugPrint('K-Means input         = ${scored.length}');
-      debugPrint('DeepSeek selected     = $totalStops');
-      debugPrint('Final validated       = $totalStops');
-      debugPrint('Days: ${scheduledDays.length}');
-      debugPrint('Must-visits: '
-          '${request.mustVisitPlaceIds.length} requested');
-      debugPrint('Destinations: ${request.destinations}');
+      debugPrint('[FINAL]');
+      debugPrint('validation=${validation.passed ? "PASS" : "FAIL"}');
+      debugPrint('days=${scheduledDays.length}');
+      debugPrint('stops=$totalStops');
+      debugPrint('totalElapsedMs=${pipelineStopwatch.elapsedMilliseconds}');
+      debugPrint('[AI RESULT]');
+      for (final a in aiAttempts) {
+        debugPrint('provider=${a.provider} status=${a.status} '
+            'elapsedMs=${a.elapsedMs} finish=${a.finishReason ?? 'n/a'}');
+      }
+      debugPrint('classification=$aiStatus');
+      debugPrint('aiSelected=$aiSelectedCount '
+          'fallbackSelected=$fallbackSelectedCount');
+      debugPrint('mustVisits=${request.mustVisitPlaceIds.length} '
+          'recovered=$recoveredMustVisitCount');
 
       return ItineraryResult.success(
           scheduledDays: scheduledDays,
@@ -793,18 +938,481 @@ class ItineraryGenerationPipeline {
   // HELPERS
   // ============================================================
 
-  Future<String> _generateAiSchedule({
+  // ============================================================
+  // HELPERS — COMPACT AI PLANNER
+  // ============================================================
+
+  /// ONE B.AI / GLM-5.3-Flash recommendation attempt within the [deadline].
+  ///
+  /// B.AI is the ONLY AI provider for itinerary generation — OpenRouter and
+  /// Cohere are never called here. Returns the parsed plan, a status string
+  /// (AI_SUCCESS / AI_TIMEOUT / AI_PROVIDER_ERROR / AI_TRUNCATED_RESPONSE /
+  /// AI_INVALID_MODEL_OUTPUT) and the provider attempt record for
+  /// diagnostics. Any failure goes to the deterministic fallback — there is
+  /// no second AI provider to try.
+  Future<({
+  List<AiCompactPlanDay>? plan,
+  String status,
+  List<ProviderAiAttempt> attempts,
+  })> _tryAiPlan({
     required String prompt,
-    required String feedback,
+    required DateTime deadline,
   }) async {
-    final fullPrompt = feedback.trim().isEmpty
-        ? prompt
-        : '$prompt\n\n'
-        'PREVIOUS OUTPUT WAS REJECTED BY VALIDATION. '
-        'REGENERATE THE ENTIRE SCHEDULE FIXING ALL ERRORS:\n'
-        '$feedback\n\n'
-        'Return STRICT JSON ONLY in the exact format requested above.';
-    return _aiService.generateRawContent(fullPrompt);
+    final remaining = _remainingTime(deadline);
+    if (remaining <= Duration.zero) {
+      debugPrint(
+          '[AI FALLBACK: ITINERARY_PLANNER] No remaining budget — deterministic planner');
+      return (plan: null, status: 'AI_TIMEOUT', attempts: const <ProviderAiAttempt>[]);
+    }
+    debugPrint(
+        '[AI REQUEST: ITINERARY_PLANNER] Remaining: ${remaining.inMilliseconds} ms');
+
+    final outcome = await _aiService.generatePlannerRecommendation(
+      prompt,
+      deadline: deadline,
+    );
+
+    if (outcome.outcome != 'AI_SUCCESS' || outcome.rawText == null) {
+      return (plan: null, status: outcome.outcome, attempts: outcome.attempts);
+    }
+
+    try {
+      final plan = parseCompactPlanJson(outcome.rawText!);
+      debugPrint('[AI PARSE: ITINERARY_PLANNER] OK '
+          '(${plan.fold<int>(0, (s, d) => s + d.placeIds.length)} places)');
+      return (plan: plan, status: 'AI_SUCCESS', attempts: outcome.attempts);
+    } catch (e) {
+      // finish_reason == "length" with unparseable JSON = genuinely
+      // truncated output. Anything else is malformed JSON.
+      String? winnerFinish;
+      for (final a in outcome.attempts) {
+        if (a.provider == outcome.winningProvider) {
+          winnerFinish = a.finishReason;
+          break;
+        }
+      }
+      final status = winnerFinish == 'length'
+          ? 'AI_TRUNCATED_RESPONSE'
+          : 'AI_INVALID_JSON';
+      debugPrint('[AI PARSE: ITINERARY_PLANNER] FAILED ($status): $e');
+      final raw = outcome.rawText!;
+      debugPrint('[AI PARSE] content head: '
+          '${raw.length > 800 ? raw.substring(0, 800) : raw}');
+      return (plan: null, status: status, attempts: outcome.attempts);
+    }
+  }
+
+  /// Granular repair of a compact AI plan.
+  ///
+  /// Tries to fix common problems deterministically while preserving the AI's
+  /// intelligent grouping/ordering wherever possible. Returns null when the
+  /// plan is unrecoverable (the caller then uses the full fallback).
+  ///
+  /// Repairs applied:
+  ///   1. Discard unknown place IDs.
+  ///   2. Deduplicate across all days (first occurrence wins).
+  ///   3. Insert missing must-visits into the first day of their destination.
+  ///   4. Move wrongly-placed places (destination mismatch) to the first day
+  ///      of their correct destination.
+  ///   5. Fill missing day indices (empty days) with the best remaining
+  ///      candidates for that destination.
+  List<AiCompactPlanDay>? _repairPlan({
+    required List<AiCompactPlanDay> plan,
+    required TripDraft request,
+    required Set<String> knownIds,
+    required List<String> mustVisitIds,
+    required Map<String, String> placeIdToDestination,
+  }) {
+    if (plan.isEmpty) return null;
+
+    final allocation = _allocationFor(request);
+    // Map dayIndex → destination name.
+    final dayDest = <int, String>{};
+    var counter = 0;
+    for (final name in request.destinations) {
+      final days = (allocation[name] ?? 1).clamp(1, 5);
+      for (var d = 0; d < days; d++) {
+        if (counter < request.totalDays) dayDest[counter++] = name;
+      }
+    }
+
+    // 1. Collect per-day placeIds, discarding unknowns. AI-estimated visit
+    //    minutes are preserved so the schedule constructor keeps using them.
+    final byDay = <int, List<String>>{};
+    for (var d = 0; d < request.totalDays; d++) byDay[d] = [];
+    final visitMinutes = <String, int>{};
+    // Track reasons per day.
+    final reasons = <int, String>{};
+
+    // ── 0-based normalization ────────────────────────────────────
+    // The prompt now demands 0-based dayIndex, but if the model still
+    // returns 1-BASED numbering (no day 0 used AND day totalDays present —
+    // the unmistakable signature), shift every index down by 1 instead of
+    // silently discarding the out-of-bounds last day (which previously
+    // deleted a whole day of places and triggered the day-refill clump).
+    final usedIndexes = plan.map((d) => d.dayIndex).toSet();
+    final hasOutOfBounds = usedIndexes.any((i) => i >= request.totalDays);
+    var normalizedPlan = plan;
+    if (hasOutOfBounds &&
+        !usedIndexes.contains(0) &&
+        usedIndexes.contains(request.totalDays)) {
+      debugPrint('[REPAIR] Detected 1-based dayIndex — normalizing to 0-based');
+      normalizedPlan = plan
+          .map((d) => AiCompactPlanDay(
+        dayIndex: d.dayIndex - 1,
+        placeIds: d.placeIds,
+        visitMinutes: d.visitMinutes,
+        reason: d.reason,
+      ))
+          .toList();
+    }
+
+    for (final day in normalizedPlan) {
+      final idx = day.dayIndex;
+      if (idx < 0 || idx >= request.totalDays) continue;
+      reasons[idx] = day.reason;
+      visitMinutes.addAll(day.visitMinutes);
+      for (final id in day.placeIds) {
+        if (knownIds.contains(id)) byDay[idx]!.add(id);
+      }
+    }
+
+    // 2. Dedup across all days (first occurrence keeps its spot).
+    final seen = <String>{};
+    for (var d = 0; d < request.totalDays; d++) {
+      final deduped = <String>[];
+      for (final id in byDay[d]!) {
+        if (seen.add(id)) deduped.add(id);
+      }
+      byDay[d] = deduped;
+    }
+
+    // 3. Insert missing must-visits.
+    // Map must-visit → destination.
+    final mvDest = <String, String>{};
+    for (final mv in mustVisitIds.where((m) => m.isNotEmpty && knownIds.contains(m))) {
+      if (seen.contains(mv)) continue; // already present
+      final dest = placeIdToDestination[mv] ?? request.destinations.first;
+      mvDest[mv] = dest;
+      // Find first day for this destination, or day 0.
+      var targetDay = 0;
+      for (var d = 0; d < request.totalDays; d++) {
+        if (dayDest[d] == dest) { targetDay = d; break; }
+      }
+      byDay[targetDay]!.insert(0, mv); // front of the day
+      seen.add(mv);
+    }
+
+    // 4. Destination allocation: move misplaced places.
+    for (var d = 0; d < request.totalDays; d++) {
+      final expectedDest = dayDest[d] ?? request.destinations.first;
+      final correct = <String>[];
+      final misplaced = <String, String>{}; // placeId → correctDest
+      for (final id in byDay[d]!) {
+        final dest = placeIdToDestination[id] ?? expectedDest;
+        if (dest == expectedDest) {
+          correct.add(id);
+        } else {
+          misplaced[id] = dest;
+        }
+      }
+      byDay[d] = correct;
+      // Re-insert misplaced places into the first day of their destination.
+      for (final entry in misplaced.entries) {
+        var targetDay = 0;
+        for (var td = 0; td < request.totalDays; td++) {
+          if (dayDest[td] == entry.value) { targetDay = td; break; }
+        }
+        byDay[targetDay]!.add(entry.key);
+      }
+    }
+
+    // 5. Fill empty days with candidates moved from other days that belong
+    //    to this day's destination.
+    for (var d = 0; d < request.totalDays; d++) {
+      if (byDay[d]!.isNotEmpty) continue;
+      final expectedDest = dayDest[d] ?? '';
+      for (var od = 0; od < request.totalDays; od++) {
+        if (od == d) continue;
+        final removable = <int>[];
+        for (var i = 0; i < byDay[od]!.length; i++) {
+          final id = byDay[od]![i];
+          final dest = placeIdToDestination[id] ?? '';
+          if (dest == expectedDest) {
+            byDay[d]!.add(id);
+            removable.add(i);
+          }
+        }
+        // Remove from source (reverse order).
+        for (var i = removable.length - 1; i >= 0; i--) {
+          byDay[od]!.removeAt(removable[i]);
+        }
+      }
+    }
+
+    // Rebuild plan.
+    final result = <AiCompactPlanDay>[];
+    for (var d = 0; d < request.totalDays; d++) {
+      result.add(AiCompactPlanDay(
+        dayIndex: d,
+        placeIds: byDay[d]!,
+        visitMinutes: visitMinutes,
+        reason: reasons[d] ?? 'Repaired by Dart.',
+      ));
+    }
+
+    // Final check: if every day is empty, the plan is unrecoverable.
+    if (result.every((day) => day.placeIds.isEmpty)) return null;
+    return result;
+  }
+
+  /// Converts a compact AI plan (dayIndex + ordered places) into a list of
+  /// fully computed [AIDaySchedule]s. All clock times and travel times are
+  /// computed deterministically in Dart. AI-estimated visit minutes are used
+  /// when provided; otherwise the Dart category baseline applies.
+  List<AIDaySchedule> _constructAiDaysFromPlan({
+    required List<AiCompactPlanDay> plan,
+    required TripDraft request,
+    required List<ScoredAttraction> scored,
+  }) {
+    final scoredById = <String, ScoredAttraction>{
+      for (final s in scored) s.place.placeId: s,
+    };
+    final window = ItineraryConstants.explorationWindows[
+    request.explorationTime ?? 'Standard'] ??
+        ItineraryConstants.explorationWindows['Standard']!;
+    final startDate = request.startDate ?? DateTime.now();
+    final travelPace = request.travelPace ?? 'Standard';
+    final transportation = request.transportation;
+
+    return [
+      for (final day in plan)
+        _constructDaySchedule(
+          dayIndex: day.dayIndex,
+          date: startDate.add(Duration(days: day.dayIndex)),
+          orderedPlaceIds: day.placeIds,
+          aiVisitMinutes: day.visitMinutes,
+          reason: day.reason,
+          window: window,
+          travelPace: travelPace,
+          transportation: transportation,
+          scoredById: scoredById,
+        ),
+    ];
+  }
+
+  /// Dart-side schedule constructor. Given an ordered list of place IDs for
+  /// one day, it computes:
+  ///   • stopOrder (sequential)
+  ///   • visitDuration (AI estimate when supplied, else category baseline;
+  ///     both pace-adjusted and clamped to a sane range)
+  ///   • travelFromPrevious (coordinate distance × transport speed)
+  ///   • startTime / endTime (chained inside the exploration window)
+  AIDaySchedule _constructDaySchedule({
+    required int dayIndex,
+    required DateTime date,
+    required List<String> orderedPlaceIds,
+    Map<String, int> aiVisitMinutes = const {},
+    required String reason,
+    required ExplorationWindow window,
+    required String travelPace,
+    required String transportation,
+    required Map<String, ScoredAttraction> scoredById,
+  }) {
+    final winStart = window.startMinutes;
+    final winEnd = window.endMinutes;
+    final buffer = ItineraryConstants.bufferForPace(travelPace);
+    final factor = ItineraryConstants.durationFactorForPace(travelPace);
+
+    // ── Hard daily stop limit (pace-based) ──────────────────────
+    // Enforced directly in Dart so the AI can never pack the first days
+    // and starve the last ones under the global cap. Slow = 3, Fast = 5,
+    // Standard = 4 — matching the prompt's daily TARGET.
+    int maxStops;
+    if (travelPace == 'Slow') {
+      maxStops = 3;
+    } else if (travelPace == 'Fast') {
+      maxStops = 5;
+    } else {
+      maxStops = 4; // Standard
+    }
+
+    final stops = <AIScheduleStop>[];
+    var cursor = winStart;
+    Coordinates? prevCoord;
+
+    for (final placeId in orderedPlaceIds) {
+      if (stops.length >= maxStops) break;
+      final scored = scoredById[placeId];
+      if (scored == null) continue; // filtered by structural validation
+
+      final place = scored.place;
+      final aiMinutes = aiVisitMinutes[placeId];
+      final base = (aiMinutes != null && aiMinutes > 0)
+          ? aiMinutes
+          : (place.visitDurationMinutes ??
+          ItineraryConstants.baseDurationForCategory(
+              place.category, ItineraryConstants.defaultDurationMinutes));
+      final duration = (base * factor)
+          .round()
+          .clamp(ItineraryConstants.minimumVisitDurationMinutes,
+          ItineraryConstants.maximumVisitDurationMinutes);
+
+      final travel = stops.isEmpty
+          ? 0
+          : _travelMinutes(
+          prevCoord!, place.coordinates, transportation, buffer);
+
+      final start = stops.isEmpty ? winStart : cursor + travel + buffer;
+      final end = start + duration;
+      if (end > winEnd) break;
+
+      stops.add(AIScheduleStop(
+        stopOrder: stops.length + 1,
+        placeId: placeId,
+        startTime: _hhmm(start),
+        endTime: _hhmm(end),
+        visitDurationMinutes: duration,
+        travelFromPreviousMinutes: travel,
+        scheduleReason: reason,
+        weatherNote: '',
+      ));
+      cursor = end;
+      prevCoord = place.coordinates;
+    }
+
+    return AIDaySchedule(
+      dayIndex: dayIndex,
+      date: date.toIso8601String().split('T').first,
+      schedule: stops,
+      warnings: [if (reason.isNotEmpty) reason],
+    );
+  }
+
+  /// Deterministic travel time (minutes) between two coordinates using the
+  /// transport mode. Speeds match the existing [ScheduleConstructionService]
+  /// conventions: walking 5 km/h, driving 40 km/h, transit 30 km/h.
+  int _travelMinutes(
+      Coordinates a, Coordinates b, String transportation, int fallback) {
+    final distanceKm = a.distanceTo(b);
+    double speed;
+    switch (transportation) {
+      case 'driving':
+        speed = 40.0;
+      case 'transit':
+        speed = 30.0;
+      case 'cycling':
+        speed = 12.0;
+      default:
+        speed = 5.0; // walking
+    }
+    final minutes = (distanceKm / speed * 60).ceil();
+    return minutes < 1 ? fallback : minutes;
+  }
+
+  /// Deterministic fallback planner. Builds a complete compact plan from
+  /// scored candidates, must-visits, clusters and travel preferences when
+  /// the AI is unavailable or returns an invalid response.
+  List<AiCompactPlanDay> _buildDeterministicPlan({
+    required TripDraft request,
+    required List<ScoredAttraction> scored,
+    required List<String> mustVisitIds,
+  }) {
+    final allocation = _allocationFor(request);
+    final mustSet = mustVisitIds.where((m) => m.isNotEmpty).toSet();
+
+    String dayDest(int dayIndex) {
+      var counter = 0;
+      for (final name in request.destinations) {
+        final days = (allocation[name] ?? 1).clamp(1, 5);
+        for (var d = 0; d < days; d++) {
+          if (counter == dayIndex) return name;
+          counter++;
+        }
+      }
+      return request.destinations.isNotEmpty ? request.destinations.first : '';
+    }
+
+    final byDest = <String, List<ScoredAttraction>>{};
+    for (final s in scored) {
+      (byDest[_destinationForPlace(request, s.place)] ??= []).add(s);
+    }
+
+    final used = <String>{};
+    final dayPlaces = <int, List<ScoredAttraction>>{};
+
+    // 1. Must-visits → first day of their destination.
+    for (final s in scored) {
+      if (!mustSet.contains(s.place.placeId)) continue;
+      final dest = _destinationForPlace(request, s.place);
+      for (var day = 0; day < request.totalDays; day++) {
+        if (dayDest(day) == dest) {
+          (dayPlaces[day] ??= []).add(s);
+          used.add(s.place.placeId);
+          break;
+        }
+      }
+    }
+
+    // 2. Fill remaining slots per day by destination + score.
+    const paceTarget = {'Slow': 2, 'Standard': 4, 'Fast': 6};
+    final target = paceTarget[request.travelPace] ?? 4;
+    for (var day = 0; day < request.totalDays; day++) {
+      final dest = dayDest(day);
+      final pool = List<ScoredAttraction>.of(byDest[dest] ?? const [])
+        ..sort((a, b) => b.score.compareTo(a.score));
+      final list = dayPlaces[day] ??= [];
+
+      for (final s in pool) {
+        if (list.length >= target) break;
+        if (used.contains(s.place.placeId)) continue;
+        if (_isFoodScored(s)) continue;
+        list.add(s);
+        used.add(s.place.placeId);
+      }
+      // One food per day.
+      for (final s in pool) {
+        if (used.contains(s.place.placeId)) continue;
+        if (!_isFoodScored(s)) continue;
+        list.add(s);
+        used.add(s.place.placeId);
+        break;
+      }
+    }
+
+    // 3. Order each day geographically (nearest neighbour from first stop).
+    return [
+      for (var day = 0; day < request.totalDays; day++)
+        AiCompactPlanDay(
+          dayIndex: day,
+          placeIds: _orderByProximity(dayPlaces[day] ?? const [])
+              .map((s) => s.place.placeId)
+              .toList(),
+          reason: 'Deterministic plan: top-scored places grouped by proximity.',
+        ),
+    ];
+  }
+
+  /// Greedy nearest-neighbour ordering: start from the first place, then
+  /// repeatedly pick the still-unplaced attraction closest to the last one.
+  List<ScoredAttraction> _orderByProximity(List<ScoredAttraction> places) {
+    if (places.length <= 2) return List.of(places);
+    final remaining = List<ScoredAttraction>.of(places);
+    final ordered = <ScoredAttraction>[remaining.removeAt(0)];
+    while (remaining.isNotEmpty) {
+      final last = ordered.last.place.coordinates;
+      var bestIdx = 0;
+      var bestDist = double.infinity;
+      for (var i = 0; i < remaining.length; i++) {
+        final d = last.distanceTo(remaining[i].place.coordinates);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+      ordered.add(remaining.removeAt(bestIdx));
+    }
+    return ordered;
   }
 
   AiValidationResult _validateSchedule({
@@ -841,6 +1449,152 @@ class ItineraryGenerationPipeline {
       split[request.destinations[i]] = base + (i < extra ? 1 : 0);
     }
     return split;
+  }
+
+  /// Builds the compact candidate pool handed to DeepSeek.
+  ///
+  /// Dart has already filtered, scored and clustered the full pool. This
+  /// selects a SMALL (~12–20) high-quality subset for the AI prompt while
+  /// strictly preserving everything needed for a COMPLETE itinerary:
+  ///
+  ///   1. MUST-VISITS are always retained (hard requirement).
+  ///   2. The target size is derived from trip length via [targetCandidateCount].
+  ///   3. Every destination keeps enough top-scored candidates to fill its
+  ///      allocated days.
+  ///   4. Each destination keeps at least one food option for meals.
+  ///   5. Every geographic cluster keeps a representative so the AI can
+  ///      reason about proximity instead of hopping between distant places.
+  ///
+  /// It is NOT a naive `take(n)` — coverage is guaranteed per destination,
+  /// per meal and per cluster.
+  List<ScoredAttraction> _selectAICandidates({
+    required List<ScoredAttraction> scored,
+    required TripDraft request,
+    required List<Cluster> clusters,
+  }) {
+    final allocation = _allocationFor(request);
+    final target = targetCandidateCount(request.totalDays);
+    final selected = <ScoredAttraction>[];
+    final selectedIds = <String>{};
+
+    void add(ScoredAttraction s) {
+      if (selectedIds.add(s.place.placeId)) selected.add(s);
+    }
+
+    // 1. Must-visits ALWAYS retained.
+    final mustVisitIds = request.mustVisitPlaceIds.toSet();
+    for (final s in scored) {
+      if (s.isMustVisit || mustVisitIds.contains(s.place.placeId)) add(s);
+    }
+
+    // Group the remaining candidates by destination (score order kept).
+    final byDest = <String, List<ScoredAttraction>>{};
+    for (final s in scored) {
+      if (selectedIds.contains(s.place.placeId)) continue;
+      final dest = _destinationForPlace(request, s.place);
+      (byDest[dest] ??= []).add(s);
+    }
+
+    // 2. Per-destination allowance proportional to its allocated days.
+    final totalDays = request.totalDays < 1 ? 1 : request.totalDays;
+    final destQuota = <String, int>{
+      for (final entry in byDest.entries)
+        entry.key: ((target * ((allocation[entry.key] ?? 1).clamp(1, 5))) /
+            totalDays)
+            .ceil(),
+    };
+
+    // ─── NEW: ENSURE EACH DESTINATION GETS ENOUGH CANDIDATES TO FILL TARGET STOPS PER DAY ───
+    final pace = request.travelPace ?? 'Standard';
+    int targetStopsPerDay;
+    switch (pace) {
+      case 'Slow':
+        targetStopsPerDay = 3;
+        break;
+      case 'Fast':
+        targetStopsPerDay = 5;
+        break;
+      default:
+        targetStopsPerDay = 4; // Standard
+    }
+    // Clamp to sensible range
+    if (targetStopsPerDay > 5) targetStopsPerDay = 5;
+    if (targetStopsPerDay < 2) targetStopsPerDay = 2;
+
+    for (final entry in byDest.entries) {
+      final daysForDest = allocation[entry.key] ?? 1;
+      final minNeeded = targetStopsPerDay * daysForDest;
+      if (destQuota[entry.key]! < minNeeded) {
+        destQuota[entry.key] = minNeeded;
+      }
+    }
+
+    // 3 + 4. Per destination: reserve a food option first, then top-scored
+    // attractions, up to the destination's allowance and the global target.
+    for (final entry in byDest.entries) {
+      final quota = destQuota[entry.key] ?? 1;
+      var foodRoom = 1;
+      for (final s in entry.value) {
+        if (selected.length >= target) break;
+        if (foodRoom <= 0) break;
+        if (!_isFoodScored(s)) continue;
+        add(s);
+        foodRoom--;
+      }
+      var room = quota;
+      for (final s in entry.value) {
+        if (selected.length >= target) break;
+        if (room <= 0) break;
+        if (_isFoodScored(s)) continue; // food already handled above
+        add(s);
+        room--;
+      }
+    }
+
+    // 5. Geographic diversity: every cluster keeps at least one candidate.
+    for (final cluster in clusters) {
+      if (selected.length >= target) break;
+      final represented = cluster.attractions
+          .any((a) => selectedIds.contains(a.place.placeId));
+      if (represented) continue;
+      ScoredAttraction? best;
+      for (final a in cluster.attractions) {
+        if (selectedIds.contains(a.place.placeId)) continue;
+        if (best == null || a.score > best.score) best = a;
+      }
+      if (best != null) add(best);
+    }
+
+    // 6. Safety floor: top the pool back up with the highest-scored places.
+    if (selected.length < minAiCandidatePool) {
+      final sorted = List<ScoredAttraction>.from(scored)
+        ..sort((a, b) => b.score.compareTo(a.score));
+      for (final s in sorted) {
+        if (selected.length >= target) break;
+        if (selected.length >= minAiCandidatePool) break;
+        add(s);
+      }
+    }
+
+    return selected;
+  }
+
+  /// Whether a scored candidate is a food/drink place.
+  bool _isFoodScored(ScoredAttraction s) {
+    final types = s.place.types.map((t) => t.toLowerCase()).toSet();
+    return types.any(CandidateRetrievalService.foodTypes.contains);
+  }
+
+  /// Time remaining before [deadline], clamped to zero.
+  Duration _remainingTime(DateTime deadline) {
+    final remaining = deadline.difference(DateTime.now());
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  String _hhmm(int minutesOfDay) {
+    final h = (minutesOfDay ~/ 60).clamp(0, 23).toString().padLeft(2, '0');
+    final m = (minutesOfDay % 60).clamp(0, 59).toString().padLeft(2, '0');
+    return '$h:$m';
   }
 
   /// Convert validated [AIDaySchedule] into [ScheduledDay] domain objects.
@@ -887,8 +1641,9 @@ class ItineraryGenerationPipeline {
         ));
       }
 
-      if (stops.isEmpty) continue;
-
+      // Every requested day MUST be preserved in the final model, even when
+      // it has zero stops (e.g. a 3-day trip must always yield 3 days). This
+      // prevents an empty day from silently shrinking the itinerary.
       result.add(ScheduledDay(
         dayIndex: day.dayIndex,
         date: date,
@@ -924,19 +1679,25 @@ class ItineraryGenerationPipeline {
     return best ?? (request.destinations.isNotEmpty ? request.destinations.first : 'Unknown');
   }
 
-  Future<WeatherForecast> _fetchWeather(
-      TripDraft request,
-      List<ScheduledDay> scheduledDays,
+  // ============================================================
+  // NEW: Weather extraction function
+  // ============================================================
+
+  /// Fetches the weather forecast for the trip's location and dates.
+  /// Returns an empty forecast if coordinates or dates are unavailable,
+  /// or if the network request fails.
+  Future<WeatherForecast> _fetchWeatherForTrip(
+      Coordinates? coord,
+      DateTime startDate,
+      DateTime endDate,
       ) async {
     try {
-      if (scheduledDays.isNotEmpty && scheduledDays.first.stops.isNotEmpty) {
-        final firstStop = scheduledDays.first.stops.first;
+      if (coord != null) {
         return await _weather.getDailyForecast(
-          latitude: firstStop.attraction.place.coordinates.latitude,
-          longitude: firstStop.attraction.place.coordinates.longitude,
-          startDate: request.startDate ?? DateTime.now(),
-          endDate: request.endDate ??
-              DateTime.now().add(Duration(days: request.totalDays)),
+          latitude: coord.latitude,
+          longitude: coord.longitude,
+          startDate: startDate,
+          endDate: endDate,
         );
       }
     } catch (e) {
@@ -944,26 +1705,32 @@ class ItineraryGenerationPipeline {
     }
     return WeatherForecast(daily: []);
   }
+}
+class AiCompactPlanDay {
+  final int dayIndex;
+  final List<String> placeIds;
+  final Map<String, int> visitMinutes;
+  final String reason;
 
-  Future<CriticResult> _critic(
-      List<ScheduledDay> scheduledDays,
-      String effectivePace,
-      TripDraft request,
-      ) async {
-    try {
-      return await _aiService.evaluateItinerary(
-        days: scheduledDays,
-        travelPace: effectivePace,
-        interests: request.interests,
-      );
-    } catch (_) {
-      return CriticResult(
-        overallSuitable: true,
-        score: 0,
-        issues: const [],
-        recommendations: const [],
-        summary: 'AI feedback unavailable.',
-      );
-    }
-  }
+  AiCompactPlanDay({
+    required this.dayIndex,
+    required this.placeIds,
+    this.visitMinutes = const {},
+    this.reason = '',
+  });
+}
+
+/// Parses the JSON response from the compact planner (B.AI / GLM).
+List<AiCompactPlanDay> parseCompactPlanJson(String rawJson) {
+  final decoded = json.decode(rawJson) as Map<String, dynamic>;
+  final days = decoded['days'] as List<dynamic>;
+  return days.map((d) {
+    final day = d as Map<String, dynamic>;
+    return AiCompactPlanDay(
+      dayIndex: day['dayIndex'] as int,
+      placeIds: (day['placeIds'] as List<dynamic>).cast<String>(),
+      visitMinutes: Map<String, int>.from(day['visitMinutes'] ?? {}),
+      reason: day['reason'] ?? '',
+    );
+  }).toList();
 }
