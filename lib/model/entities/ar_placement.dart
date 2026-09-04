@@ -44,6 +44,7 @@ class StoryScript {
   final List<String> narrationParagraphs;
   final String? model3dPath;
   final String? videoUrl;
+  final String? videoUrlBackup;
 
   const StoryScript({
     required this.id,
@@ -53,6 +54,7 @@ class StoryScript {
     required this.narrationParagraphs,
     this.model3dPath,
     this.videoUrl,
+    this.videoUrlBackup,
   });
 
   static StoryScript defaultForMarker(String markerId, String name) {
@@ -66,6 +68,7 @@ class StoryScript {
       ],
       model3dPath: null,
       videoUrl: null,
+      videoUrlBackup: null,
     );
   }
 }

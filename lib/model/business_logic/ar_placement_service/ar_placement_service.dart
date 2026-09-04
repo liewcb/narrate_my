@@ -40,10 +40,17 @@ class ARPlacementService {
 
     if (planeHits.isEmpty) return null;
 
-    // 1. Prioritize plane hit points within comfortable viewing distance (0.8m ~ 1.5m)
+    // 1. Prioritize lower horizontal planes (true physical floor has lower Y coordinate than tabletops/chairs)
+    // and comfortable viewing distance (0.8m ~ 1.8m).
     planeHits.sort((a, b) {
-      final aDiff = (a.distance - 1.2).abs();
-      final bDiff = (b.distance - 1.2).abs();
+      final yA = a.worldTransform.getTranslation().y;
+      final yB = b.worldTransform.getTranslation().y;
+      // If one plane is significantly lower (> 20cm), it represents the actual ground floor
+      if ((yA - yB).abs() > 0.20) {
+        return yA.compareTo(yB); // Lower Y comes first
+      }
+      final aDiff = (a.distance - 1.3).abs();
+      final bDiff = (b.distance - 1.3).abs();
       return aDiff.compareTo(bDiff);
     });
 

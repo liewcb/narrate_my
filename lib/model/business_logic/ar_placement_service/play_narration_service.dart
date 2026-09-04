@@ -26,7 +26,8 @@ class PlayNarrationService {
   int _currentSpokenWordIndex = 0; // Tracks word progress in current paragraph
   StoryPlaybackState _playbackState = StoryPlaybackState.stopped;
   Timer? _fallbackTimer;
-  Timer? _wordProgressTimer;
+  int _baseWordOffset = 0; // Word index where the current utterance started
+  String _currentUtteranceText = ""; // Text being spoken in current utterance
 
   final _subtitleController = StreamController<String>.broadcast();
   final _stateController = StreamController<StoryPlaybackState>.broadcast();
@@ -70,21 +71,19 @@ class PlayNarrationService {
   Future<void> _initTts() async {
     try {
       await _flutterTts?.setLanguage(_currentLanguage.code);
-      await _flutterTts?.setSpeechRate(0.48); // Clear, friendly guide pace
-      await _flutterTts?.setPitch(1.08); // Cheerful, warm avatar pitch
+      await _flutterTts?.setSpeechRate(0.30); // 🐢 Clear, comfortable storytelling pace (30%)
+      await _flutterTts?.setPitch(1.25); // 🐻 Cute, cheerful cartoon voice for Manja
       await _flutterTts?.setVolume(1.0);
 
-      // Track exact word position from native TTS
+      // Track exact word position natively from TTS engine in real-time
       _flutterTts?.setProgressHandler((String text, int startOffset, int endOffset, String word) {
-        if (_playbackState == StoryPlaybackState.playing && _currentScript != null) {
-          final paragraphs = _currentScript!.narrationParagraphs;
-          if (_currentParagraphIndex < paragraphs.length) {
-            final fullText = paragraphs[_currentParagraphIndex];
-            final spokenSub = fullText.substring(0, endOffset.clamp(0, fullText.length));
-            final wordsCount = spokenSub.trim().split(RegExp(r'\s+')).length;
-            if (wordsCount > _currentSpokenWordIndex) {
-              _currentSpokenWordIndex = wordsCount;
-            }
+        if (_playbackState == StoryPlaybackState.playing && _currentUtteranceText.isNotEmpty) {
+          final safeEnd = endOffset.clamp(0, _currentUtteranceText.length);
+          final spokenSub = _currentUtteranceText.substring(0, safeEnd).trim();
+          final wordsCount = spokenSub.isEmpty ? 0 : spokenSub.split(RegExp(r'\s+')).length;
+          final totalWords = _baseWordOffset + wordsCount;
+          if (totalWords > _currentSpokenWordIndex) {
+            _currentSpokenWordIndex = totalWords;
           }
         }
       });
@@ -111,6 +110,8 @@ class PlayNarrationService {
 
     try {
       await _flutterTts?.setLanguage(_currentLanguage.code);
+      await _flutterTts?.setSpeechRate(0.30);
+      await _flutterTts?.setPitch(1.25);
     } catch (e) {
       debugPrint("TTS setLanguage error: $e");
     }
@@ -130,6 +131,8 @@ class PlayNarrationService {
     }
     _currentParagraphIndex = 0;
     _currentSpokenWordIndex = 0;
+    _baseWordOffset = 0;
+    _currentUtteranceText = "";
     _playbackState = StoryPlaybackState.stopped;
     _emitSubtitle(_currentScript?.initialGreeting ?? "");
     _emitState(_playbackState);
@@ -142,6 +145,7 @@ class PlayNarrationService {
     if (_playbackState == StoryPlaybackState.completed) {
       _currentParagraphIndex = 0;
       _currentSpokenWordIndex = 0;
+      _baseWordOffset = 0;
     }
     _playbackState = StoryPlaybackState.playing;
     _emitState(_playbackState);
@@ -150,7 +154,7 @@ class PlayNarrationService {
   }
 
   /// Speaks the current paragraph.
-  /// If resuming after pause, only speaks from the unread breakpoint words!
+  /// If resuming after pause, only speaks from the exact unread breakpoint words!
   Future<void> _speakCurrentParagraph() async {
     if (_currentScript == null) return;
     final paragraphs = _currentScript!.narrationParagraphs;
@@ -166,51 +170,36 @@ class PlayNarrationService {
 
     // Determine text to speak (Full paragraph vs. Remaining words after pause)
     String textToSpeak = fullText;
-    int baseWordIndex = _currentSpokenWordIndex;
 
-    if (baseWordIndex > 0 && baseWordIndex < allWords.length) {
-      // Resume directly from where it was paused!
-      textToSpeak = allWords.sublist(baseWordIndex).join(' ');
+    if (_currentSpokenWordIndex > 0 && _currentSpokenWordIndex < allWords.length) {
+      // Resume directly from the exact word that was paused!
+      _baseWordOffset = _currentSpokenWordIndex;
+      textToSpeak = allWords.sublist(_baseWordOffset).join(' ');
     } else {
       _currentSpokenWordIndex = 0;
-      baseWordIndex = 0;
+      _baseWordOffset = 0;
+      textToSpeak = fullText;
     }
+    _currentUtteranceText = textToSpeak;
 
     _fallbackTimer?.cancel();
-    _wordProgressTimer?.cancel();
 
-    // Internal word tracker for devices without native setProgressHandler
+    // Generous fallback safety timeout (never cuts off slow speech prematurely)
     final segmentWords = textToSpeak.split(RegExp(r'\s+'));
-    int relativeWordIdx = 0;
-    void stepWordTimer(Timer t) {
-      if (_playbackState != StoryPlaybackState.playing) {
-        t.cancel();
-        return;
-      }
-      relativeWordIdx++;
-      final totalWords = baseWordIndex + relativeWordIdx;
-      if (totalWords <= allWords.length) {
-        _currentSpokenWordIndex = totalWords;
-      } else {
-        t.cancel();
-      }
-    }
-    _wordProgressTimer = Timer.periodic(const Duration(milliseconds: 320), stepWordTimer);
-
-    final estimatedSeconds = (segmentWords.length / 2.0).clamp(3.0, 18.0).toInt();
+    final safeTimeoutSeconds = (segmentWords.length * 4) + 15;
 
     try {
       await _safeStopTts();
       await _flutterTts?.setLanguage(_currentLanguage.code);
       await _flutterTts?.speak(textToSpeak);
 
-      _fallbackTimer = Timer(Duration(seconds: estimatedSeconds + 1), () {
+      _fallbackTimer = Timer(Duration(seconds: safeTimeoutSeconds), () {
         if (_playbackState == StoryPlaybackState.playing) {
           _onParagraphSpeechCompleted();
         }
       });
     } catch (e) {
-      _fallbackTimer = Timer(const Duration(seconds: 6), () {
+      _fallbackTimer = Timer(const Duration(seconds: 10), () {
         if (_playbackState == StoryPlaybackState.playing) {
           _onParagraphSpeechCompleted();
         }
@@ -221,15 +210,18 @@ class PlayNarrationService {
   /// Triggered when the current paragraph speech finishes
   void _onParagraphSpeechCompleted() {
     _fallbackTimer?.cancel();
-    _wordProgressTimer?.cancel();
     if (_playbackState != StoryPlaybackState.playing || _currentScript == null) return;
 
     _currentSpokenWordIndex = 0;
+    _baseWordOffset = 0;
+    _currentUtteranceText = "";
 
     final paragraphs = _currentScript!.narrationParagraphs;
     if (_currentParagraphIndex < paragraphs.length - 1) {
       _currentParagraphIndex++;
-      Future.delayed(const Duration(milliseconds: 350), () {
+      // Immediately emit the next paragraph subtitle so the user and UI see it right away!
+      _emitSubtitle(paragraphs[_currentParagraphIndex]);
+      Future.delayed(const Duration(milliseconds: 300), () {
         if (_playbackState == StoryPlaybackState.playing) {
           _speakCurrentParagraph();
         }
@@ -244,10 +236,11 @@ class PlayNarrationService {
   Future<void> _onAllParagraphsFinished() async {
     _playbackState = StoryPlaybackState.completed;
     _fallbackTimer?.cancel();
-    _wordProgressTimer?.cancel();
     await _safeStopTts();
     _currentParagraphIndex = 0;
     _currentSpokenWordIndex = 0;
+    _baseWordOffset = 0;
+    _currentUtteranceText = "";
     _emitState(_playbackState);
     final name = _currentScript?.landmarkName ?? 'this landmark';
     _emitSubtitle("🎉 You've completed the story of $name! Hope you enjoyed the journey!");
@@ -257,7 +250,6 @@ class PlayNarrationService {
   Future<void> pause() async {
     _playbackState = StoryPlaybackState.paused;
     _fallbackTimer?.cancel();
-    _wordProgressTimer?.cancel();
     await _safeStopTts();
     _emitState(_playbackState);
   }
@@ -266,10 +258,11 @@ class PlayNarrationService {
   Future<void> stop() async {
     _playbackState = StoryPlaybackState.stopped;
     _fallbackTimer?.cancel();
-    _wordProgressTimer?.cancel();
     await _safeStopTts();
     _currentParagraphIndex = 0;
     _currentSpokenWordIndex = 0;
+    _baseWordOffset = 0;
+    _currentUtteranceText = "";
     _emitState(_playbackState);
     if (_currentScript != null) {
       _emitSubtitle(_currentScript!.initialGreeting);
@@ -299,7 +292,6 @@ class PlayNarrationService {
 
   void dispose() {
     _fallbackTimer?.cancel();
-    _wordProgressTimer?.cancel();
     _safeStopTts();
     _subtitleController.close();
     _stateController.close();

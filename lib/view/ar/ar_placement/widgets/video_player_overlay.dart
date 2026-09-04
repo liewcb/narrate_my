@@ -9,11 +9,13 @@ import '../../../../model/business_logic/ar_placement_service/video_playback_ser
 /// and responsive Flutter controls for ultra-fast startup and smooth playback.
 class VideoPlayerScreen extends StatefulWidget {
   final String? videoUrl;
+  final String? videoUrlBackup;
   final String landmarkName;
 
   const VideoPlayerScreen({
     super.key,
     this.videoUrl,
+    this.videoUrlBackup,
     required this.landmarkName,
   });
 
@@ -28,6 +30,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _hasError = false;
   bool _isLoading = false;
   bool _isPlayerReady = false;
+  bool _isUsingBackup = false;
 
   // Custom Controls State
   bool _showControls = true;
@@ -42,29 +45,47 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _initYoutubePlayer() {
-    _videoId = _videoService.extractVideoId(widget.videoUrl);
+    try {
+      final targetUrl = _isUsingBackup ? widget.videoUrlBackup : widget.videoUrl;
+      _videoId = _videoService.extractVideoId(targetUrl);
 
-    if (_videoId == null) {
-      _hasError = true;
-      return;
+      if (_videoId == null) {
+        if (!_isUsingBackup && widget.videoUrlBackup != null && widget.videoUrlBackup!.trim().isNotEmpty) {
+          _isUsingBackup = true;
+          _initYoutubePlayer();
+          return;
+        }
+        setState(() {
+          _hasError = true;
+        });
+        return;
+      }
+
+      _controller?.removeListener(_listener);
+      _controller?.dispose();
+
+      _controller = YoutubePlayerController(
+        initialVideoId: _videoId!,
+        flags: const YoutubePlayerFlags(
+          autoPlay: true,
+          mute: false,
+          enableCaption: false,
+          showLiveFullscreenButton: false,
+          forceHD: false, // ⚡ FAST START: Adaptive bitrate starts playing in < 0.5s
+          useHybridComposition: true, // 🚀 60 FPS hardware accelerated MediaCodec video decoding
+          controlsVisibleAtStart: false,
+          hideThumbnail: true,
+          hideControls: true, // Hides YouTube HTML iframe controls completely
+          disableDragSeek: true,
+          loop: false,
+        ),
+      )..addListener(_listener);
+    } catch (e) {
+      debugPrint("Error initializing YoutubePlayer: $e");
+      setState(() {
+        _hasError = true;
+      });
     }
-
-    _controller = YoutubePlayerController(
-      initialVideoId: _videoId!,
-      flags: const YoutubePlayerFlags(
-        autoPlay: true,
-        mute: false,
-        enableCaption: false,
-        showLiveFullscreenButton: false,
-        forceHD: false, // ⚡ FAST START: Adaptive bitrate starts playing in < 0.5s
-        useHybridComposition: true,
-        controlsVisibleAtStart: false,
-        hideThumbnail: true,
-        hideControls: true, // Hides YouTube HTML iframe controls completely
-        disableDragSeek: true,
-        loop: false,
-      ),
-    )..addListener(_listener);
   }
 
   void _listener() {
@@ -79,6 +100,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     if (hasError && !_hasError) {
+      if (!_isUsingBackup && widget.videoUrlBackup != null && widget.videoUrlBackup!.trim().isNotEmpty) {
+        _isUsingBackup = true;
+        _isPlayerReady = false;
+        _initYoutubePlayer();
+        setState(() {});
+        return;
+      }
       setState(() {
         _hasError = true;
       });
@@ -182,6 +210,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
 
     return YoutubePlayerBuilder(
+      onEnterFullScreen: () {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      },
+      onExitFullScreen: () {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+        ]);
+      },
       player: YoutubePlayer(
         controller: _controller!,
         showVideoProgressIndicator: false,
@@ -195,122 +234,50 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         },
       ),
       builder: (context, player) {
-        return OrientationBuilder(
-          builder: (context, orientation) {
-            final isLandscape = orientation == Orientation.landscape;
+        return Scaffold(
+          backgroundColor: const Color(0xFF0F1A1B),
+          body: SafeArea(
+            child: Column(
+              children: [
+                // Top Bar: Landmark Badge + Close Button
+                _buildTopBar(context, accentOrange),
 
-            // 🎬 1. LANDSCAPE CINEMA FULLSCREEN MODE
-            if (isLandscape) {
-              return Scaffold(
-                backgroundColor: Colors.black,
-                body: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Center(child: player),
-                    _buildThumbnailPlaceholder(accentOrange),
-                    _buildCustomControlsOverlay(isLandscape: true, accentOrange: accentOrange),
-                    Positioned(
-                      top: 16,
-                      right: 16,
-                      child: SafeArea(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.6),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white24),
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white, size: 22),
-                            tooltip: 'Close Video',
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
+                // Main Video Player Card with Custom Controls & Poster Preload
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            // 📱 2. PORTRAIT IMMERSIVE MODE
-            return Scaffold(
-              backgroundColor: const Color(0xFF0F1A1B),
-              body: SafeArea(
-                child: Column(
-                  children: [
-                    // Top Bar: Landmark Badge + Close Button
-                    _buildTopBar(context, accentOrange),
-
-                    // Main Video Player Card with Custom Controls & Poster Preload
-                    Expanded(
-                      child: Center(
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                        clipBehavior: Clip.antiAlias,
+                        child: AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: Stack(
+                            alignment: Alignment.center,
                             children: [
-                              RepaintBoundary(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.6),
-                                        blurRadius: 24,
-                                        offset: const Offset(0, 8),
-                                      ),
-                                    ],
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      player,
-                                      _buildThumbnailPlaceholder(accentOrange),
-                                      _buildCustomControlsOverlay(isLandscape: false, accentOrange: accentOrange),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF142121).withValues(alpha: 0.9),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: Colors.white12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.smart_display_outlined, color: accentOrange, size: 20),
-                                    const SizedBox(width: 10),
-                                    Flexible(
-                                      child: Text(
-                                        widget.landmarkName,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              player,
+                              _buildThumbnailPlaceholder(accentOrange),
+                              _buildCustomControlsOverlay(isLandscape: false, accentOrange: accentOrange),
                             ],
                           ),
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            );
-          },
+              ],
+            ),
+          ),
         );
       },
     );
@@ -577,7 +544,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.shield_outlined, color: Colors.white, size: 16),
+                const Icon(Icons.smart_display_rounded, color: Colors.white, size: 16),
                 const SizedBox(width: 6),
                 Text(
                   widget.landmarkName,
@@ -609,7 +576,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Widget _buildUnavailableState(Color accentOrange) {
-    final hasUrl = widget.videoUrl != null && widget.videoUrl!.trim().isNotEmpty;
+    final hasUrl = (widget.videoUrl != null && widget.videoUrl!.trim().isNotEmpty) ||
+        (widget.videoUrlBackup != null && widget.videoUrlBackup!.trim().isNotEmpty);
     const errorMessage = "The related video is currently unavailable. Please try again later.";
 
     return Padding(
@@ -667,15 +635,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   setState(() {
                     _isLoading = true;
                     _hasError = false;
+                    _isUsingBackup = false; // reset to primary on manual retry
                   });
-                  final retryVideoId = YoutubePlayer.convertUrlToId(widget.videoUrl!) ?? "";
-                  if (retryVideoId.isNotEmpty) {
-                    _controller?.load(retryVideoId);
-                  } else {
-                    setState(() {
-                      _hasError = true;
-                    });
-                  }
+                  _initYoutubePlayer();
                   Future.delayed(const Duration(milliseconds: 600), () {
                     if (mounted) {
                       setState(() {

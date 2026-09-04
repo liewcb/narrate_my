@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../../viewmodel/ar/ar_placement_vm.dart';
 
 /// Top bar displaying Landmark title, Back button, and LIVE / Mode indicators
 class ARPlacementTopBar extends StatelessWidget {
@@ -15,10 +15,19 @@ class ARPlacementTopBar extends StatelessWidget {
       top: topPadding,
       left: 16,
       right: 16,
-      child: Selector<ARPlacementViewModel, ({String landmarkName, bool isPlaying})>(
+      child: Selector<ARPlacementViewModel, ({
+        String landmarkName,
+        bool isPlaying,
+        bool hasAvatarInScene,
+        bool hasStarted,
+        bool isCapturing,
+      })>(
         selector: (context, vm) => (
           landmarkName: vm.landmarkName,
           isPlaying: vm.isPlaying,
+          hasAvatarInScene: vm.hasAvatarInScene,
+          hasStarted: vm.hasStartedStorytelling,
+          isCapturing: vm.isCapturingSnapshot,
         ),
         builder: (context, data, child) {
           return Row(
@@ -33,12 +42,21 @@ class ARPlacementTopBar extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
+                  tooltip: data.hasStarted ? 'Back to Actions' : 'Exit AR',
                   icon: Icon(
-                    data.isPlaying ? Icons.arrow_back_ios_new : Icons.close,
+                    data.hasStarted ? Icons.close : Icons.arrow_back_ios_new,
                     color: Colors.white,
                     size: 20,
                   ),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    if (data.hasStarted) {
+                      // Return to the 3-button Action Menu (Storytelling, Watch Video, Recommend)
+                      context.read<ARPlacementViewModel>().stopStorytelling();
+                    } else {
+                      // Exit AR Placement screen back to exploration
+                      Navigator.of(context).pop();
+                    }
+                  },
                 ),
               ),
 
@@ -77,7 +95,7 @@ class ARPlacementTopBar extends StatelessWidget {
                 ),
               ),
 
-              // Mode / Status Badge
+              // Mode / Status Badge or Camera Snapshot Button
               if (data.isPlaying)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -100,16 +118,72 @@ class ARPlacementTopBar extends StatelessWidget {
                     ],
                   ),
                 )
-              else
+              else if (data.hasAvatarInScene && !data.hasStarted)
+                // 📸 Snapshot Camera Button (Shown ONLY when Avatar placed AND NOT in Storytelling!)
                 Container(
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
+                    color: Colors.white.withValues(alpha: 0.18),
                     shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
                   ),
-                  child: const Icon(Icons.explore_outlined, color: Colors.white, size: 20),
-                ),
+                  child: data.isCapturing
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.amberAccent,
+                          ),
+                        )
+                      : IconButton(
+                          icon: const Icon(
+                            Icons.camera_alt_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                          tooltip: 'Take Photo with Manja',
+                          onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            final vm = context.read<ARPlacementViewModel>();
+                            final success = await vm.takeSnapshotAndSave();
+                            messenger.hideCurrentSnackBar();
+                            if (success) {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: const Row(
+                                    children: [
+                                      Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        "📸 Photo saved to Gallery!",
+                                        style: TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                  backgroundColor: const Color(0xFF1B2A2B),
+                                  duration: const Duration(seconds: 3),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                              );
+                            } else {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: const Text("Failed to save photo. Please try again."),
+                                  backgroundColor: Colors.redAccent.shade700,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                )
+              else
+                // Left blank before avatar placement AND during storytelling (when not live)
+                const SizedBox(width: 44, height: 44),
             ],
           );
         },

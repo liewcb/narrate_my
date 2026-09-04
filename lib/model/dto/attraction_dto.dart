@@ -11,6 +11,7 @@ class AttractionDTO {
   final String attractionContent;
   final String? model3dUrl;
   final String? videoUrl;
+  final String? videoUrlBackup;
   final String? sourceUrl;
   final List<String> labels;
 
@@ -21,6 +22,7 @@ class AttractionDTO {
     required this.attractionContent,
     this.model3dUrl,
     this.videoUrl,
+    this.videoUrlBackup,
     this.sourceUrl,
     this.labels = const [],
   });
@@ -34,6 +36,7 @@ class AttractionDTO {
       attractionContent: json['attraction_content']?.toString() ?? '',
       model3dUrl: json['model_3d_url'] as String?,
       videoUrl: json['video_url'] as String?,
+      videoUrlBackup: json['video_url_backup'] as String?,
       sourceUrl: json['source_url'] as String?,
       labels: _parseLabels(json['labels']),
     );
@@ -48,6 +51,7 @@ class AttractionDTO {
       'attraction_content': attractionContent,
       'model_3d_url': model3dUrl,
       'video_url': videoUrl,
+      'video_url_backup': videoUrlBackup,
       'source_url': sourceUrl,
       'labels': labels,
     };
@@ -91,6 +95,10 @@ class AttractionDTO {
         ? videoUrl!.trim()
         : null;
 
+    final validVideoUrlBackup = (videoUrlBackup != null && videoUrlBackup!.trim().isNotEmpty)
+        ? videoUrlBackup!.trim()
+        : null;
+
     return StoryScript(
       id: attractionId.isNotEmpty ? attractionId : 'story_$markerId',
       markerId: markerId,
@@ -101,6 +109,7 @@ class AttractionDTO {
       narrationParagraphs: paragraphs,
       model3dPath: validModel3d,
       videoUrl: validVideoUrl,
+      videoUrlBackup: validVideoUrlBackup,
     );
   }
 

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:provider/provider.dart';
-import '../../../../viewmodel/ar/ar_placement_viewmodel.dart';
+import '../../../../viewmodel/ar/ar_placement_vm.dart';
 
 /// Standalone 3D Landmark Model Viewport Widget with persistent loading shield and GPU optimizations.
 class AR3DViewerOverlay extends StatefulWidget {
@@ -19,9 +19,8 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
   @override
   void initState() {
     super.initState();
-    // 26MB GLB Model requires 4.5s - 5.0s on mobile device to compile all PBR shaders.
-    // Loading overlay stays visible continuously to ensure user never sees a blank screen!
-    _loadingTimer = Timer(const Duration(milliseconds: 4800), () {
+    // Fast start: Model is prewarmed, dismiss spinner quickly (600ms) for snappy display
+    _loadingTimer = Timer(const Duration(milliseconds: 600), () {
       if (mounted) {
         setState(() => _is3DModelLoading = false);
       }
@@ -52,41 +51,40 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
         final landmarkName = data.landmarkName;
         final hasModel = modelPath != null && modelPath.trim().isNotEmpty;
 
-        return RepaintBoundary(
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              color: cardBg,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.2),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: cardBg,
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.2),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: hasModel
-                ? Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // 1. High-Performance WebGL 3D Model Viewer
-                      ModelViewer(
-                        key: ValueKey('3d_viewer_$modelPath'),
-                        src: modelPath,
-                        alt: '$landmarkName 3D Model',
-                        ar: false,
-                        autoRotate: false,
-                        cameraControls: true,
-                        backgroundColor: Colors.transparent,
-                        disableZoom: false,
-                        loading: Loading.eager,
-                        interactionPrompt: InteractionPrompt.none,
-                        shadowIntensity: 0.0,
-                      ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.45),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.hardEdge,
+          child: hasModel
+              ? Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 1. High-Performance WebGL 3D Model Viewer (Async Progressive Loading)
+                    ModelViewer(
+                      key: ValueKey('3d_viewer_$modelPath'),
+                      src: modelPath,
+                      alt: '$landmarkName 3D Model',
+                      ar: false,
+                      autoRotate: false,
+                      cameraControls: true,
+                      backgroundColor: Colors.transparent,
+                      disableZoom: false,
+                      loading: Loading.eager,
+                      interactionPrompt: InteractionPrompt.none,
+                      shadowIntensity: 0.0,
+                    ),
 
                       // 2. Dedicated 3D Model Loading Indicator (Guarantees user NEVER sees a blank screen!)
                       AnimatedOpacity(
@@ -211,8 +209,7 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
                       ),
                     ),
                   ),
-          ),
-        );
+          );
       },
     );
   }
