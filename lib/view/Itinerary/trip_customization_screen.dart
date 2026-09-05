@@ -29,13 +29,13 @@ class _TripCustomizationScreenState extends State<TripCustomizationScreen> {
   }
 }
 
-// ─── _Step2TripStyleBody remains unchanged in UI ───────────────
 class _Step2TripStyleBody extends StatelessWidget {
   const _Step2TripStyleBody();
 
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<Step2TripStyleVM>();
+    final dateError = vm.dateError; // 👈 get date error separately
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -64,7 +64,7 @@ class _Step2TripStyleBody extends StatelessWidget {
                     onChanged: vm.setTripName,
                   ),
                   const SizedBox(height: 24),
-                  _TravelDates(vm: vm),
+                  _TravelDates(vm: vm, dateError: dateError), // 👈 pass error
                   const SizedBox(height: 24),
                   _ExplorationTime(
                     selected: vm.exploration,
@@ -94,14 +94,22 @@ class _Step2TripStyleBody extends StatelessWidget {
               onPressed: () {
                 final errors = vm.validate();
                 if (errors.isNotEmpty) {
-                  ScaffoldMessenger.of(context)
-                    ..hideCurrentSnackBar()
-                    ..showSnackBar(
-                      SnackBar(
-                        content: Text(errors.values.first),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
+                  // If the only error is a date error, it's already shown inline → no SnackBar.
+                  // But if there are other errors, show the first non-date error.
+                  final nonDateError = errors.entries
+                      .where((e) => e.key != 'dates')
+                      .map((e) => e.value)
+                      .firstOrNull;
+                  if (nonDateError != null) {
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: Text(nonDateError),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                  }
                   return;
                 }
 
@@ -321,9 +329,7 @@ class _TripNameState extends State<_TripName> {
           child: TextField(
             controller: _controller,
             onChanged: widget.onChanged,
-            // 1. Boundary limit check
             maxLength: 50,
-            // 2. Real-time format constraint
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z0-9\s\-,']")),
             ],
@@ -333,7 +339,6 @@ class _TripNameState extends State<_TripName> {
               hintStyle: TextStyle(color: AppColors.outline),
               contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               border: InputBorder.none,
-              // Hides the 0/50 counter for a cleaner UI
               counterText: '',
             ),
           ),
@@ -342,11 +347,17 @@ class _TripNameState extends State<_TripName> {
     );
   }
 }
-// ─── Travel Dates – now enforce max 3 days ──────────────────────
+
+// ─── Travel Dates with inline error ──────────────────────────────
 
 class _TravelDates extends StatelessWidget {
   final Step2TripStyleVM vm;
-  const _TravelDates({required this.vm});
+  final String? dateError; // 👈 new
+
+  const _TravelDates({
+    required this.vm,
+    this.dateError,
+  });
 
   Future<void> _pickRange(BuildContext context) async {
     final now = DateTime.now();
@@ -356,7 +367,7 @@ class _TravelDates extends StatelessWidget {
       context: context,
       builder: (dialogContext) => _DateRangePickerDialog(
         firstDate: today,
-        lastDate: vm.latestPossibleEndDate(), // now uses vm.maxTripDays = 3
+        lastDate: vm.latestPossibleEndDate(),
         initialStart: vm.startDate,
         initialEnd: vm.endDate,
         maxEndFor: (start) => vm.latestPossibleEndDate(fromStart: start),
@@ -422,13 +433,25 @@ class _TravelDates extends StatelessWidget {
         ),
         const SizedBox(height: 6),
 
-        // 👇 Updated to show max 3 days
         Text(
           vm.startDate != null
               ? 'Up to ${vm.maxTripDays} days · tap to change'
               : 'Tap to pick · up to ${vm.maxTripDays} days',
           style: GoogleFonts.inter(fontSize: 12, color: AppColors.outline),
         ),
+
+        // ─── Inline error message ────────────────────────────────
+        if (dateError != null && dateError!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            dateError!,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: Colors.red,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
 
         if (coverage != WeatherCoverage.unknown) ...[
           const SizedBox(height: 8),
@@ -528,7 +551,7 @@ class _TravelDates extends StatelessWidget {
   }
 }
 
-// ─── Date picker (unchanged, but uses VM's maxEndFor which is now 3) ──
+// ─── Date picker dialog (unchanged) ──────────────────────────────
 
 class _DateRangePickerDialog extends StatefulWidget {
   final DateTime firstDate;
@@ -583,7 +606,6 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
   bool get _hasCompleteRange => _start != null && _end != null;
 
   bool _isDisabled(DateTime day) {
-    // ONLY disable dates that are strictly outside the global allowed bounds
     return day.isBefore(widget.firstDate) || day.isAfter(widget.lastDate);
   }
 
@@ -591,22 +613,15 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
     if (_isDisabled(day)) return;
 
     setState(() {
-      // 1. If nothing is selected, or both are already selected, start a fresh range
       if (_start == null || _hasCompleteRange) {
         _start = day;
         _end = null;
-      }
-      // 2. If they pick a date BEFORE the start date, shift the start date backward
-      else if (day.isBefore(_start!)) {
+      } else if (day.isBefore(_start!)) {
         _start = day;
-      }
-      // 3. If they pick a date BEYOND the max limit, assume they are starting over
-      else if (day.isAfter(widget.maxEndFor(_start!))) {
+      } else if (day.isAfter(widget.maxEndFor(_start!))) {
         _start = day;
         _end = null;
-      }
-      // 4. Valid end date (includes tapping the exact same day for a 1-day trip!)
-      else {
+      } else {
         _end = day;
       }
     });
@@ -799,7 +814,6 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
         !day.isBefore(_start!) &&
         !day.isAfter(widget.maxEndFor(_start!));
 
-    // NEW: Check if this specific day is beyond the current 3-day limit
     final isBeyondMax = _start != null && _end == null && day.isAfter(widget.maxEndFor(_start!));
     final isToday = _isSameDay(day, _today);
 
@@ -812,13 +826,12 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
       bg = AppColors.brandGreenLight.withOpacity(0.45);
     }
 
-    // UPDATE: If it's beyond max, make it look slightly faded, but NOT fully disabled
     final fg = isSelected
         ? Colors.white
         : disabled
         ? AppColors.outlineLight
         : isBeyondMax
-        ? AppColors.brandCharcoal.withOpacity(0.4) // Soft hint that it's outside the range
+        ? AppColors.brandCharcoal.withOpacity(0.4)
         : AppColors.brandCharcoal;
 
     return GestureDetector(
@@ -1056,7 +1069,7 @@ class _TravelPace extends StatelessWidget {
 class _Interests extends StatelessWidget {
   final Set<String> selected;
   final ValueChanged<String> onToggle;
-  final int maxInterests; // 👈 new parameter
+  final int maxInterests;
 
   const _Interests({
     required this.selected,
@@ -1067,7 +1080,7 @@ class _Interests extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final allKeys = InterestMapping.interestToGoogleTypes.keys.toList();
-    final max = maxInterests; // 👈 use VM's value
+    final max = maxInterests;
     final remaining = max - selected.length;
 
     const icons = {
@@ -1104,18 +1117,6 @@ class _Interests extends StatelessWidget {
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          remaining == 0
-              ? 'You\'ve reached the maximum ($max interests)'
-              : 'SELECT UP TO $max — $remaining remaining',
-          style: GoogleFonts.inter(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.0,
-            color: remaining == 0 ? AppColors.brandTerracotta : AppColors.outline,
-          ),
         ),
         const SizedBox(height: 10),
         Wrap(
