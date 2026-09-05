@@ -35,7 +35,6 @@ class _Step2TripStyleBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<Step2TripStyleVM>();
-    final dateError = vm.dateError; // 👈 get date error separately
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -57,34 +56,43 @@ class _Step2TripStyleBody extends StatelessWidget {
                   _TravelType(
                     selected: vm.travelType,
                     onSelected: vm.setTravelType,
+                    error: vm.travelTypeError,
                   ),
                   const SizedBox(height: 24),
                   _TripName(
                     initialValue: vm.tripName,
                     onChanged: vm.setTripName,
+                    error: vm.tripNameError,
                   ),
                   const SizedBox(height: 24),
-                  _TravelDates(vm: vm, dateError: dateError), // 👈 pass error
+                  _TravelDates(
+                    vm: vm,
+                    error: vm.dateError,
+                  ),
                   const SizedBox(height: 24),
                   _ExplorationTime(
                     selected: vm.exploration,
                     onSelected: vm.setExploration,
+                    error: vm.explorationError,
                   ),
                   const SizedBox(height: 24),
                   _TravelPace(
                     selected: vm.pace,
                     onSelected: vm.setPace,
+                    error: vm.paceError,
                   ),
                   const SizedBox(height: 24),
                   _Interests(
                     selected: vm.interests,
                     onToggle: vm.toggleInterest,
                     maxInterests: vm.maxInterests,
+                    error: vm.interestsError,
                   ),
                   const SizedBox(height: 24),
                   _Transportation(
                     selected: vm.transportation,
                     onSelected: vm.setTransportation,
+                    error: vm.transportationError,
                   ),
                   const SizedBox(height: 120),
                 ],
@@ -92,24 +100,10 @@ class _Step2TripStyleBody extends StatelessWidget {
             ),
             _FooterButton(
               onPressed: () {
+                // No need to validate again – errors are already real‑time.
                 final errors = vm.validate();
                 if (errors.isNotEmpty) {
-                  // If the only error is a date error, it's already shown inline → no SnackBar.
-                  // But if there are other errors, show the first non-date error.
-                  final nonDateError = errors.entries
-                      .where((e) => e.key != 'dates')
-                      .map((e) => e.value)
-                      .firstOrNull;
-                  if (nonDateError != null) {
-                    ScaffoldMessenger.of(context)
-                      ..hideCurrentSnackBar()
-                      ..showSnackBar(
-                        SnackBar(
-                          content: Text(nonDateError),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                  }
+                  // All errors are already shown inline, so just return.
                   return;
                 }
 
@@ -192,10 +186,12 @@ class _Header extends StatelessWidget {
 class _TravelType extends StatelessWidget {
   final String? selected;
   final ValueChanged<String> onSelected;
+  final String? error;
 
   const _TravelType({
     required this.selected,
     required this.onSelected,
+    this.error,
   });
 
   @override
@@ -271,6 +267,17 @@ class _TravelType extends StatelessWidget {
             );
           }).toList(),
         ),
+        if (error != null && error!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            error!,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: Colors.red,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -279,9 +286,11 @@ class _TravelType extends StatelessWidget {
 class _TripName extends StatefulWidget {
   final String initialValue;
   final ValueChanged<String> onChanged;
+  final String? error;
   const _TripName({
     required this.initialValue,
     required this.onChanged,
+    this.error,
   });
 
   @override
@@ -343,21 +352,27 @@ class _TripNameState extends State<_TripName> {
             ),
           ),
         ),
+        if (widget.error != null && widget.error!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            widget.error!,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: Colors.red,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }
 }
 
-// ─── Travel Dates with inline error ──────────────────────────────
-
 class _TravelDates extends StatelessWidget {
   final Step2TripStyleVM vm;
-  final String? dateError; // 👈 new
+  final String? error;
 
-  const _TravelDates({
-    required this.vm,
-    this.dateError,
-  });
+  const _TravelDates({required this.vm, this.error});
 
   Future<void> _pickRange(BuildContext context) async {
     final now = DateTime.now();
@@ -440,11 +455,10 @@ class _TravelDates extends StatelessWidget {
           style: GoogleFonts.inter(fontSize: 12, color: AppColors.outline),
         ),
 
-        // ─── Inline error message ────────────────────────────────
-        if (dateError != null && dateError!.isNotEmpty) ...[
+        if (error != null && error!.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
-            dateError!,
+            error!,
             style: GoogleFonts.inter(
               fontSize: 12,
               color: Colors.red,
@@ -551,7 +565,7 @@ class _TravelDates extends StatelessWidget {
   }
 }
 
-// ─── Date picker dialog (unchanged) ──────────────────────────────
+// ─── Date picker dialog ──────────────────────────────────────────
 
 class _DateRangePickerDialog extends StatefulWidget {
   final DateTime firstDate;
@@ -569,19 +583,12 @@ class _DateRangePickerDialog extends StatefulWidget {
   });
 
   @override
-  State<_DateRangePickerDialog> createState() =>
-      _DateRangePickerDialogState();
+  State<_DateRangePickerDialog> createState() => _DateRangePickerDialogState();
 }
 
 class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
   static const List<String> _weekdayLabels = [
-    'S',
-    'M',
-    'T',
-    'W',
-    'T',
-    'F',
-    'S',
+    'S', 'M', 'T', 'W', 'T', 'F', 'S'
   ];
 
   DateTime? _start;
@@ -629,30 +636,26 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
 
   void _shiftMonth(int months) {
     setState(() {
-      _displayedMonth =
-          DateTime(_displayedMonth.year, _displayedMonth.month + months);
+      _displayedMonth = DateTime(_displayedMonth.year, _displayedMonth.month + months);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final firstOfShown = _displayedMonth;
-    final firstOfFirst =
-    DateTime(widget.firstDate.year, widget.firstDate.month);
+    final firstOfFirst = DateTime(widget.firstDate.year, widget.firstDate.month);
     final firstOfLast = DateTime(widget.lastDate.year, widget.lastDate.month);
     final canGoPrev = firstOfShown.isAfter(firstOfFirst);
     final canGoNext = firstOfShown.isBefore(firstOfLast);
 
-    final gridStart =
-    firstOfShown.subtract(Duration(days: firstOfShown.weekday % 7));
+    final gridStart = firstOfShown.subtract(Duration(days: firstOfShown.weekday % 7));
 
     String hint;
     if (_start == null) {
       hint = 'Select a start date';
     } else if (_end == null) {
       final maxEnd = widget.maxEndFor(_start!);
-      final minEnd =
-      _start!.isBefore(widget.firstDate) ? widget.firstDate : _start!;
+      final minEnd = _start!.isBefore(widget.firstDate) ? widget.firstDate : _start!;
       hint = 'End date must be between '
           '${DateFormat('MMM d').format(minEnd)} and '
           '${DateFormat('MMM d').format(maxEnd)}';
@@ -717,19 +720,17 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
               ),
               Row(
                 children: _weekdayLabels
-                    .map(
-                      (label) => Expanded(
-                    child: Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.outline,
-                      ),
+                    .map((label) => Expanded(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.outline,
                     ),
                   ),
-                )
+                ))
                     .toList(),
               ),
               const SizedBox(height: 4),
@@ -740,11 +741,8 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
                     return Expanded(
                       child: Row(
                         children: List.generate(7, (weekday) {
-                          final day = gridStart
-                              .add(Duration(days: week * 7 + weekday));
-                          return Expanded(
-                            child: _buildDayCell(day),
-                          );
+                          final day = gridStart.add(Duration(days: week * 7 + weekday));
+                          return Expanded(child: _buildDayCell(day));
                         }),
                       ),
                     );
@@ -757,9 +755,7 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
                   Expanded(
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.outline,
-                      ),
+                      style: TextButton.styleFrom(foregroundColor: AppColors.outline),
                       child: Text(
                         'Cancel',
                         style: GoogleFonts.inter(fontWeight: FontWeight.w600),
@@ -770,18 +766,13 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: _hasCompleteRange
-                          ? () => Navigator.of(context).pop(
-                        DateTimeRange(start: _start!, end: _end!),
-                      )
+                          ? () => Navigator.of(context).pop(DateTimeRange(start: _start!, end: _end!))
                           : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.brandGreen,
-                        disabledBackgroundColor:
-                        AppColors.outlineLight.withOpacity(0.5),
+                        disabledBackgroundColor: AppColors.outlineLight.withOpacity(0.5),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                       ),
                       child: Text(
                         'Select',
@@ -799,16 +790,14 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
   }
 
   Widget _buildDayCell(DateTime day) {
-    final inMonth =
-        day.month == _displayedMonth.month && day.year == _displayedMonth.year;
+    final inMonth = day.month == _displayedMonth.month && day.year == _displayedMonth.year;
     if (!inMonth) return const SizedBox.shrink();
 
     final disabled = _isDisabled(day);
     final isStart = _start != null && _isSameDay(day, _start!);
     final isEnd = _end != null && _isSameDay(day, _end!);
     final isSelected = isStart || isEnd;
-    final inRange =
-        _hasCompleteRange && day.isAfter(_start!) && day.isBefore(_end!);
+    final inRange = _hasCompleteRange && day.isAfter(_start!) && day.isBefore(_end!);
     final inValidWindow = _start != null &&
         _end == null &&
         !day.isBefore(_start!) &&
@@ -818,13 +807,9 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
     final isToday = _isSameDay(day, _today);
 
     Color? bg;
-    if (isSelected) {
-      bg = AppColors.brandGreen;
-    } else if (inRange) {
-      bg = AppColors.brandGreenLight;
-    } else if (inValidWindow && !disabled) {
-      bg = AppColors.brandGreenLight.withOpacity(0.45);
-    }
+    if (isSelected) bg = AppColors.brandGreen;
+    else if (inRange) bg = AppColors.brandGreenLight;
+    else if (inValidWindow && !disabled) bg = AppColors.brandGreenLight.withOpacity(0.45);
 
     final fg = isSelected
         ? Colors.white
@@ -882,11 +867,7 @@ class _WeatherCoverageBadge extends StatelessWidget {
       Colors.red,
       Icons.warning_amber_rounded,
       ),
-      WeatherCoverage.unknown => (
-      '',
-      AppColors.outline,
-      Icons.help_outline,
-      ),
+      WeatherCoverage.unknown => ('', AppColors.outline, Icons.help_outline),
     };
 
     if (coverage == WeatherCoverage.unknown) return const SizedBox.shrink();
@@ -919,7 +900,13 @@ class _WeatherCoverageBadge extends StatelessWidget {
 class _ExplorationTime extends StatelessWidget {
   final String? selected;
   final ValueChanged<String> onSelected;
-  const _ExplorationTime({required this.selected, required this.onSelected});
+  final String? error;
+
+  const _ExplorationTime({
+    required this.selected,
+    required this.onSelected,
+    this.error,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -984,6 +971,17 @@ class _ExplorationTime extends StatelessWidget {
             );
           }).toList(),
         ),
+        if (error != null && error!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            error!,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: Colors.red,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -992,7 +990,13 @@ class _ExplorationTime extends StatelessWidget {
 class _TravelPace extends StatelessWidget {
   final String? selected;
   final ValueChanged<String> onSelected;
-  const _TravelPace({required this.selected, required this.onSelected});
+  final String? error;
+
+  const _TravelPace({
+    required this.selected,
+    required this.onSelected,
+    this.error,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1059,22 +1063,33 @@ class _TravelPace extends StatelessWidget {
             );
           }).toList(),
         ),
+        if (error != null && error!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            error!,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: Colors.red,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }
 }
 
-// ─── Interests – now enforce max 2 ─────────────────────────────
-
 class _Interests extends StatelessWidget {
   final Set<String> selected;
   final ValueChanged<String> onToggle;
   final int maxInterests;
+  final String? error;
 
   const _Interests({
     required this.selected,
     required this.onToggle,
     required this.maxInterests,
+    this.error,
   });
 
   @override
@@ -1111,12 +1126,22 @@ class _Interests extends StatelessWidget {
               style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: remaining == 0
-                    ? AppColors.brandTerracotta
-                    : AppColors.brandGreen,
+                color: remaining == 0 ? AppColors.brandTerracotta : AppColors.brandGreen,
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          remaining == 0
+              ? 'You\'ve reached the maximum ($max interests)'
+              : 'SELECT UP TO $max — $remaining remaining',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.0,
+            color: remaining == 0 ? AppColors.brandTerracotta : AppColors.outline,
+          ),
         ),
         const SizedBox(height: 10),
         Wrap(
@@ -1139,9 +1164,7 @@ class _Interests extends StatelessWidget {
                       : AppColors.white,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: isSelected
-                        ? AppColors.brandGreen
-                        : AppColors.outlineLight.withOpacity(0.6),
+                    color: isSelected ? AppColors.brandGreen : AppColors.outlineLight.withOpacity(0.6),
                     width: 1,
                   ),
                   boxShadow: const [
@@ -1154,11 +1177,7 @@ class _Interests extends StatelessWidget {
                     Icon(
                       icon,
                       size: 16,
-                      color: isSelected
-                          ? Colors.white
-                          : isDisabled
-                          ? AppColors.outline
-                          : AppColors.brandCharcoal,
+                      color: isSelected ? Colors.white : isDisabled ? AppColors.outline : AppColors.brandCharcoal,
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -1166,11 +1185,7 @@ class _Interests extends StatelessWidget {
                       style: GoogleFonts.inter(
                         fontSize: 13,
                         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isSelected
-                            ? Colors.white
-                            : isDisabled
-                            ? AppColors.outline
-                            : AppColors.brandCharcoal,
+                        color: isSelected ? Colors.white : isDisabled ? AppColors.outline : AppColors.brandCharcoal,
                       ),
                     ),
                   ],
@@ -1179,6 +1194,17 @@ class _Interests extends StatelessWidget {
             );
           }).toList(),
         ),
+        if (error != null && error!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            error!,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: Colors.red,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1187,9 +1213,12 @@ class _Interests extends StatelessWidget {
 class _Transportation extends StatelessWidget {
   final String? selected;
   final ValueChanged<String> onSelected;
+  final String? error;
+
   const _Transportation({
     required this.selected,
     required this.onSelected,
+    this.error,
   });
 
   @override
@@ -1303,6 +1332,17 @@ class _Transportation extends StatelessWidget {
             );
           }).toList(),
         ),
+        if (error != null && error!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            error!,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: Colors.red,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }

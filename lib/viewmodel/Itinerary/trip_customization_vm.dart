@@ -34,6 +34,13 @@ class Step2TripStyleVM extends ChangeNotifier {
   Map<String, String> get validationErrors => _validationErrors;
   String? get dateError => _validationErrors['dates']; // 👈 for inline display
 
+  String? get travelTypeError => _validationErrors['travelType'];
+  String? get tripNameError => _validationErrors['tripName'];
+  String? get explorationError => _validationErrors['exploration'];
+  String? get paceError => _validationErrors['pace'];
+  String? get interestsError => _validationErrors['interests'];
+  String? get transportationError => _validationErrors['transportation'];
+
   int get totalDays {
     if (startDate == null || endDate == null) return 0;
     return endDate!.difference(startDate!).inDays + 1;

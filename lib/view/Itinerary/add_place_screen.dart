@@ -1,16 +1,42 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
+import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
+import '../../model/entities/coordinates.dart';
 import '../../viewmodel/Itinerary/add_place_vm.dart';
 
 class AddPlaceScreen extends StatefulWidget {
   final String itineraryId;
   final int dayIndex; // 0-based
+  final String explorationTime;
+
+  // ─── Preview working state (optional) ───────────────────────
+  // When [workingDay] is supplied the screen runs the in-memory AI
+  // insertion + validation flow and returns the updated day WITHOUT
+  // touching the database. When omitted, the legacy saved-itinerary
+  // behaviour is preserved.
+  final ScheduledDay? workingDay;
+  final Set<String> itineraryUsedPlaceIds;
+  final DateTime? dayDate;
+  final String transportMode;
+  final String travelPace;
+  final List<String> interests;
+  final List<String> mustVisitPlaceIds;
+  final Coordinates? destinationCenter;
 
   const AddPlaceScreen({
     Key? key,
     required this.itineraryId,
     required this.dayIndex,
+    this.explorationTime = 'Standard',
+    this.workingDay,
+    this.itineraryUsedPlaceIds = const {},
+    this.dayDate,
+    this.transportMode = 'walking',
+    this.travelPace = 'Standard',
+    this.interests = const [],
+    this.mustVisitPlaceIds = const [],
+    this.destinationCenter,
   }) : super(key: key);
 
   @override
@@ -24,7 +50,15 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       create: (_) => AddPlaceVM(
         itineraryId: widget.itineraryId,
         dayIndex: widget.dayIndex,
-        explorationTime: 'Standard',
+        explorationTime: widget.explorationTime,
+        workingDay: widget.workingDay,
+        itineraryUsedPlaceIds: widget.itineraryUsedPlaceIds,
+        dayDate: widget.dayDate,
+        transportMode: widget.transportMode,
+        travelPace: widget.travelPace,
+        interests: widget.interests,
+        mustVisitPlaceIds: widget.mustVisitPlaceIds,
+        destinationCenter: widget.destinationCenter,
       )..load(),
       child: const _AddPlaceBody(),
     );
@@ -50,7 +84,7 @@ class _AddPlaceBody extends StatelessWidget {
     return Scaffold(
       backgroundColor: _bg,
       appBar: _buildAppBar(context),
-      body: vm.isLoadingStops
+      body: vm.isLoadingStops || vm.isLoadingCandidates
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -233,16 +267,28 @@ class _AddPlaceBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: vm.candidates.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 16),
-          itemBuilder: (context, index) {
-            final option = vm.candidates[index];
-            return _buildPlaceCard(context, option);
-          },
-        ),
+        if (vm.candidates.isEmpty && vm.candidatesError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                vm.candidatesError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: _mutedText),
+              ),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: vm.candidates.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 16),
+            itemBuilder: (context, index) {
+              final option = vm.candidates[index];
+              return _buildPlaceCard(context, option);
+            },
+          ),
       ],
     );
   }
@@ -377,12 +423,20 @@ class _AddPlaceBody extends StatelessWidget {
                       SnackBar(
                         content: Text(
                           result.success
-                              ? 'Added ${result.addedStops.length} place(s) to Day ${vm.dayIndex + 1}.'
+                              ? (vm.isPreviewMode
+                                  ? 'Place added to Day ${vm.dayIndex + 1}. '
+                                      'Review your updated itinerary, then save.'
+                                  : 'Added ${result.addedStops.length} place(s) '
+                                      'to Day ${vm.dayIndex + 1}.')
                               : (result.message ?? 'Could not add place.'),
                         ),
                       ),
                     );
-                  if (result.success) Navigator.maybePop(context);
+                  if (result.success) {
+                    // Preview mode returns the validated updated day so the
+                    // Preview replaces ONLY this day. Legacy mode returns null.
+                    Navigator.pop(context, result.proposedDay);
+                  }
                 }
               : null,
           style: ElevatedButton.styleFrom(
@@ -403,8 +457,12 @@ class _AddPlaceBody extends StatelessWidget {
               : const Icon(Icons.check, size: 20),
           label: Text(
             vm.isSaving
-                ? 'Adding...'
-                : 'Add ${vm.selectedPlaceIds.length} place(s) to Itinerary',
+                ? (vm.isPreviewMode
+                    ? 'Fitting into your day...'
+                    : 'Adding...')
+                : vm.isPreviewMode
+                    ? 'Add place to Day ${vm.dayIndex + 1}'
+                    : 'Add ${vm.selectedPlaceIds.length} place(s) to Itinerary',
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
           ),
         ),

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_final_vm.dart';
 import 'add_place_screen.dart';
@@ -247,19 +248,37 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
                         child: _DayCard(
                           day: day,
                           isSelected: index == _vm.selectedDayIndex,
-                          onAddPlace: () {
-                            final id = _vm.itineraryId;
-                            if (id == null) return;
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => AddPlaceScreen(
-                                  itineraryId: id,
-                                  dayIndex: index,
-                                ),
+                        onAddPlace: () async {
+                          final days = _vm.result.scheduledDays;
+                          if (days == null || index >= days.length) return;
+                          final updated =
+                              await Navigator.push<ScheduledDay>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AddPlaceScreen(
+                                itineraryId: _vm.itineraryId ?? '',
+                                dayIndex: index,
+                                explorationTime: _vm.explorationTime,
+                                workingDay: days[index],
+                                itineraryUsedPlaceIds: _vm.allPlaceIds,
+                                dayDate: days[index].date,
+                                transportMode:
+                                    _vm.draft?.transportation ?? 'walking',
+                                travelPace: _vm.draft?.pace ?? 'Standard',
+                                interests:
+                                    _vm.draft?.interests.toList() ?? const [],
+                                mustVisitPlaceIds: _vm.mustVisitPlaceIds,
+                                destinationCenter:
+                                    _vm.destinationCenterForDay(index),
                               ),
-                            );
-                          },
+                            ),
+                          );
+                          if (updated != null && mounted) {
+                            // Replace ONLY the selected day in the working
+                            // preview; every other day is preserved.
+                            _vm.applyDayUpdate(index, updated);
+                          }
+                        },
                           onEditDay: () {
                             Navigator.push<ItineraryResult>(
                               context,

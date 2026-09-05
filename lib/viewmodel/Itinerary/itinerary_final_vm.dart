@@ -2,18 +2,22 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/config/api_keys.dart';
+import '../../core/services/ai_service.dart';
 import '../../core/services/database_manager.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/business_logic/itinerary_service/itinerary_generation_status.dart';
+import '../../model/entities/coordinates.dart';
 import '../../model/entities/itinerary.dart';
 import '../../model/entities/itinerary_destination.dart';
 import '../../model/entities/itinerary_must_visit.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
 import '../../model/entities/trip_draft.dart';
+import '../../model/entities/weather.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 
 class ItineraryFinalViewModel extends ChangeNotifier {
-  final ItineraryResult _result;
+  ItineraryResult _result;
   final String _title;
   final String? _itineraryId;
   final String _explorationTime;
@@ -235,6 +239,74 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     // should pass the new result back via a callback or route result.
     // For simplicity, we just notify that the result changed; the parent
     // screen will handle it via the Navigator result.
+    notifyListeners();
+  }
+
+  // ─── Add Place (preview working state) ───────────────────────
+
+  /// Every place_id currently scheduled across ALL days — used by Add Place
+  /// for whole-itinerary duplicate detection.
+  Set<String> get allPlaceIds {
+    final ids = <String>{};
+    for (final day in (_result.scheduledDays ?? const <ScheduledDay>[])) {
+      for (final stop in day.stops) {
+        ids.add(stop.attraction.place.placeId);
+      }
+    }
+    return ids;
+  }
+
+  /// Geographic centre of a day (centroid of its stops), falling back to the
+  /// draft's primary coordinates. Used as the Add Place destination reference.
+  Coordinates? destinationCenterForDay(int dayIndex) {
+    final days = _result.scheduledDays;
+    if (days != null && dayIndex >= 0 && dayIndex < days.length) {
+      final stops = days[dayIndex].stops;
+      if (stops.isNotEmpty) {
+        double lat = 0, lng = 0;
+        for (final s in stops) {
+          lat += s.attraction.place.placeLatitude;
+          lng += s.attraction.place.placeLongitude;
+        }
+        return Coordinates(
+          latitude: lat / stops.length,
+          longitude: lng / stops.length,
+        );
+      }
+    }
+    return _draft?.primaryCoordinates;
+  }
+
+  /// Replaces ONLY the selected day in the working itinerary with the
+  /// validated, AI-positioned [updatedDay]. Every other day, the candidate
+  /// pool, registry, clusters and must-visits are preserved untouched. The
+  /// database is NOT modified — persistence still happens on Save.
+  void applyDayUpdate(int dayIndex, ScheduledDay updatedDay) {
+    final days = _result.scheduledDays;
+    if (days == null || dayIndex < 0 || dayIndex >= days.length) return;
+
+    final newDays = List<ScheduledDay>.from(days);
+    newDays[dayIndex] = updatedDay;
+
+    _result = ItineraryResult.success(
+      scheduledDays: newDays,
+      weather: _result.weather ?? WeatherForecast(daily: []),
+      criticFeedback: _result.criticFeedback ??
+          const CriticResult(
+            overallSuitable: true,
+            score: 0,
+            issues: [],
+            recommendations: [],
+            summary: '',
+          ),
+      status: _result.status ?? ItineraryGenerationStatus.success,
+      warnings: _result.warnings,
+      candidatePool: _result.candidatePool,
+      placeRegistry: _result.placeRegistry,
+      scoredCandidates: _result.scoredCandidates,
+      clusters: _result.clusters,
+      unretrievableMustVisits: _result.unretrievableMustVisits,
+    );
     notifyListeners();
   }
 
