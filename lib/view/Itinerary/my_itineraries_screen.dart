@@ -18,9 +18,6 @@ class MyItinerariesScreen extends StatefulWidget {
 class _MyItinerariesScreenState extends State<MyItinerariesScreen> {
   final TextEditingController _searchController = TextEditingController();
 
-  // Hardcoded user ID – replace with real auth later
-  //static const String _userId = '252f0924-192c-42fe-8643-881da7bbf285';
-
   @override
   void dispose() {
     _searchController.dispose();
@@ -64,6 +61,19 @@ class _ItinerariesView extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        backgroundColor: AppColors.bg,
+        elevation: 0,
+        // ❌ REMOVED leading and actions refresh buttons
+        title: Text(
+          "My Itineraries",
+          style: GoogleFonts.nunito(
+            fontWeight: FontWeight.w700,
+            fontSize: 24,
+            color: AppColors.ink,
+          ),
+        ),
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.push(
@@ -90,170 +100,166 @@ class _ItinerariesView extends StatelessWidget {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 24,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Page Title
-              Text(
-                "My Itineraries",
-                style: GoogleFonts.nunito(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 28,
-                  color: AppColors.ink,
-                ),
-              ),
-              const SizedBox(height: 24),
+        child: RefreshIndicator(
+          onRefresh: () => vm.load(),
+          color: AppColors.accent,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 24,
+            ),
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
 
-              // Search Field
-              TextField(
-                controller: searchController,
-                onChanged: vm.setSearchQuery,
-                style: GoogleFonts.nunito(
-                  fontSize: 16,
-                  color: AppColors.ink,
+                // Search Field
+                TextField(
+                  controller: searchController,
+                  onChanged: vm.setSearchQuery,
+                  style: GoogleFonts.nunito(
+                    fontSize: 16,
+                    color: AppColors.ink,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: "Search your trips...",
+                    hintStyle: GoogleFonts.nunito(
+                      color: AppColors.inkFaint,
+                      fontSize: 14,
+                    ),
+                    prefixIcon: Icon(Icons.search, color: AppColors.inkFaint, size: 20),
+                    enabledBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppColors.moduleBorder, width: 1.5),
+                    ),
+                    focusedBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppColors.accent, width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
                 ),
-                decoration: InputDecoration(
-                  hintText: "Search your trips...",
-                  hintStyle: GoogleFonts.nunito(
-                    color: AppColors.inkFaint,
-                    fontSize: 14,
-                  ),
-                  prefixIcon: Icon(Icons.search, color: AppColors.inkFaint, size: 20),
-                  enabledBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: AppColors.moduleBorder, width: 1.5),
-                  ),
-                  focusedBorder: const UnderlineInputBorder(
-                    borderSide: BorderSide(color: AppColors.accent, width: 1.5),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              // Filter Chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: ["All", "Upcoming", "Ongoing", "Past"].map((filter) {
-                    final isActive = vm.activeFilter == filter;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: GestureDetector(
-                        onTap: () => vm.setFilter(filter),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isActive ? AppColors.accent : AppColors.surface2,
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Text(
-                            filter,
-                            style: GoogleFonts.nunito(
-                              fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                              fontSize: 14,
-                              color: isActive ? AppColors.bg : AppColors.inkSoft,
+                // Filter Chips
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: ["All", "Upcoming", "Ongoing", "Past"].map((filter) {
+                      final isActive = vm.activeFilter == filter;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: GestureDetector(
+                          onTap: () => vm.setFilter(filter),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isActive ? AppColors.accent : AppColors.surface2,
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: Text(
+                              filter,
+                              style: GoogleFonts.nunito(
+                                fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                                fontSize: 14,
+                                color: isActive ? AppColors.bg : AppColors.inkSoft,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
+                      );
+                    }).toList(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 32),
+                const SizedBox(height: 32),
 
-              // Content
-              if (vm.isLoading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 48),
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.accent,
-                    ),
-                  ),
-                )
-              else if (vm.error != null)
-                Card(
-                  color: AppColors.surface,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: Text(
-                        "Failed to load trips: ${vm.error}",
-                        style: GoogleFonts.nunito(
-                          fontSize: 16,
-                          color: AppColors.error,
-                        ),
+                // Content
+                if (vm.isLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.accent,
                       ),
                     ),
-                  ),
-                )
-              else if (filteredTrips.isEmpty)
+                  )
+                else if (vm.error != null)
                   Card(
                     color: AppColors.surface,
                     child: Padding(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(16),
                       child: SizedBox(
                         width: double.infinity,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "No trips found",
-                              style: GoogleFonts.nunito(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                                color: AppColors.ink,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              "Try searching for another destination or adjust your active filter.",
-                              style: GoogleFonts.nunito(
-                                fontSize: 14,
-                                color: AppColors.inkFaint,
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          "Failed to load trips: ${vm.error}",
+                          style: GoogleFonts.nunito(
+                            fontSize: 16,
+                            color: AppColors.error,
+                          ),
                         ),
                       ),
                     ),
                   )
-                else
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: filteredTrips.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 16),
-                    itemBuilder: (context, index) {
-                      final trip = filteredTrips[index];
-                      return ItineraryCard(
-                        itinerary: trip,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ManageDisplayPlanScreen(
-                                itineraryId: trip.itineraryId,
+                else if (filteredTrips.isEmpty)
+                    Card(
+                      color: AppColors.surface,
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "No trips found",
+                                style: GoogleFonts.nunito(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                  color: AppColors.ink,
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-              const SizedBox(height: 88),
-            ],
+                              const SizedBox(height: 8),
+                              Text(
+                                "Try searching for another destination or adjust your active filter.",
+                                style: GoogleFonts.nunito(
+                                  fontSize: 14,
+                                  color: AppColors.inkFaint,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: filteredTrips.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 16),
+                      itemBuilder: (context, index) {
+                        final trip = filteredTrips[index];
+                        return ItineraryCard(
+                          itinerary: trip,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ManageDisplayPlanScreen(
+                                  itineraryId: trip.itineraryId,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                const SizedBox(height: 88),
+              ],
+            ),
           ),
         ),
       ),

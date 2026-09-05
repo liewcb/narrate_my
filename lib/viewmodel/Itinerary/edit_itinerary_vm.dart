@@ -8,18 +8,22 @@ import '../../model/business_logic/itinerary_service/schedule_construction_servi
 import '../../model/business_logic/itinerary_service/scoring_service.dart';
 import '../../model/entities/place.dart';
 import '../../model/entities/weather.dart';
+import '../../view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 
 /// A single stop in the editable itinerary, derived from [ScheduledStop].
 class EditableStop {
   final String placeId;
   final String name;
   final String address;
-  final int durationMinutes;
   final bool isMustVisit;
   final Place place;
   DateTime startTime;
   DateTime endTime;
   int travelFromPrevMinutes;
+
+  /// Visit duration in minutes. Mutable so [setDuration] can adjust it;
+  /// [endTime] is always re-derived as `startTime + durationMinutes`.
+  int durationMinutes;
 
   EditableStop({
     required this.placeId,
@@ -104,14 +108,188 @@ class EditItineraryViewModel extends ChangeNotifier {
     return pool.all.where((p) => !usedIds.contains(p.placeId)).toList();
   }
 
+  // ─── Editability (date AND time aware) ──────────────────────
+
+  static const int maxDurationMinutes = 120; // hard 2-hour visit cap
+
+  /// The temporal status of this day portion: past / ongoing / upcoming.
+  ItineraryTemporalStatus get dayStatus {
+    final now = DateTime.now();
+    final dayStart = DateTime(dayDate.year, dayDate.month, dayDate.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    if (now.isBefore(dayStart)) return ItineraryTemporalStatus.upcoming;
+    if (now.isAfter(dayEnd)) return ItineraryTemporalStatus.past;
+    return ItineraryTemporalStatus.ongoing;
+  }
+
+  bool get isDayEditable => dayStatus != ItineraryTemporalStatus.past;
+
+  /// A stop is editable when its day is not over and its scheduled time has
+  /// NOT completely elapsed. Ongoing: the remaining portion stays editable.
+  /// Upcoming: everything editable. Past: nothing editable.
+  bool isStopEditable(int index) {
+    if (!isDayEditable) return false;
+    final now = DateTime.now();
+    final stop = _stops[index];
+    final scheduledEnd = DateTime(
+      dayDate.year, dayDate.month, dayDate.day,
+      stop.endTime.hour, stop.endTime.minute,
+    );
+    return now.isBefore(scheduledEnd);
+  }
+
+  /// Traveler-facing reason a stop is locked, or null when editable.
+  String? stopLockedReason(int index) {
+    if (isStopEditable(index)) return null;
+    return dayStatus == ItineraryTemporalStatus.past
+        ? 'This itinerary has ended and can no longer be modified.'
+        : 'This stop can no longer be changed. Its scheduled time has '
+            'already passed.';
+  }
+
+  // ─── Calculated edit options ────────────────────────────────
+
+  /// Valid start-time options (30-minute slots) for [index], calculated by
+  /// Dart from: previous stop end + travel, exploration window, next stop,
+  /// remaining exploration time and opening hours. The traveler picks from
+  /// these only — no arbitrary time entry.
+  List<TimeOfDay> availableStartTimes(int index) {
+    if (index < 0 || index >= _stops.length) return const [];
+    final stop = _stops[index];
+    final win = window;
+    final winEnd = win.endMinutes;
+
+    // Lower bound: previous stop end + travel to this stop.
+    var lower = win.startMinutes;
+    if (index > 0) {
+      final prev = _stops[index - 1];
+      final prevEnd = prev.endTime.hour * 60 + prev.endTime.minute;
+      lower = prevEnd + stop.travelFromPrevMinutes;
+    }
+
+    // Opening hours (if known) further bound the start.
+    final oh = stop.place.openingHours;
+    if (oh != null && oh.periods.isNotEmpty) {
+      final weekday = dayDate.weekday % 7;
+      final dayOpens = oh.periods
+          .where((p) => p.open.day == weekday)
+          .map((p) => _hhmmToMinutes(p.open.time))
+          .toList();
+      if (dayOpens.isNotEmpty) {
+        final earliestOpen = dayOpens.reduce((a, b) => a < b ? a : b);
+        if (earliestOpen > lower) lower = earliestOpen;
+      }
+    }
+
+    // Round up to the next 30-minute slot after [lower].
+    var slot = (lower / 30).ceil() * 30;
+    final options = <TimeOfDay>[];
+    while (slot + stop.durationMinutes <= winEnd) {
+      options.add(TimeOfDay(hour: slot ~/ 60, minute: slot % 60));
+      slot += 30;
+    }
+
+    // Always include the current start so the current choice is visible.
+    final current = TimeOfDay(
+        hour: stop.startTime.hour, minute: stop.startTime.minute);
+    if (!options.contains(current)) {
+      options.add(current);
+      options.sort((a, b) =>
+          (a.hour * 60 + a.minute).compareTo(b.hour * 60 + b.minute));
+    }
+    return options;
+  }
+
+  /// Feasible visit-duration options (natural travel-app choices, hard 2-hour
+  /// maximum). Each option must keep the stop inside the exploration window
+  /// and respect the place's closing time when hours are known.
+  List<int> availableDurations(int index) {
+    if (index < 0 || index >= _stops.length) return const [];
+    final stop = _stops[index];
+    const choices = [20, 30, 45, 60, 75, 90, 105, 120];
+    final winEnd = window.endMinutes;
+    final startMin = stop.startTime.hour * 60 + stop.startTime.minute;
+
+    // Closing bound from opening hours (if known).
+    var closeLimit = winEnd;
+    final oh = stop.place.openingHours;
+    if (oh != null && oh.periods.isNotEmpty) {
+      final weekday = dayDate.weekday % 7;
+      final dayCloses = oh.periods
+          .where((p) => p.open.day == weekday)
+          .map((p) => _hhmmToMinutes(p.close.time))
+          .toList();
+      if (dayCloses.isNotEmpty) {
+        final latestClose = dayCloses.reduce((a, b) => a > b ? a : b);
+        if (latestClose < closeLimit) closeLimit = latestClose;
+      }
+    }
+
+    return choices
+        .where((d) => d <= maxDurationMinutes)
+        .where((d) => startMin + d <= closeLimit)
+        .toList();
+  }
+
+  /// Sets a new visit duration and rechains the rest of the day. Returns
+  /// `true` only when the new duration keeps the day valid; otherwise the
+  /// change is reverted and [_error] carries a user-friendly reason.
+  bool setDuration(int index, int minutes) {
+    if (index < 0 || index >= _stops.length) return false;
+    if (minutes <= 0) {
+      _error = 'The selected duration is invalid.';
+      notifyListeners();
+      return false;
+    }
+    if (minutes > maxDurationMinutes) {
+      _error = 'Visits are limited to 2 hours.';
+      notifyListeners();
+      return false;
+    }
+
+    final snapshot = _snapshotStops();
+    final stop = _stops[index];
+    stop.durationMinutes = minutes;
+    stop.endTime = stop.startTime.add(Duration(minutes: minutes));
+    _rechainSchedule();
+
+    final errors = validate();
+    if (errors.isNotEmpty) {
+      _restoreStops(snapshot);
+      _error = errors.first;
+      notifyListeners();
+      return false;
+    }
+    _error = null;
+    notifyListeners();
+    return true;
+  }
+
+  int _hhmmToMinutes(String time) {
+    final h = int.tryParse(time.substring(0, 2)) ?? 0;
+    final m = time.length > 2 ? (int.tryParse(time.substring(2, 4)) ?? 0) : 0;
+    return h * 60 + m;
+  }
+
   // ─── Operations ─────────────────────────────────────────────
 
   /// Reorders a stop. Returns `true` when the order actually changed and the
   /// resulting schedule is still valid. On an invalid reorder the change is
-  /// reverted and [_error] carries a user-friendly reason.
+  /// reverted and [_error] carries a user-friendly reason. Elapsed/locked
+  /// stops can never be moved.
   bool reorder(int oldIndex, int newIndex) {
     if (newIndex > oldIndex) newIndex -= 1;
     if (oldIndex == newIndex) return false;
+    if (oldIndex < 0 || oldIndex >= _stops.length) return false;
+
+    // Locked (elapsed) stops are never rearranged.
+    if (!isStopEditable(oldIndex) ||
+        (newIndex >= 0 && newIndex < _stops.length && !isStopEditable(newIndex))) {
+      _error = 'This stop can no longer be changed. Its scheduled time has '
+          'already passed.';
+      notifyListeners();
+      return false;
+    }
 
     final snapshot = _snapshotStops();
     final item = _stops.removeAt(oldIndex);
@@ -135,6 +313,11 @@ class EditItineraryViewModel extends ChangeNotifier {
   /// change is reverted and [_error] carries a user-friendly reason.
   bool setStartTime(int index, TimeOfDay newTime) {
     if (index < 0 || index >= _stops.length) return false;
+    if (!isStopEditable(index)) {
+      _error = stopLockedReason(index);
+      notifyListeners();
+      return false;
+    }
 
     final snapshot = _snapshotStops();
     final stop = _stops[index];
@@ -164,6 +347,13 @@ class EditItineraryViewModel extends ChangeNotifier {
     if (index < 0 || index >= _stops.length) return false;
     if (_stops[index].isMustVisit) {
       _error = 'This place is a must-visit and cannot be removed.';
+      notifyListeners();
+      return false;
+    }
+    // Locked (elapsed) stops cannot be removed from the record.
+    if (!isStopEditable(index)) {
+      _error = 'This stop can no longer be changed. Its scheduled time has '
+          'already passed.';
       notifyListeners();
       return false;
     }
@@ -223,8 +413,7 @@ class EditItineraryViewModel extends ChangeNotifier {
   /// Replaces a stop. Returns `true` only when the replacement keeps the day
   /// valid; otherwise the original stop is restored and [_error] carries a
   /// user-friendly reason.
-  bool replaceStop(int index, Place candidate) {
-    if (index < 0 || index >= _stops.length) return false;
+  bool replaceStop(int index, Place candidate) {    if (index < 0 || index >= _stops.length) return false;
     if (_stops.any((s) => s.placeId == candidate.placeId && s.placeId != _stops[index].placeId)) {
       _error = 'This place is already in your itinerary.';
       notifyListeners();
@@ -245,6 +434,40 @@ class EditItineraryViewModel extends ChangeNotifier {
     );
     _rechainSchedule();
 
+    final errors = validate();
+    if (errors.isNotEmpty) {
+      _restoreStops(snapshot);
+      _error = errors.first;
+      notifyListeners();
+      return false;
+    }
+    _error = null;
+    notifyListeners();
+    return true;
+  }
+
+  /// Applies a validated proposed day (from the Add Custom Place workflow)
+  /// to the temporary stop list. The proposal is re-validated with the same
+  /// deterministic engine; on failure the previous temporary state is
+  /// restored and [_error] carries a user-friendly reason.
+  bool applyProposedDay(ScheduledDay proposedDay) {
+    final snapshot = _snapshotStops();
+    final converted = proposedDay.stops.map((s) {
+      final p = s.attraction.place;
+      return EditableStop(
+        placeId: p.placeId,
+        name: p.placeName,
+        address: p.placeAddress,
+        durationMinutes: s.durationMinutes,
+        isMustVisit: _mustVisitPlaceIds.contains(p.placeId),
+        place: p,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        travelFromPrevMinutes: s.travelFromPreviousMinutes,
+      );
+    }).toList();
+
+    _stops = converted;
     final errors = validate();
     if (errors.isNotEmpty) {
       _restoreStops(snapshot);

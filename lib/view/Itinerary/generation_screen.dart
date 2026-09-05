@@ -5,6 +5,7 @@ import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
 import 'itinerary_final_screen.dart';
 import '../../core/theme/colors.dart';
+import '../../model/business_logic/itinerary_service/itinerary_generation_status.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_generation_vm.dart';
 
@@ -45,18 +46,38 @@ class _GenerationBody extends StatelessWidget {
     final isLoading = vm.isLoading;
     final currentStep = _stepIndex(vm.progressMessage);
     final planeIndex = currentStep.clamp(0, planePositions.length - 1);
+    final result = vm.result;
 
-    // If generation is complete and successful, navigate to preview screen
-    if (!isLoading && vm.isReady && vm.result != null && vm.result!.success) {
+    // Generation finished with a full success: navigate to the preview
+    // screen (unchanged behavior — the success message is shown there).
+    if (!isLoading &&
+        vm.isReady &&
+        result != null &&
+        result.success &&
+        (result.status == null ||
+            result.status == ItineraryGenerationStatus.success)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Success message straight from the pipeline's classification —
+        // shown only for a full success, never for partial results.
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                result.status?.message ??
+                    ItineraryGenerationStatus.success.message,
+              ),
+              backgroundColor: AppColors.brandGreen,
+            ),
+          );
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => ItineraryFinalScreen(
-              result: vm.result!,
-              title: vm.draft.title.isEmpty ? 'My Trip' : vm.draft.title,
+              result: result,
+              title: vm.draft.tripName.isEmpty ? 'My Trip' : vm.draft.tripName,
               itineraryId: vm.savedItineraryId,
-              explorationTime: vm.draft.explorationTime ?? 'Standard',
+              explorationTime: vm.draft.exploration ?? 'Standard',
               mustVisitPlaceIds: List.of(vm.draft.mustVisitPlaceIds),
               tripStartDate: vm.draft.startDate ?? DateTime.now(),
               // 👇 Regenerate navigates back to a fresh generation screen
@@ -75,6 +96,63 @@ class _GenerationBody extends StatelessWidget {
         );
       });
       return const SizedBox.shrink();
+    }
+
+    // Generation finished with a PARTIAL result (free time added, AI
+    // fallback, constraint conflicts): show the pipeline-classified status
+    // message before continuing. The reason comes from the pipeline — the
+    // UI never guesses it.
+    if (!isLoading && vm.isReady && result != null && result.success) {
+      return Scaffold(
+        backgroundColor: AppColors.creamBg,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const WizardAppBar(step: 5),
+                const SizedBox(height: 8),
+                const WizardProgressBar(activeSteps: 5),
+                const SizedBox(height: 24),
+                _StatusNoticeView(
+                  status: result.status,
+                  onViewItinerary: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ItineraryFinalScreen(
+                          result: result,
+                          title:
+                              vm.draft.tripName.isEmpty ? 'My Trip' : vm.draft.tripName,
+                          itineraryId: vm.savedItineraryId,
+                          explorationTime:
+                              vm.draft.exploration ?? 'Standard',
+                          mustVisitPlaceIds:
+                              List.of(vm.draft.mustVisitPlaceIds),
+                          tripStartDate:
+                              vm.draft.startDate ?? DateTime.now(),
+                          onRegenerate: () async {
+                            await Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    GenerationScreen(draft: vm.draft),
+                              ),
+                            );
+                          },
+                          userId: vm.userId,
+                          draft: vm.draft,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     return Scaffold(
@@ -592,5 +670,79 @@ class _ErrorView extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Displays a PARTIAL generation result (itinerary exists, but the pipeline
+/// classified it with a caveat: free time added, AI fallback used, or a
+/// constraint conflict). Renders the pipeline's traveler-facing message
+/// verbatim with a matching status icon — no technical details.
+class _StatusNoticeView extends StatelessWidget {
+  final ItineraryGenerationStatus? status;
+  final VoidCallback onViewItinerary;
+
+  const _StatusNoticeView({
+    required this.status,
+    required this.onViewItinerary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final message = status?.message ?? 'Your itinerary has been created.';
+    final (icon, color) = _visualsFor(status);
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(height: 60),
+        Icon(icon, color: color, size: 48),
+        const SizedBox(height: 16),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            color: AppColors.outline,
+          ),
+        ),
+        const SizedBox(height: 24),
+        ElevatedButton.icon(
+          onPressed: onViewItinerary,
+          icon: const Icon(Icons.arrow_forward, size: 18),
+          label: const Text('View Itinerary'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.brandGreen,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            elevation: 0,
+          ),
+        ),
+      ],
+    );
+  }
+
+  (IconData, Color) _visualsFor(ItineraryGenerationStatus? status) {
+    switch (status) {
+      case ItineraryGenerationStatus.aiUnavailable:
+      case ItineraryGenerationStatus.aiResponseInvalid:
+        return (Icons.auto_awesome_outlined, AppColors.brandGreen);
+      case ItineraryGenerationStatus.fewSuitablePlaces:
+        return (Icons.schedule_rounded, AppColors.brandGreen);
+      case ItineraryGenerationStatus.scheduleTooFull:
+        return (Icons.event_busy_rounded, AppColors.brandTerracotta);
+      case ItineraryGenerationStatus.openingHoursConflict:
+        return (Icons.access_time_rounded, AppColors.brandTerracotta);
+      case ItineraryGenerationStatus.travelDistanceTooLong:
+        return (Icons.route_rounded, AppColors.brandTerracotta);
+      case ItineraryGenerationStatus.mustVisitUnavailable:
+      case ItineraryGenerationStatus.mustVisitOutsideDestination:
+      case ItineraryGenerationStatus.noSuitablePlaces:
+        return (Icons.place_rounded, AppColors.brandTerracotta);
+      default:
+        return (Icons.info_outline_rounded, AppColors.brandGreen);
+    }
   }
 }

@@ -1,17 +1,17 @@
-// lib/model/business_logic/itinerary_service/itinerary_regeneration_service.dart
+﻿// lib/model/business_logic/itinerary_service/itinerary_regeneration_service.dart
 //
 // Regeneration of an existing valid itinerary WITHOUT re-running the full
 // generation pipeline.
 //
 // Flow:
 //   Existing ItineraryResult (candidate pool + scored candidates + clusters)
-//   → identify unused / alternative candidates
-//   → keep must-visits + same traveler requirements
-//   → build regeneration prompt
-//   → DeepSeek
-//   → validate
-//   → retry (bounded)
-//   → update result only if valid (old itinerary preserved otherwise)
+//   â†’ identify unused / alternative candidates
+//   â†’ keep must-visits + same traveler requirements
+//   â†’ build regeneration prompt
+//   â†’ DeepSeek
+//   â†’ validate
+//   â†’ retry (bounded)
+//   â†’ update result only if valid (old itinerary preserved otherwise)
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -53,9 +53,9 @@ class ItineraryRegenerationService {
     required ItineraryResult current,
     required TripDraft request,
   }) async {
-    debugPrint('════════════════════════════════════');
-    debugPrint('🔄 REGENERATION START');
-    debugPrint('════════════════════════════════════');
+    debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
+    debugPrint('ðŸ”„ REGENERATION START');
+    debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
     debugPrint('[REGENERATE] Itinerary total days: ${request.totalDays}');
     debugPrint('[REGENERATE] Must-visits: ${request.mustVisitPlaceIds}');
 
@@ -98,9 +98,9 @@ class ItineraryRegenerationService {
         }
 
         debugPrint('[REGENERATE] Validation started');
-        debugPrint('════════════════════════════════════');
+        debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
         debugPrint('[REGENERATE VALIDATION INPUT]');
-        debugPrint('════════════════════════════════════');
+        debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
         final placeIdToDestination = _placeIdToDestination(current, request);
         final allocation = _allocationFor(request);
         for (final day in aiDays) {
@@ -133,15 +133,15 @@ class ItineraryRegenerationService {
             }
           }
         }
-        debugPrint('════════════════════════════════════');
+        debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
 
         final validation = _validator.validate(
           days: aiDays,
           knownPlaceIds: _allCandidateIds(current),
           mustVisitIds: mustVisitIds,
           totalDays: request.totalDays,
-          explorationTime: request.explorationTime ?? 'Standard',
-          destinationOrder: request.destinations,
+          explorationTime: request.exploration ?? 'Standard',
+          destinationOrder: request.destinationNames,
           allocatedDaysPerDestination:
           request.daySplit.isNotEmpty ? request.daySplit : null,
           placeIdToDestination: placeIdToDestination,
@@ -154,9 +154,9 @@ class ItineraryRegenerationService {
             aiDays: aiDays,
             request: request,
           );
-          debugPrint('════════════════════════════════════');
+          debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
           debugPrint('[REGENERATE VALIDATION SUMMARY]');
-          debugPrint('════════════════════════════════════');
+          debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
           debugPrint('Attempt: $attempt');
           debugPrint('Days: ${aiDays.length}');
           debugPrint('Candidates supplied: ${alternatives.length}');
@@ -170,9 +170,9 @@ class ItineraryRegenerationService {
           debugPrint('Schedule validation: PASS');
           debugPrint('Travel validation: PASS');
           debugPrint('Overall: PASS');
-          debugPrint('════════════════════════════════════');
-          debugPrint('✅ REGENERATION COMPLETE');
-          debugPrint('════════════════════════════════════');
+          debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
+          debugPrint('âœ… REGENERATION COMPLETE');
+          debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
           return updated;
         }
 
@@ -180,9 +180,9 @@ class ItineraryRegenerationService {
         debugPrint('[REGENERATE] Validation result: FAIL');
         debugPrint('[REGENERATE] Attempt $attempt FAILED');
         debugPrint('[REGENERATE] Reason: ${validation.issues.join('; ')}');
-        debugPrint('════════════════════════════════════');
+        debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
         debugPrint('[REGENERATE VALIDATION SUMMARY]');
-        debugPrint('════════════════════════════════════');
+        debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
         debugPrint('Attempt: $attempt');
         debugPrint('Days: ${aiDays.length}');
         debugPrint('Candidates supplied: ${alternatives.length}');
@@ -200,18 +200,18 @@ class ItineraryRegenerationService {
         debugPrint('Travel validation: '
             '${_hasIssue(validation, 'route_jump') ? "FAIL" : "PASS"}');
         debugPrint('Overall: FAIL');
-        debugPrint('════════════════════════════════════');
+        debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
       } catch (e) {
         debugPrint('[REGENERATE] Attempt $attempt error: $e');
         _lastFeedback = 'AI provider error: $e';
       }
     }
 
-    debugPrint('[REGENERATE] All attempts failed — preserving previous '
+    debugPrint('[REGENERATE] All attempts failed â€” preserving previous '
         'valid itinerary.');
-    debugPrint('════════════════════════════════════');
-    debugPrint('❌ REGENERATION FAILED (old itinerary kept)');
-    debugPrint('════════════════════════════════════');
+    debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
+    debugPrint('âŒ REGENERATION FAILED (old itinerary kept)');
+    debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
     return current;
   }
 
@@ -268,7 +268,7 @@ class ItineraryRegenerationService {
     }
 
     if (alternatives.isEmpty) {
-      // Not enough unused candidates — fall back to the full pool.
+      // Not enough unused candidates â€” fall back to the full pool.
       return List.of(pool.all);
     }
 
@@ -294,7 +294,7 @@ class ItineraryRegenerationService {
         'ALTERNATIVE CANDIDATES below.');
     buffer.writeln('');
 
-    // ── TRIP REQUIREMENTS (unchanged) ───────────────────────────
+    // â”€â”€ TRIP REQUIREMENTS (unchanged) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     buffer.writeln('TRIP REQUIREMENTS');
     buffer.writeln('Total days: ${request.totalDays}');
     if (request.startDate != null) {
@@ -303,16 +303,16 @@ class ItineraryRegenerationService {
     if (request.endDate != null) {
       buffer.writeln('End date: ${request.endDate!.toIso8601String().split('T').first}');
     }
-    buffer.writeln('Destinations: ${request.destinations.join(', ')}');
-    buffer.writeln('Exploration time: ${request.explorationTime ?? 'Standard'}');
+    buffer.writeln('Destinations: ${request.destinationNames.join(', ')}');
+    buffer.writeln('Exploration time: ${request.exploration ?? 'Standard'}');
     buffer.writeln('Travel pace (comfort preference, not a stop-count rule): '
-        '${request.travelPace ?? 'Standard'}');
+        '${request.travelType ?? 'Standard'}');
     buffer.writeln('Transportation: ${request.transportation}');
-    buffer.writeln('Traveler interests: ${request.interests.join(', ')}');
+    buffer.writeln('Traveler interests: ${request.interests.toList().join(', ')}');
     buffer.writeln('');
 
-    // ── MUST-VISITS (hard) ──────────────────────────────────────
-    buffer.writeln('MUST-VISITS (must appear exactly once — never removed)');
+    // â”€â”€ MUST-VISITS (hard) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    buffer.writeln('MUST-VISITS (must appear exactly once â€” never removed)');
     final mustVisitIds = request.mustVisitPlaceIds.toSet();
     final mustVisits = alternatives
         .where((p) => mustVisitIds.contains(p.placeId))
@@ -327,7 +327,7 @@ class ItineraryRegenerationService {
     }
     buffer.writeln('');
 
-    // ── ALTERNATIVE CANDIDATES ─────────────────────────────────
+    // â”€â”€ ALTERNATIVE CANDIDATES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     buffer.writeln('ALTERNATIVE CANDIDATES (select from these ONLY)');
     for (final place in alternatives) {
       final clusterId = _clusterIdForPlace(current, place.placeId);
@@ -348,15 +348,15 @@ class ItineraryRegenerationService {
     }
     buffer.writeln('');
 
-    // ── CURRENT ITINERARY (so the AI produces something different) ──
-    buffer.writeln('CURRENT ITINERARY (previous plan — produce a DIFFERENT '
+    // â”€â”€ CURRENT ITINERARY (so the AI produces something different) â”€â”€
+    buffer.writeln('CURRENT ITINERARY (previous plan â€” produce a DIFFERENT '
         'combination)');
     final days = current.scheduledDays;
     if (days != null && days.isNotEmpty) {
       for (final day in days) {
         final names = day.stops
             .map((s) => s.attraction.place.placeName)
-            .join(' → ');
+            .join(' â†’ ');
         buffer.writeln('Day ${day.dayIndex + 1}: $names');
       }
     } else {
@@ -364,7 +364,7 @@ class ItineraryRegenerationService {
     }
     buffer.writeln('');
 
-    // ── PLANNING GUIDANCE ───────────────────────────────────────
+    // â”€â”€ PLANNING GUIDANCE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     buffer.writeln('PLANNING GUIDANCE');
     buffer.writeln('- Produce a genuinely different but reasonable plan '
         'using the alternative candidates.');
@@ -378,16 +378,16 @@ class ItineraryRegenerationService {
         'reasonable.');
     buffer.writeln('');
 
-    // ── REGENERATION FEEDBACK (retry) ───────────────────────────
+    // â”€â”€ REGENERATION FEEDBACK (retry) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (feedback != null && feedback.trim().isNotEmpty) {
       buffer.writeln('PREVIOUS ATTEMPT WAS REJECTED. Fix ALL of these:');
       buffer.writeln(feedback);
       buffer.writeln('');
     }
 
-    // ── OUTPUT CONTRACT ─────────────────────────────────────────
+    // â”€â”€ OUTPUT CONTRACT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     buffer.writeln('Return STRICT JSON ONLY (no Markdown fences) with this '
-        'structure. Do NOT emit a "stopOrder" field — the array ordering IS '
+        'structure. Do NOT emit a "stopOrder" field â€” the array ordering IS '
         'the stop order and will be assigned by the system.');
     buffer.writeln(_jsonTemplate());
 
@@ -583,7 +583,7 @@ class ItineraryRegenerationService {
       }
     }
     if (best != null) return best;
-    if (request.destinations.isNotEmpty) return request.destinations.first;
+    if (request.destinationNames.isNotEmpty) return request.destinationNames.first;
     return place.destinationId;
   }
 
@@ -594,7 +594,7 @@ class ItineraryRegenerationService {
     Map<String, int>? allocation,
   }) {
     final alloc = allocation ?? _allocationFor(request);
-    final names = request.destinations;
+    final names = request.destinationNames;
     var counter = 0;
     for (final name in names) {
       final days = alloc[name] ?? 1;
@@ -607,7 +607,7 @@ class ItineraryRegenerationService {
   }
 
   /// Map a destination NAME to its DB ID (best-effort). Used only for
-  /// debug logging — the authoritative comparison is by name.
+  /// debug logging â€” the authoritative comparison is by name.
   String? _destinationIdForName(String? name, TripDraft request) {
     if (name == null) return null;
     // Destination names in the request map to themselves for display.
@@ -617,14 +617,14 @@ class ItineraryRegenerationService {
   /// Day-per-destination allocation (names as keys, matching the prompt).
   Map<String, int> _allocationFor(TripDraft request) {
     if (request.daySplit.isNotEmpty) return Map.of(request.daySplit);
-    if (request.destinations.isEmpty || request.totalDays <= 0) {
+    if (request.destinationNames.isEmpty || request.totalDays <= 0) {
       return const {};
     }
-    final base = request.totalDays ~/ request.destinations.length;
-    final extra = request.totalDays % request.destinations.length;
+    final base = request.totalDays ~/ request.destinationNames.length;
+    final extra = request.totalDays % request.destinationNames.length;
     final split = <String, int>{};
-    for (int i = 0; i < request.destinations.length; i++) {
-      split[request.destinations[i]] = base + (i < extra ? 1 : 0);
+    for (int i = 0; i < request.destinationNames.length; i++) {
+      split[request.destinationNames[i]] = base + (i < extra ? 1 : 0);
     }
     return split;
   }

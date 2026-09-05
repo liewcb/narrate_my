@@ -3,6 +3,7 @@ import '../../core/config/api_keys.dart';
 import '../../core/services/database_manager.dart';
 import '../../core/services/google_maps_service.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/business_logic/itinerary_service/itinerary_generation_status.dart';
 import '../../model/business_logic/itinerary_service/itinerary_regeneration_service.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/itinerary.dart';
@@ -90,9 +91,24 @@ class Step5GenerationVM extends ChangeNotifier {
       // on ItineraryFinalScreen and explicitly clicks Save to persist it.
     } else {
       isReady = false;
+      // The pipeline already classifies the reason and returns a
+      // traveler-safe message (never a raw exception string).
       errorMessage = generated.message ?? 'Could not generate the itinerary.';
     }
     notifyListeners();
+  }
+
+  /// The pipeline-classified traveler-facing status for the generated
+  /// itinerary, or null while loading/failed.
+  ItineraryGenerationStatus? get status => result?.status;
+
+  /// The traveler-facing message for the current result (success, partial or
+  /// failure) straight from the pipeline's classification — the View renders
+  /// it verbatim and never guesses the reason.
+  String? get statusMessage {
+    final r = result;
+    if (r == null) return null;
+    return r.status?.message ?? r.message;
   }
 
   /// Re-run the generation pipeline (regeneration request from the final
@@ -179,13 +195,13 @@ class Step5GenerationVM extends ChangeNotifier {
       final itinerary = Itinerary(
         itineraryId: _generateId('itin'),
         userId: userId,
-        title: draft.title.isEmpty ? 'My Trip' : draft.title,
+        title: draft.tripName.isEmpty ? 'My Trip' : draft.tripName,
         description: draft.additionalNotes,
         startDate: draft.startDate ?? now,
         endDate: draft.endDate ?? now,
         totalDays: scheduledDays.length,
-        explorationTime: draft.explorationTime ?? 'Standard',
-        travelPace: draft.travelPace ?? 'Standard',
+        explorationTime: draft.exploration ?? 'Standard',
+        travelPace: draft.pace ?? 'Standard',
         travelType: draft.travelType ?? 'Solo',
         transportationMode: draft.transportation,
         interests: List.of(draft.interests),
@@ -255,7 +271,7 @@ class Step5GenerationVM extends ChangeNotifier {
       } catch (e) {
         debugPrint('[STEP 5 - PERSIST] Destination ID resolution failed: $e');
       }
-      for (final destName in draft.destinations) {
+      for (final destName in draft.destinationNames) {
         final destId = destIdByName[destName.trim().toLowerCase()] ?? destName;
         final allocated =
             draft.daySplit[destName] ?? (draft.totalDays / draft.destinations.length).ceil();
@@ -335,7 +351,7 @@ class Step5GenerationVM extends ChangeNotifier {
     final coords = Map<String, Coordinates>.of(draft.destinationCoordinates);
 
     // Geocode any selected destination that has no coordinates yet.
-    for (final dest in draft.destinations) {
+    for (final dest in draft.destinationNames) {
       if (coords.containsKey(dest)) continue;
       debugPrint('[STEP 5 - RESOLVE COORDS] Geocoding "$dest"...');
       final resolved = await _mapsService.geocode(dest);
@@ -348,20 +364,11 @@ class Step5GenerationVM extends ChangeNotifier {
       }
     }
 
-    return TripDraft(
-      destinations: List.of(draft.destinations),
-      destinationCoordinates: coords,
-      title: draft.title,
+    return draft.copyWith(
       startDate: startDate,
       endDate: endDate,
-      explorationTime: draft.explorationTime ?? 'Standard',
-      travelPace: draft.travelPace ?? 'Standard',
-      interests: List.of(draft.interests),
-      additionalNotes: draft.additionalNotes,
-      mustVisitPlaceIds: List.of(draft.mustVisitPlaceIds),
-      daySplit: Map.of(draft.daySplit),
-      transportation: draft.transportation,
-      travelType: draft.travelType
+      destinationCoordinates: coords,
+      interests: draft.interests,
     );
   }
 
@@ -369,6 +376,6 @@ class Step5GenerationVM extends ChangeNotifier {
   /// geographic reference for scoring/scheduling).
   Coordinates? _tripHub() {
     if (draft.destinations.isEmpty) return null;
-    return draft.destinationCoordinates[draft.destinations.first];
+    return draft.destinationCoordinates[draft.destinationNames.first];
   }
 }

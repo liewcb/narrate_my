@@ -87,13 +87,13 @@ class AiPromptBuilder {
     if (request.endDate != null) {
       buffer.writeln('- end_date: ${request.endDate!.toIso8601String().split('T').first}');
     }
-    buffer.writeln('- destinations: ${request.destinations.join(', ')}');
+    buffer.writeln('- destinations: ${request.destinationNames.join(', ')}');
     buffer.writeln('- allocated_days_per_destination: '
         '${_formatDaySplit(request)}');
     buffer.writeln('- travel_type: ${request.travelType ?? 'Solo'}');
     buffer.writeln('- interests: ${request.interests.isEmpty ? 'none' : request.interests.join(', ')}');
-    buffer.writeln('- travel_pace: ${request.travelPace ?? 'Standard'}');
-    buffer.writeln('- exploration_time: ${request.explorationTime ?? 'Standard'}');
+    buffer.writeln('- travel_pace: ${request.pace ?? 'Standard'}');
+    buffer.writeln('- exploration_time: ${request.exploration ?? 'Standard'}');
     buffer.writeln('- transportation_mode: ${request.transportation}');
     buffer.writeln('');
 
@@ -152,7 +152,7 @@ class AiPromptBuilder {
     buffer.writeln('HARD CONSTRAINTS');
     buffer.writeln(
       '- Every day must stay within the exploration window: '
-          '${_windowText(request.explorationTime)}.',
+          '${_windowText(request.exploration)}.',
     );
     buffer.writeln('- Destination day allocation must be respected exactly.');
     buffer.writeln(
@@ -183,14 +183,14 @@ class AiPromptBuilder {
           .join(', ');
       return '{ $parts }';
     }
-    if (request.destinations.isEmpty || request.totalDays <= 0) {
+    if (request.destinationNames.isEmpty || request.totalDays <= 0) {
       return 'not provided — split evenly across all destinations';
     }
-    final base = request.totalDays ~/ request.destinations.length;
-    final extra = request.totalDays % request.destinations.length;
+    final base = request.totalDays ~/ request.destinationNames.length;
+    final extra = request.totalDays % request.destinationNames.length;
     final parts = <String>[];
-    for (int i = 0; i < request.destinations.length; i++) {
-      final dest = request.destinations[i];
+    for (int i = 0; i < request.destinationNames.length; i++) {
+      final dest = request.destinationNames[i];
       parts.add('$dest=${base + (i < extra ? 1 : 0)}');
     }
     return '{ ${parts.join(', ')} }';
@@ -219,7 +219,7 @@ class AiPromptBuilder {
     required List<Cluster> clusters,
     required List<String> mustVisitIds,
   }) {
-    final pace = request.travelPace ?? 'Standard';
+    final pace = request.pace ?? 'Standard';
     final buffer = StringBuffer();
 
     // ── DETERMINE TARGET STOPS PER DAY ───────────────────────────
@@ -288,10 +288,10 @@ class AiPromptBuilder {
 
     // ── TRIP DETAILS ─────────────────────────────────────────────
     buffer.writeln('TRIP:');
-    buffer.writeln('- destination: ${request.destinations.join(', ')}');
+    buffer.writeln('- destination: ${request.destinationNames.join(', ')}');
     buffer.writeln('- days: ${request.totalDays}');
     buffer.writeln('- day split: ${_formatDaySplit(request)}');
-    buffer.writeln('- exploration: ${_windowText(request.explorationTime)}');
+    buffer.writeln('- exploration: ${_windowText(request.exploration)}');
     buffer.writeln("- travel pace: $pace");
     buffer.writeln('- transportation: ${request.transportation}');
     buffer.writeln('- interests: '

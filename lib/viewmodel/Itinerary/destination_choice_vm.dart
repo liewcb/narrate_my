@@ -7,8 +7,14 @@ import '../../model/entities/destination.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../model/repositories/interfaces/destination_repository.dart';
 
-
 class Step1WhereToViewModel extends ChangeNotifier {
+  // ============================================================
+  // CONSTANTS
+  // ============================================================
+
+  /// Hard limit on how many destinations a user may select.
+  static const int maxDestinations = 2;
+
   // ============================================================
   // DEPENDENCIES
   // ============================================================
@@ -26,6 +32,8 @@ class Step1WhereToViewModel extends ChangeNotifier {
   // STATE
   // ============================================================
 
+  /// The mutable draft that holds the selected destinations.
+  TripDraft _draft = TripDraft.empty();
   List<Destination> _allDestinations = [];
   List<Destination> _filteredDestinations = [];
   List<Destination> _selectedDestinations = [];
@@ -93,25 +101,36 @@ class Step1WhereToViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleSelection(Destination destination) {
+  /// Toggle [destination] in the selection.
+  ///
+  /// Returns false when the selection was rejected because the hard limit of
+  /// [maxDestinations] was already reached; the selection list is left
+  /// untouched in that case. Removing an already-selected destination always
+  /// succeeds.
+  bool toggleSelection(Destination destination) {
     if (isSelected(destination)) {
       _selectedDestinations
           .removeWhere((d) => d.destinationId == destination.destinationId);
     } else {
-      if (_selectedDestinations.length >= 5) return;
+      if (_selectedDestinations.length >= maxDestinations) return false;
       _selectedDestinations.add(destination);
     }
+    // Update the local draft immediately (no external manager)
+    _draft = _draft.copyWith(destinations: List.of(_selectedDestinations));
     notifyListeners();
+    return true;
   }
 
   void removeSelection(String destinationId) {
     _selectedDestinations
         .removeWhere((d) => d.destinationId == destinationId);
+    _draft = _draft.copyWith(destinations: List.of(_selectedDestinations));
     notifyListeners();
   }
 
   void clearSelections() {
     _selectedDestinations.clear();
+    _draft = _draft.copyWith(destinations: []);
     notifyListeners();
   }
 
@@ -135,12 +154,13 @@ class Step1WhereToViewModel extends ChangeNotifier {
       for (final d in _selectedDestinations)
         if (d.latitude != null && d.longitude != null)
           d.destinationName:
-              Coordinates(latitude: d.latitude!, longitude: d.longitude!),
+          Coordinates(latitude: d.latitude!, longitude: d.longitude!),
     };
-    return TripDraft(
-      destinations: getSelectedNames(),
+    // Build a fresh draft using the selected destinations.
+    final draft = _draft.copyWith(
+      destinations: List.of(_selectedDestinations),
       destinationCoordinates: coords,
     );
+    return draft;
   }
-
 }

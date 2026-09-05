@@ -1,4 +1,4 @@
-﻿// lib/model/business_logic/itinerary_service/generation_pipeline_service.dart
+// lib/model/business_logic/itinerary_service/generation_pipeline_service.dart
 
 import 'dart:async';
 import 'dart:convert';
@@ -17,6 +17,7 @@ import 'ai_prompt_builder.dart';
 import 'ai_schedule_validator.dart';
 import 'candidate_retrieval_service.dart';
 import 'clustering_service.dart';
+import 'itinerary_generation_status.dart';
 import 'place_registry.dart';
 import 'schedule_construction_service.dart';
 import 'scoring_service.dart';
@@ -25,6 +26,13 @@ import 'validation_service.dart';
 /// Result of the generation pipeline.
 class ItineraryResult {
   final bool success;
+
+  /// Structured, traveler-facing classification of the outcome. Always
+  /// present on new results; null on legacy-constructed results.
+  final ItineraryGenerationStatus? status;
+
+  /// Traveler-facing message. For classified results this is the exact
+  /// message mapped from [status] — never a raw exception string.
   final String? message;
   final List<ScheduledDay>? scheduledDays;
   final WeatherForecast? weather;
@@ -56,6 +64,7 @@ class ItineraryResult {
 
   const ItineraryResult({
     required this.success,
+    this.status,
     this.message,
     this.scheduledDays,
     this.weather,
@@ -73,6 +82,7 @@ class ItineraryResult {
     required List<ScheduledDay> scheduledDays,
     required WeatherForecast weather,
     required CriticResult criticFeedback,
+    ItineraryGenerationStatus status = ItineraryGenerationStatus.success,
     List<ValidationIssue>? warnings,
     CandidatePool? candidatePool,
     PlaceRegistry? placeRegistry,
@@ -82,6 +92,8 @@ class ItineraryResult {
   }) {
     return ItineraryResult(
       success: true,
+      status: status,
+      message: status.message,
       scheduledDays: scheduledDays,
       weather: weather,
       criticFeedback: criticFeedback,
@@ -94,15 +106,25 @@ class ItineraryResult {
     );
   }
 
+  /// Traveler-safe failure. When [status] is provided the traveler message is
+  /// derived from it (exact mapping); infrastructure failures without a
+  /// matching status pass an already traveler-safe [travelerMessage] instead.
+  /// Technical exception details must never reach either field — log them
+  /// with debugPrint instead.
   factory ItineraryResult.error({
-    required String message,
+    ItineraryGenerationStatus? status,
+    String? travelerMessage,
     List<ValidationIssue>? errors,
     List<String> unretrievableMustVisits = const [],
   }) {
+    assert(
+      status != null || travelerMessage != null,
+      'Either a status or a traveler-safe message is required.',
+    );
     return ItineraryResult(
       success: false,
-      message: message,
-
+      status: status,
+      message: status?.message ?? travelerMessage,
       errors: errors,
       unretrievableMustVisits: unretrievableMustVisits,
     );
@@ -169,8 +191,8 @@ class ItineraryGenerationPipeline {
     required void Function(String) onProgress,
     Coordinates? tripLocation,
   }) async {
-    final effectivePace = request.travelPace ?? 'Standard';
-    final effectiveExploration = request.explorationTime ?? 'Standard';
+    final effectivePace = request.travelType ?? 'Standard';
+    final effectiveExploration = request.exploration ?? 'Standard';
 
     // Lightweight end-to-end timing (debug only) so the <=25s target can be
     // verified per stage without enabling heavy production logging.
@@ -205,8 +227,8 @@ class ItineraryGenerationPipeline {
 
     // ── STAGE 01 - INPUT VALIDATION ─────────────────────────────
     debugPrint('[STAGE 01 - INPUT VALIDATION]');
-    debugPrint('✓ destination count: ${request.destinations.length} '
-        '(${request.destinations.join(', ')})');
+    debugPrint('✓ destination count: ${request.destinationNames.length} '
+        '(${request.destinationNames.join(', ')})');
     debugPrint('✓ total days: ${request.totalDays}');
     debugPrint('✓ travel type: ${request.travelType ?? 'Solo'}');
     debugPrint('✓ exploration time: $effectiveExploration');
@@ -215,14 +237,14 @@ class ItineraryGenerationPipeline {
     debugPrint('✓ interests: ${request.interests}');
     debugPrint('✓ must-visits: ${request.mustVisitPlaceIds}');
 
-    if (request.destinations.isEmpty) {
+    if (request.destinationNames.isEmpty) {
       return ItineraryResult.error(
-        message: 'No destination selected. Please go back to Step 1.',
+        travelerMessage: 'No destination selected. Please go back to Step 1.',
       );
     }
     if (request.totalDays <= 0) {
       return ItineraryResult.error(
-        message: 'Trip duration must be at least 1 day.',
+        travelerMessage: 'Trip duration must be at least 1 day.',
       );
     }
 
@@ -232,8 +254,8 @@ class ItineraryGenerationPipeline {
       // (the TripDraft already carries loaded preferences)
       // ============================================================
       debugPrint('[STAGE 02 - LOAD ITINERARY]');
-      debugPrint('✓ itinerary title: ${request.title}');
-      debugPrint('✓ user-selected destinations: ${request.destinations}');
+      debugPrint('✓ itinerary title: ${request..tripName}');
+      debugPrint('✓ user-selected destinations: ${request.destinationNames}');
       debugPrint('✓ allocated days: ${request.daySplit}');
 
       // ============================================================
@@ -252,7 +274,7 @@ class ItineraryGenerationPipeline {
       } on TimeoutException {
         debugPrint('[DART PREPROCESSING] status=TIMEOUT (retrieval)');
         return ItineraryResult.error(
-          message: 'Finding places took too long. Please check your '
+          travelerMessage: 'Finding places took too long. Please check your '
               'connection and try again.',
         );
       }
@@ -336,7 +358,7 @@ class ItineraryGenerationPipeline {
         debugPrint('[DART PREPROCESSING] status=TIMEOUT '
             '(before must-visit recovery)');
         return ItineraryResult.error(
-          message: 'Preparing your trip took too long. Please try again.',
+          travelerMessage: 'Preparing your trip took too long. Please try again.',
         );
       } else {
 
@@ -345,8 +367,8 @@ class ItineraryGenerationPipeline {
           alreadyRetrievedIds: registry.placeIds,
           mustVisitNames: request.mustVisitPlaceIds, // ids may be names
           searchCenter: request.primaryCoordinates,
-          destinationName: request.destinations.isNotEmpty
-              ? request.destinations.first
+          destinationName: request.destinationNames.isNotEmpty
+              ? request.destinationNames.first
               : null,
         ).timeout(remainingPreprocessing());
         recoveredMustVisitCount = recovery.recoveredPlaces.length;
@@ -380,8 +402,7 @@ class ItineraryGenerationPipeline {
           debugPrint('❌ [MUST-VISIT] Generation BLOCKED because a hard '
               'requirement is unsatisfied (no silent continue).');
           return ItineraryResult.error(
-            message: 'We couldn\'t locate "$unretrievable". '
-                'Please check the selected place or choose another location.',
+            status: ItineraryGenerationStatus.mustVisitUnavailable,
             errors: [
               ValidationIssue(
                 type: 'must_visit_unretrievable',
@@ -391,6 +412,28 @@ class ItineraryGenerationPipeline {
             ],
             unretrievableMustVisits: unretrievable,
           );
+        }
+
+        // A recovered must-visit must belong to the planned travel area.
+        // Recovery searches broadly, so a far-away match means the user
+        // selected a place outside the planned destination — never schedule
+        // it silently.
+        for (final place in recovery.recoveredPlaces) {
+          if (_isOutsideTravelArea(request, place)) {
+            debugPrint('❌ [MUST-VISIT] "${place.placeName}" is outside the '
+                'planned destination area — generation blocked.');
+            return ItineraryResult.error(
+              status: ItineraryGenerationStatus.mustVisitOutsideDestination,
+              errors: [
+                ValidationIssue(
+                  type: 'must_visit_outside_destination',
+                  severity: 'error',
+                  message: 'Must-visit "${place.placeName}" is outside the '
+                      'planned destination area.',
+                ),
+              ],
+            );
+          }
         }
       }
 
@@ -418,9 +461,9 @@ class ItineraryGenerationPipeline {
           '(business status, review floor, banned types)');
 
       if (candidatePool.attractions.isEmpty) {
+        debugPrint('[STAGE 09] No attractions survived — noSuitablePlaces');
         return ItineraryResult.error(
-          message: 'No suitable attractions were found in the selected '
-              'destinations.',
+          status: ItineraryGenerationStatus.noSuitablePlaces,
         );
       }
 
@@ -484,7 +527,7 @@ class ItineraryGenerationPipeline {
       final scoringSw = Stopwatch()..start();
       var scored = _scoring.scorePlaces(
         places: allPlaces,
-        selectedInterests: request.interests,
+        selectedInterests: request.interests.toList(),
         mustVisitIds: effectiveMustVisitIds,
         explorationTime: effectiveExploration,
         tripLocation: tripLocation,
@@ -500,8 +543,10 @@ class ItineraryGenerationPipeline {
       }
 
       if (scored.isEmpty) {
+        debugPrint('[STAGE 11] Scoring produced no candidates — '
+            'noSuitablePlaces');
         return ItineraryResult.error(
-          message: 'No suitable places were found in the selected destinations.',
+          status: ItineraryGenerationStatus.noSuitablePlaces,
         );
       }
 
@@ -734,6 +779,9 @@ class ItineraryGenerationPipeline {
       }
 
       // 4. If validation failed, rebuild deterministically (no second AI).
+      //    The ORIGINAL AI failure reason is preserved so the result can be
+      //    classified honestly (aiUnavailable vs aiResponseInvalid).
+      String aiFailureReason = '';
       if (!validation.passed) {
         if (aiStatus == 'AI_SUCCESS') {
           // The AI produced a plan but it violated a hard constraint that
@@ -742,6 +790,7 @@ class ItineraryGenerationPipeline {
         }
         debugPrint('[AI FALLBACK] Validation failed '
             '($aiStatus) — deterministic planner');
+        aiFailureReason = aiStatus;
         final fallbackPlan = _buildDeterministicPlan(
           request: request,
           scored: scored,
@@ -771,8 +820,14 @@ class ItineraryGenerationPipeline {
           'stops=${aiDays.fold<int>(0, (s, d) => s + d.schedule.length)}');
 
       if (!validation.passed) {
+        // Classify the hard failure from the constraint issues that remain.
+        final failureStatus = mostSevereStatus([
+          for (final i in validation.issues)
+            _constraintIssueStatus(i, effectiveMustVisitIds.toSet()),
+        ]);
         return ItineraryResult.error(
-          message: 'The itinerary could not be generated. Please try again.',
+          status: failureStatus ??
+              ItineraryGenerationStatus.scheduleTooFull,
           errors: [
             for (final i in validation.issues)
               ValidationIssue(
@@ -846,7 +901,8 @@ class ItineraryGenerationPipeline {
 
       if (scheduledDays.isEmpty) {
         return ItineraryResult.error(
-          message: 'Validation passed but no stops could be materialized.',
+          travelerMessage: 'Could not complete your itinerary. '
+              'Please try again.',
         );
       }
 
@@ -907,10 +963,26 @@ class ItineraryGenerationPipeline {
       debugPrint('mustVisits=${request.mustVisitPlaceIds.length} '
           'recovered=$recoveredMustVisitCount');
 
+      // ── FINAL RESULT CLASSIFICATION ─────────────────────────────
+      // The pipeline determines the traveler-facing reason from what
+      // actually happened — the UI never guesses.
+      final failureStatus = mostSevereStatus([
+        for (final i in validation.issues)
+          _constraintIssueStatus(i, effectiveMustVisitIds.toSet()),
+      ]);
+      final resultStatus = _classifyResult(
+        request: request,
+        scored: scored,
+        constraintStatus: failureStatus,
+        aiFailureReason: aiFailureReason,
+      );
+      debugPrint('[RESULT STATUS] ${resultStatus.name}');
+
       return ItineraryResult.success(
           scheduledDays: scheduledDays,
           weather: weather,
           criticFeedback: critic,
+          status: resultStatus,
           warnings: validation.issues
               .map((i) => ValidationIssue(
             type: i.type,
@@ -926,17 +998,121 @@ class ItineraryGenerationPipeline {
           unretrievableMustVisits: unretrievable
       );
     } catch (e, stack) {
+      // Technical details stay in the log — the traveler receives a
+      // safe, generic classification, never '$e'.
       debugPrint('❌ [PIPELINE ERROR]');
       debugPrint('Stage: UNKNOWN (see stack)');
       debugPrint('Error: $e');
       debugPrint('Stack: $stack');
-      return ItineraryResult.error(message: 'Generation failed: $e');
+      return ItineraryResult.error(
+        travelerMessage: 'Could not generate the itinerary. '
+            'Please check your connection and try again.',
+      );
     }
   }
 
   // ============================================================
   // HELPERS
   // ============================================================
+
+  // ============================================================
+  // HELPERS — RESULT CLASSIFICATION (traveler-facing status)
+  // ============================================================
+
+  /// True when [place] lies outside every planned destination's travel area
+  /// (reuses the existing search-radius ceiling).
+  bool _isOutsideTravelArea(TripDraft request, Place place) {
+    if (request.destinationCoordinates.isEmpty) return false;
+    for (final coord in request.destinationCoordinates.values) {
+      if (coord.distanceTo(place.coordinates) <=
+          ItineraryConstants.maxSearchRadiusKm) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Maps one validation issue to its traveler-facing status. Issues that do
+  /// not carry traveler-relevant information return null.
+  ItineraryGenerationStatus? _constraintIssueStatus(
+    AiValidationIssue issue,
+    Set<String> mustVisitIds,
+  ) {
+    switch (issue.type) {
+      case 'must_visit':
+        return ItineraryGenerationStatus.mustVisitUnavailable;
+      case 'destination_allocation':
+        // Only a must-visit outside its planned destination is traveler
+        // facing; generic allocation drift is repaired silently.
+        final pid = issue.placeId;
+        if (pid != null && mustVisitIds.contains(pid)) {
+          return ItineraryGenerationStatus.mustVisitOutsideDestination;
+        }
+        return null;
+      case 'route_jump':
+        return ItineraryGenerationStatus.travelDistanceTooLong;
+      case 'window':
+        // Scheduled outside the allowed time window — closest traveler
+        // semantic is an opening-hours/time-window conflict.
+        return ItineraryGenerationStatus.openingHoursConflict;
+      default:
+        return null;
+    }
+  }
+
+  /// Maps the reason the deterministic fallback was used to a status.
+  ItineraryGenerationStatus? _aiStatusToGenerationStatus(String reason) {
+    switch (reason) {
+      case 'AI_TIMEOUT':
+      case 'AI_PROVIDER_ERROR':
+        return ItineraryGenerationStatus.aiUnavailable;
+      case 'AI_TRUNCATED_RESPONSE':
+      case 'AI_INVALID_JSON':
+      case 'AI_INVALID_MODEL_OUTPUT':
+      case 'AI_INVALID_RESPONSE':
+      case 'AI_VALIDATION_FAILED':
+        return ItineraryGenerationStatus.aiResponseInvalid;
+      default:
+        return null;
+    }
+  }
+
+  /// Determines the final traveler-facing status of a SUCCESSFUL generation
+  /// (an itinerary exists). Multiple findings are combined by severity
+  /// priority; plain success is returned when nothing notable happened.
+  ItineraryGenerationStatus _classifyResult({
+    required TripDraft request,
+    required List<ScoredAttraction> scored,
+    ItineraryGenerationStatus? constraintStatus,
+    required String aiFailureReason,
+  }) {
+    final findings = <ItineraryGenerationStatus?>[
+      // Constraint conflicts that survived validation as warnings.
+      constraintStatus,
+      // AI degradation — the itinerary was produced by the deterministic
+      // fallback because the AI was unavailable or unusable.
+      aiFailureReason.isEmpty
+          ? null
+          : _aiStatusToGenerationStatus(aiFailureReason),
+      // "Few places": candidates exist but not enough to fill the requested
+      // schedule — free time was left instead of forcing unrelated places.
+      _hasTooFewCandidates(request, scored)
+          ? ItineraryGenerationStatus.fewSuitablePlaces
+          : null,
+    ];
+
+    return mostSevereStatus(findings) ?? ItineraryGenerationStatus.success;
+  }
+
+  /// True when the usable attraction pool cannot cover the minimum planned
+  /// stops for the whole trip.
+  bool _hasTooFewCandidates(TripDraft request, List<ScoredAttraction> scored) {
+    final availableAttractions =
+        scored.where((s) => !_isFoodScored(s)).length;
+    final needed =
+        request.totalDays * ItineraryConstants.minAttractionsPerDay;
+    return availableAttractions < needed;
+  }
 
   // ============================================================
   // HELPERS — COMPACT AI PLANNER
@@ -1029,7 +1205,7 @@ class ItineraryGenerationPipeline {
     // Map dayIndex → destination name.
     final dayDest = <int, String>{};
     var counter = 0;
-    for (final name in request.destinations) {
+    for (final name in request.destinationNames) {
       final days = (allocation[name] ?? 1).clamp(1, 5);
       for (var d = 0; d < days; d++) {
         if (counter < request.totalDays) dayDest[counter++] = name;
@@ -1092,7 +1268,7 @@ class ItineraryGenerationPipeline {
     final mvDest = <String, String>{};
     for (final mv in mustVisitIds.where((m) => m.isNotEmpty && knownIds.contains(m))) {
       if (seen.contains(mv)) continue; // already present
-      final dest = placeIdToDestination[mv] ?? request.destinations.first;
+      final dest = placeIdToDestination[mv] ?? request.destinationNames.first;
       mvDest[mv] = dest;
       // Find first day for this destination, or day 0.
       var targetDay = 0;
@@ -1105,7 +1281,7 @@ class ItineraryGenerationPipeline {
 
     // 4. Destination allocation: move misplaced places.
     for (var d = 0; d < request.totalDays; d++) {
-      final expectedDest = dayDest[d] ?? request.destinations.first;
+      final expectedDest = dayDest[d] ?? request.destinationNames.first;
       final correct = <String>[];
       final misplaced = <String, String>{}; // placeId → correctDest
       for (final id in byDay[d]!) {
@@ -1179,10 +1355,10 @@ class ItineraryGenerationPipeline {
       for (final s in scored) s.place.placeId: s,
     };
     final window = ItineraryConstants.explorationWindows[
-    request.explorationTime ?? 'Standard'] ??
+    request.exploration ?? 'Standard'] ??
         ItineraryConstants.explorationWindows['Standard']!;
     final startDate = request.startDate ?? DateTime.now();
-    final travelPace = request.travelPace ?? 'Standard';
+    final travelPace = request.travelType ?? 'Standard';
     final transportation = request.transportation;
 
     return [
@@ -1323,14 +1499,14 @@ class ItineraryGenerationPipeline {
 
     String dayDest(int dayIndex) {
       var counter = 0;
-      for (final name in request.destinations) {
+      for (final name in request.destinationNames) {
         final days = (allocation[name] ?? 1).clamp(1, 5);
         for (var d = 0; d < days; d++) {
           if (counter == dayIndex) return name;
           counter++;
         }
       }
-      return request.destinations.isNotEmpty ? request.destinations.first : '';
+      return request.destinationNames.isNotEmpty ? request.destinationNames.first : '';
     }
 
     final byDest = <String, List<ScoredAttraction>>{};
@@ -1356,7 +1532,7 @@ class ItineraryGenerationPipeline {
 
     // 2. Fill remaining slots per day by destination + score.
     const paceTarget = {'Slow': 2, 'Standard': 4, 'Fast': 6};
-    final target = paceTarget[request.travelPace] ?? 4;
+    final target = paceTarget[request.travelType] ?? 4;
     for (var day = 0; day < request.totalDays; day++) {
       final dest = dayDest(day);
       final pool = List<ScoredAttraction>.of(byDest[dest] ?? const [])
@@ -1427,8 +1603,8 @@ class ItineraryGenerationPipeline {
       knownPlaceIds: knownPlaceIds,
       mustVisitIds: mustVisitIds,
       totalDays: request.totalDays,
-      explorationTime: request.explorationTime ?? 'Standard',
-      destinationOrder: request.destinations,
+      explorationTime: request.exploration ?? 'Standard',
+      destinationOrder: request.destinationNames,
       allocatedDaysPerDestination: _allocationFor(request),
       placeIdToDestination: placeIdToDestination,
     );
@@ -1439,14 +1615,14 @@ class ItineraryGenerationPipeline {
   /// what the AI prompt tells DeepSeek to assume).
   Map<String, int> _allocationFor(TripDraft request) {
     if (request.daySplit.isNotEmpty) return Map.of(request.daySplit);
-    if (request.destinations.isEmpty || request.totalDays <= 0) {
+    if (request.destinationNames.isEmpty || request.totalDays <= 0) {
       return const {};
     }
-    final base = request.totalDays ~/ request.destinations.length;
-    final extra = request.totalDays % request.destinations.length;
+    final base = request.totalDays ~/ request.destinationNames.length;
+    final extra = request.totalDays % request.destinationNames.length;
     final split = <String, int>{};
-    for (int i = 0; i < request.destinations.length; i++) {
-      split[request.destinations[i]] = base + (i < extra ? 1 : 0);
+    for (int i = 0; i < request.destinationNames.length; i++) {
+      split[request.destinationNames[i]] = base + (i < extra ? 1 : 0);
     }
     return split;
   }
@@ -1505,7 +1681,7 @@ class ItineraryGenerationPipeline {
     };
 
     // ─── NEW: ENSURE EACH DESTINATION GETS ENOUGH CANDIDATES TO FILL TARGET STOPS PER DAY ───
-    final pace = request.travelPace ?? 'Standard';
+    final pace = request.travelType ?? 'Standard';
     int targetStopsPerDay;
     switch (pace) {
       case 'Slow':
@@ -1676,7 +1852,7 @@ class ItineraryGenerationPipeline {
         best = entry.key;
       }
     }
-    return best ?? (request.destinations.isNotEmpty ? request.destinations.first : 'Unknown');
+    return best ?? (request.destinationNames.isNotEmpty ? request.destinationNames.first : 'Unknown');
   }
 
   // ============================================================
@@ -1705,32 +1881,4 @@ class ItineraryGenerationPipeline {
     }
     return WeatherForecast(daily: []);
   }
-}
-class AiCompactPlanDay {
-  final int dayIndex;
-  final List<String> placeIds;
-  final Map<String, int> visitMinutes;
-  final String reason;
-
-  AiCompactPlanDay({
-    required this.dayIndex,
-    required this.placeIds,
-    this.visitMinutes = const {},
-    this.reason = '',
-  });
-}
-
-/// Parses the JSON response from the compact planner (B.AI / GLM).
-List<AiCompactPlanDay> parseCompactPlanJson(String rawJson) {
-  final decoded = json.decode(rawJson) as Map<String, dynamic>;
-  final days = decoded['days'] as List<dynamic>;
-  return days.map((d) {
-    final day = d as Map<String, dynamic>;
-    return AiCompactPlanDay(
-      dayIndex: day['dayIndex'] as int,
-      placeIds: (day['placeIds'] as List<dynamic>).cast<String>(),
-      visitMinutes: Map<String, int>.from(day['visitMinutes'] ?? {}),
-      reason: day['reason'] ?? '',
-    );
-  }).toList();
 }
