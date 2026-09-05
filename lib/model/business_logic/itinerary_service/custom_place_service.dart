@@ -9,6 +9,9 @@
 //   - Rank candidates by detour + preference.
 //   - Plan the AI-assisted insertion and validate the result.
 
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../core/config/interest_mapping.dart';
@@ -37,6 +40,15 @@ class InsertionAnchors {
 
   bool get hasBoth => previousStop != null && nextStop != null;
 }
+
+/// One chained slot for a position (estimated travel times).
+typedef _SlotRecord = ({
+  Place place,
+  DateTime startTime,
+  DateTime endTime,
+  int durationMinutes,
+  int travelMinutes,
+});
 
 /// A nearby place candidate with ranking metadata for the UI.
 class NearbyPlaceResult {
@@ -80,14 +92,58 @@ class CustomPlacePlanResult {
   final ValidationResult? validation;
   final List<ScoredAttraction>? orderedAttractions;
 
+  /// 0-based index of the NEW stop within the proposed day (null on failure).
+  final int? insertIndex;
+
+  /// Whether the AI proposed the winning insertion position.
+  final bool usedAi;
+
   const CustomPlacePlanResult({
     required this.success,
     this.message,
     this.proposedDay,
     this.validation,
     this.orderedAttractions,
+    this.insertIndex,
+    this.usedAi = false,
+  });
+
+  factory CustomPlacePlanResult.problem(String message) =>
+      CustomPlacePlanResult(success: false, message: message);
+}
+
+/// Minimal schedule context for one existing stop of the day. The caller
+/// (temporary editor state) supplies these Ã¢â‚¬â€ the service never reads the
+/// database, so the preview stays temporary and fast.
+class ExistingStopContext {
+  final Place place;
+  final DateTime startTime;
+  final DateTime endTime;
+  final int durationMinutes;
+  final int travelFromPrevMinutes;
+  final bool isMustVisit;
+
+  const ExistingStopContext({
+    required this.place,
+    required this.startTime,
+    required this.endTime,
+    required this.durationMinutes,
+    this.travelFromPrevMinutes = 0,
+    this.isMustVisit = false,
   });
 }
+
+/// Ordered schedule context for ONE day of the temporary itinerary.
+class DayPlanContext {
+  final List<ExistingStopContext> stops; // ordered by stopOrder
+  final Set<String> usedPlaceIds; // whole itinerary, not just this day
+
+  const DayPlanContext({required this.stops, required this.usedPlaceIds});
+}
+
+/// Callback the host screen provides so the VM can read any day's context
+/// from the temporary itinerary state without touching the database.
+typedef DayContextLoader = Future<DayPlanContext?> Function(int dayIndex);
 
 /// Business logic service for adding a custom place to an existing day.
 class CustomPlaceService {
@@ -137,7 +193,7 @@ class CustomPlaceService {
   ///
   /// Uses the existing Google Places text-search service. The search is
   /// biased towards the itinerary day's location when available, but the
-  /// query is the primary input — the user is NOT required to type
+  /// query is the primary input Ã¢â‚¬â€ the user is NOT required to type
   /// coordinates, URLs or lat/lng.
   Future<List<Place>> searchPlaces({
     required String query,
@@ -154,7 +210,7 @@ class CustomPlaceService {
   /// Compute distance/proximity information for a searched place relative
   /// to the itinerary day's existing stops.
   ///
-  /// Distance is user information/warning only — it is NOT a rejection
+  /// Distance is user information/warning only Ã¢â‚¬â€ it is NOT a rejection
   /// criterion. Near/Moderate/Far thresholds are deliberately simple and
   /// easy to adjust.
   Future<PlaceProximityInfo> evaluateProximity({
@@ -173,7 +229,7 @@ class CustomPlaceService {
       }
     }
     if (anchor == null) {
-      anchor = place.coordinates; // empty day → distance 0
+      anchor = place.coordinates; // empty day Ã¢â€ â€™ distance 0
       nearestKm = 0;
     }
 
@@ -278,7 +334,7 @@ class CustomPlaceService {
       if (place.placeId.isEmpty || place.placeName.isEmpty) return false;
       // Coordinates present.
       if (place.latitude == 0 && place.longitude == 0) return false;
-      // Duplicate — already used in the itinerary.
+      // Duplicate Ã¢â‚¬â€ already used in the itinerary.
       if (usedPlaceIds.contains(place.placeId)) return false;
       // Opening hours (only when known).
       if (dayOfWeek != null && place.openingHours != null) {
@@ -295,7 +351,7 @@ class CustomPlaceService {
   /// Rank candidates by detour minimization and preference score.
   ///
   /// A candidate that requires a small detour from
-  /// `Previous → Candidate → Next` ranks higher.
+  /// `Previous Ã¢â€ â€™ Candidate Ã¢â€ â€™ Next` ranks higher.
   List<NearbyPlaceResult> rankCandidates({
     required List<Place> candidates,
     required InsertionAnchors anchors,
@@ -368,19 +424,33 @@ class CustomPlaceService {
   }
 
   // ============================================================
-  // 5. AI PLANNING + DETERMINISTIC VALIDATION
+  // 5. LEAN INSERTION PLANNING (pre-checks → AI position → Dart schedule)
   // ============================================================
 
-  /// Plan the insertion of [newPlace] into an existing day and validate
-  /// the resulting schedule.
+  /// AI hard timeout for the insertion-position request (~6s) so the whole
+  /// Add Custom Place planning operation finishes inside the ~8-10s
+  /// responsiveness budget: pre-checks are milliseconds, retrieval is one
+  /// Places call, and the deterministic fallback always has room to run.
+  static const Duration aiTimeout = Duration(seconds: 6);
+
+  /// Plans the insertion of [newPlace] into ONE day of the temporary
+  /// itinerary.
   ///
-  /// The existing day's places plus the new place are sent to the AI
-  /// (route order + schedule). The AI output is reconstructed from the
-  /// original [Place] objects and validated against hard constraints.
+  /// Pipeline (never regenerates the whole itinerary):
+  ///   1. Fast deterministic pre-checks (reject before any AI/network).
+  ///   2. ONE compact AI request: "insert after which stop?" (~6s cap).
+  ///   3. Deterministic fallback scans every position with straight-line
+  ///      travel estimates when the AI is unavailable or infeasible.
+  ///   4. Real routed travel times are fetched ONLY for the winning
+  ///      position's two affected legs (max 2 Google calls).
+  ///   5. Dart validates the complete resulting day before returning.
+  ///
+  /// [existingStops] come from the caller's temporary state — the service
+  /// never reads the database, so the preview stays temporary and fast.
   Future<CustomPlacePlanResult> planInsertion({
     required int dayIndex, // 0-based day index used by the pipeline
     required DateTime date,
-    required List<Place> existingDayPlaces,
+    required List<ExistingStopContext> existingStops,
     required Place newPlace,
     required String explorationTime,
     required String transportMode,
@@ -388,86 +458,586 @@ class CustomPlaceService {
     required List<String> interests,
     Coordinates? tripLocation,
   }) async {
-    // Build the candidate set: existing day + new place.
-    final allPlaces = <Place>[...existingDayPlaces, newPlace];
-
-    // Registry — the source of truth for place data (AI never invents).
-    final registry = PlaceRegistry()..addAll(allPlaces);
-
-    // Score so the day has an anchor.
-    final scored = _scoringService.scorePlaces(
-      places: allPlaces,
-      selectedInterests: interests,
-      mustVisitIds: const [],
-      explorationTime: explorationTime,
-      tripLocation: tripLocation,
+    // ── 1. Fast deterministic pre-checks (no AI, no network) ──
+    if (newPlace.placeId.isEmpty) {
+      return CustomPlacePlanResult.problem('Please select a valid place.');
+    }
+    if (newPlace.placeLatitude == 0 && newPlace.placeLongitude == 0) {
+      return CustomPlacePlanResult.problem(
+          'This place has no valid map location.');
+    }
+    // Duplicate rule — placeId identity, against the temporary day state.
+    if (existingStops.any((s) => s.place.placeId == newPlace.placeId)) {
+      return CustomPlacePlanResult.problem(
+          'This place is already in your itinerary.');
+    }
+    // Destination area — actual coordinates, never the search text.
+    if (tripLocation != null) {
+      final distanceKm = tripLocation.distanceTo(newPlace.coordinates);
+      if (distanceKm > ItineraryConstants.maxSearchRadiusKm) {
+        return CustomPlacePlanResult.problem(
+            'This place is outside your trip destination.');
+      }
+    }
+    // Closed the whole day → reject before spending any AI budget.
+    final window = ItineraryConstants.explorationWindowFor(explorationTime);
+    final closedAllDay = _checkOpeningHours(
+      place: newPlace,
+      date: date,
+      windowStartMinutes: window.startMinutes,
+      windowEndMinutes: window.endMinutes,
     );
-
-    if (scored.isEmpty) {
-      return CustomPlacePlanResult(
-        success: false,
-        message: 'No places to plan.',
-      );
+    if (closedAllDay != null) {
+      return CustomPlacePlanResult.problem(closedAllDay);
     }
 
-    final anchor = scored.first;
-    final plan = DailyPlan(
-      dayIndex: dayIndex,
-      anchor: anchor,
-      attractions: scored,
+    // ── 2. Visit duration (existing value, Dart-clamped) ──
+    final baseDuration = _resolveDuration(newPlace: newPlace, suggested: null);
+    if (baseDuration > window.totalMinutes) {
+      return CustomPlacePlanResult.problem(
+          "There isn't enough time to add this place to your day.");
+    }
+
+    // ── 3. Deterministic fallback scan (estimates only, no network) ──
+    final scan = _scanFeasiblePositions(
+      existingStops: existingStops,
+      newPlace: newPlace,
+      newDuration: baseDuration,
       date: date,
-      isThemeParkDay: false,
+      window: window,
+      transportMode: transportMode,
     );
 
-    // 1. AI-assisted route ordering.
-    final routeService = RouteOptimizationService(aiService: _aiService);
-    final optimized = await routeService.optimizeRoutes(
-      dailyPlans: [plan],
-      registry: registry,
-      travelPace: travelPace,
+    if (scan.feasible.isEmpty) {
+      return CustomPlacePlanResult.problem(scan.failureReason);
+    }
+
+    // ── 4. ONE compact AI request for the insertion position ──
+    final aiPosition = await _aiInsertionPosition(
+      existingStops: existingStops,
+      newPlace: newPlace,
+      durationMinutes: baseDuration,
       interests: interests,
-      tripLocation: tripLocation,
-    );
-
-    // 2. Schedule construction (AI-assisted, deterministic fallback).
-    final scheduleService = ScheduleConstructionService(
-      mapsService: _mapsService,
-      aiService: _aiService,
-    );
-    final scheduledDays = await scheduleService.constructSchedule(
-      dailyPlans: optimized,
+      travelPace: travelPace,
       explorationTime: explorationTime,
       transportMode: transportMode,
-      useAi: true,
-      travelPace: travelPace,
     );
 
-    if (scheduledDays.isEmpty) {
+    // AI position feasible? Its clamped duration is re-checked.
+    int? aiPick;
+    if (aiPosition != null) {
+      final aiDuration = _resolveDuration(
+          newPlace: newPlace, suggested: aiPosition.visitMinutes);
+      final aiFeasible = scan.feasible.any((f) =>
+          f.position == aiPosition.insertIndex &&
+          _estimateScanPosition(
+            existingStops: existingStops,
+            newPlace: newPlace,
+            newDuration: aiDuration,
+            position: aiPosition.insertIndex,
+            window: window,
+            transportMode: transportMode,
+          ) !=
+          null);
+      if (aiFeasible) {
+        aiPick = aiPosition.insertIndex;
+      }
+    }
+
+    // ── 5. Candidate order: AI pick first, then lowest-detour fallback ──
+    final candidates = <int>[
+      if (aiPick != null) aiPick,
+      ...scan.feasible
+          .map((f) => f.position)
+          .where((p) => p != aiPick)
+          .toList(),
+    ];
+
+    // ── 6. Real routed travel for the winning position (max 3 attempts) ──
+    String? lastFailure;
+    var usedAi = false;
+    for (var attempt = 0; attempt < candidates.length && attempt < 3; attempt++) {
+      final position = candidates[attempt];
+      final routed = await _buildRoutedSlot(
+        position: position,
+        existingStops: existingStops,
+        newPlace: newPlace,
+        newDuration:
+            position == aiPick ? _resolveDuration(newPlace: newPlace, suggested: aiPosition?.visitMinutes) : baseDuration,
+        date: date,
+        window: window,
+        transportMode: transportMode,
+      );
+      if (routed == null) {
+        lastFailure = scan.failureReason;
+        continue;
+      }
+
+      final proposedDay = _buildScheduledDay(
+        dayIndex: dayIndex,
+        date: date,
+        slot: routed,
+      );
+      final validation = ValidationService().validate(
+        scheduledDays: [proposedDay],
+        mustVisitIds: const [],
+        explorationTime: explorationTime,
+      );
+      if (!validation.passed) {
+        lastFailure = validation.issues.isEmpty
+            ? 'This place cannot fit into your current schedule.'
+            : validation.issues.first.message;
+        continue;
+      }
+
+      usedAi = aiPick != null && position == aiPick;
       return CustomPlacePlanResult(
-        success: false,
-        message: 'Could not build a schedule for the day.',
+        success: true,
+        proposedDay: proposedDay,
+        validation: validation,
+        insertIndex: position,
+        usedAi: usedAi,
       );
     }
 
-    final proposedDay = scheduledDays.first;
-
-    // 3. Deterministic validation (must-pass before applying).
-    final validation = ValidationService().validate(
-      scheduledDays: [proposedDay],
-      mustVisitIds: const [],
-      explorationTime: explorationTime,
+    return CustomPlacePlanResult.problem(
+      lastFailure ?? 'This place cannot fit into your current schedule.',
     );
+  }
 
-    return CustomPlacePlanResult(
-      success: validation.passed,
-      message: validation.passed
-          ? null
-          : (validation.issues.isEmpty
-              ? 'Validation failed.'
-              : validation.issues.first.message),
-      proposedDay: proposedDay,
-      validation: validation,
-      orderedAttractions: optimized.isNotEmpty ? optimized.first.attractions : null,
+  // ── AI: compact insertion-position request ──────────────────
+
+  /// Asks the AI ONLY "after which existing stop should this place go?".
+  /// No clock times, no travel math, no invented places — Dart owns those.
+  Future<({int insertIndex, int? visitMinutes})?> _aiInsertionPosition({
+    required List<ExistingStopContext> existingStops,
+    required Place newPlace,
+    required int durationMinutes,
+    required List<String> interests,
+    required String travelPace,
+    required String explorationTime,
+    required String transportMode,
+  }) async {
+    final buf = StringBuffer()
+      ..writeln('You insert one new stop into an existing day plan.')
+      ..writeln()
+      ..writeln('Traveler: interests='
+          '${interests.isEmpty ? 'none' : interests.join('|')}'
+          ', pace=$travelPace, exploration=$explorationTime, '
+          'transport=$transportMode')
+      ..writeln()
+      ..writeln('NEW PLACE: placeId=${newPlace.placeId}, '
+          'name=${newPlace.placeName}, '
+          'category=${newPlace.placeCategory ?? 'unknown'}, '
+          'visitMinutes=$durationMinutes')
+      ..writeln()
+      ..writeln('EXISTING DAY (in order):');
+    for (var i = 0; i < existingStops.length; i++) {
+      final s = existingStops[i];
+      final hhmm = (int m) =>
+          '${(m ~/ 60).toString().padLeft(2, '0')}:'
+          '${(m % 60).toString().padLeft(2, '0')}';
+      buf.writeln('$i: placeId=${s.place.placeId}, name=${s.place.placeName}, '
+          'category=${s.place.placeCategory ?? 'unknown'}, '
+          'lat=${s.place.placeLatitude.toStringAsFixed(3)}, '
+          'lng=${s.place.placeLongitude.toStringAsFixed(3)}, '
+          'time=${hhmm(s.startTime.hour * 60 + s.startTime.minute)}-'
+          '${hhmm(s.endTime.hour * 60 + s.endTime.minute)}');
+    }
+    buf
+      ..writeln()
+      ..writeln('insertIndex = number of stops BEFORE the new stop '
+          '(0 = start, ${existingStops.length} = end). Consider geography, '
+          'category flow and day balance.')
+      ..writeln('Respond with compact JSON ONLY, no markdown:')
+      ..writeln('{"insertIndex":2,"visitMinutes":75}');
+
+    try {
+      final raw = await _aiService
+          .generateRawContent(
+            buf.toString(),
+            timeout: aiTimeout,
+            totalBudget: aiTimeout,
+            requestName: 'CUSTOM_PLACE_INSERT',
+          )
+          .timeout(aiTimeout);
+      return _parseAiInsertion(raw, existingStops.length);
+    } catch (e) {
+      debugPrint('[CustomPlace] AI position failed (fallback next): $e');
+      return null;
+    }
+  }
+
+  /// Parses the compact AI JSON. Only in-range indices are accepted.
+  ({int insertIndex, int? visitMinutes})? _parseAiInsertion(
+    String raw,
+    int maxIndex,
+  ) {
+    try {
+      final text = raw.trim().replaceAll('```', '');
+      final start = text.indexOf('{');
+      final end = text.lastIndexOf('}');
+      if (start < 0 || end <= start) return null;
+      final data = jsonDecode(text.substring(start, end + 1));
+      if (data is! Map<String, dynamic>) return null;
+      final idx = (data['insertIndex'] as num?)?.toInt();
+      if (idx == null || idx < 0 || idx > maxIndex) return null;
+      return (
+        insertIndex: idx,
+        visitMinutes: (data['visitMinutes'] as num?)?.toInt(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ── Deterministic fallback scan (pure Dart, no network) ─────
+
+  /// Result of the deterministic fallback scan.
+  ({List<({int position, double detourMinutes})> feasible,
+      String failureReason}) _scanFeasiblePositions({
+    required List<ExistingStopContext> existingStops,
+    required Place newPlace,
+    required int newDuration,
+    required DateTime date,
+    required ExplorationWindow window,
+    required String transportMode,
+  }) {
+    final feasible = <({int position, double detourMinutes})>[];
+    String? failure;
+
+    for (var position = 0; position <= existingStops.length; position++) {
+      final slots = _estimateScanPosition(
+        existingStops: existingStops,
+        newPlace: newPlace,
+        newDuration: newDuration,
+        position: position,
+        window: window,
+        transportMode: transportMode,
+      );
+      if (slots == null) {
+        failure ??= 'This place cannot fit into your current schedule.';
+        continue;
+      }
+      // Detour = added estimated travel vs the original day.
+      final detour = slots.fold<double>(0, (s, x) => s + x.travelMinutes) -
+          existingStops.fold<double>(0, (s, x) => s + x.travelFromPrevMinutes);
+      feasible.add((position: position, detourMinutes: detour.clamp(0, double.infinity)));
+    }
+
+    if (feasible.isEmpty) {
+      failure ??= 'This place cannot fit into your current schedule.';
+    }
+    feasible.sort((a, b) => a.detourMinutes.compareTo(b.detourMinutes));
+    return (feasible: feasible, failureReason: failure ?? '');
+  }
+
+  /// Chains the day schedule for ONE position using straight-line travel
+  /// estimates and hard-validates every stop. Returns null when a hard
+  /// constraint fails. Preserves each existing stop's persisted clock time
+  /// by anchoring the chain at the original first stop's start.
+  List<_SlotRecord>? _estimateScanPosition({
+    required List<ExistingStopContext> existingStops,
+    required Place newPlace,
+    required int newDuration,
+    required int position,
+    required ExplorationWindow window,
+    required String transportMode,
+  }) {
+    final date = existingStops.isEmpty
+        ? DateTime.now()
+        : DateTime(existingStops.first.startTime.year,
+            existingStops.first.startTime.month,
+            existingStops.first.startTime.day);
+
+    // Anchor: the original first stop's start time (day preserved as-is);
+    // empty day → exploration window opening.
+    final dayBase = DateTime(date.year, date.month, date.day);
+    final anchorMinutes = existingStops.isEmpty
+        ? window.startMinutes
+        : existingStops.first.startTime.hour * 60 +
+            existingStops.first.startTime.minute;
+
+    final ordered = <Place>[
+      ...existingStops.map((s) => s.place),
+      newPlace,
+    ];
+    // Rebuild with the new place at [position].
+    final orderedNew = <Place>[
+      ...ordered.sublist(0, position),
+      newPlace,
+      ...ordered.sublist(position, ordered.length - 1),
+    ];
+    final durations = <int>[
+      ...existingStops.map((s) => s.durationMinutes),
+      newDuration,
+    ];
+    final durationsNew = <int>[
+      ...durations.sublist(0, position),
+      newDuration,
+      ...durations.sublist(position, durations.length - 1),
+    ];
+
+    final slots = <_SlotRecord>[];
+    var cursor = dayBase.add(Duration(minutes: anchorMinutes));
+
+    for (var i = 0; i < orderedNew.length; i++) {
+      final place = orderedNew[i];
+      final duration = durationsNew[i];
+
+      int travel = 0;
+      if (i > 0) {
+        final prevPlace = orderedNew[i - 1];
+        travel = _estimateTravelMinutes(
+                prevPlace.coordinates.distanceTo(place.coordinates),
+                transportMode)
+            .ceil()
+            .clamp(1, ItineraryConstants.hardMaxTravelMinutes);
+      }
+
+      final start = i == 0 ? cursor : cursor.add(Duration(minutes: travel));
+      final end = start.add(Duration(minutes: duration));
+
+      // Hard: exploration window bounds.
+      final startMin = start.hour * 60 + start.minute;
+      final endMin = end.hour * 60 + end.minute;
+      if (startMin < window.startMinutes || endMin > window.endMinutes) {
+        return null;
+      }
+
+      // Hard: opening hours of EVERY stop for its visit interval.
+      final openIssue = _checkOpeningHours(
+        place: place,
+        date: date,
+        windowStartMinutes: window.startMinutes,
+        windowEndMinutes: window.endMinutes,
+        visitStartMinutes: startMin,
+        visitEndMinutes: endMin,
+      );
+      if (openIssue != null) return null;
+
+      slots.add((
+        place: place,
+        startTime: start,
+        endTime: end,
+        durationMinutes: duration,
+        travelMinutes: travel,
+      ));
+      cursor = end;
+    }
+    return slots;
+  }
+
+  // ── Routed slot for the winning position (max 2 Google calls) ──
+
+  /// Rebuilds the day for the chosen position with REAL routed travel times
+  /// for the two legs touching the new place; all other legs keep the
+  /// estimated values (identical to the original day's estimator).
+  Future<List<_SlotRecord>?> _buildRoutedSlot({
+    required int position,
+    required List<ExistingStopContext> existingStops,
+    required Place newPlace,
+    required int newDuration,
+    required DateTime date,
+    required ExplorationWindow window,
+    required String transportMode,
+  }) async {
+    // Fast path: chain with estimates first (no network), then swap in the
+    // two routed legs and re-chain. If the routed times break the window or
+    // opening hours, the position is rejected.
+    final estimated = _estimateScanPosition(
+      existingStops: existingStops,
+      newPlace: newPlace,
+      newDuration: newDuration,
+      position: position,
+      window: window,
+      transportMode: transportMode,
+    );
+    if (estimated == null) return null;
+
+    // Route only the affected legs (indexes position and position+1).
+    final ordered = <Place>[
+      ...existingStops.map((s) => s.place),
+    ];
+    final orderedNew = <Place>[
+      ...ordered.sublist(0, position),
+      newPlace,
+      ...ordered.sublist(position),
+    ];
+    final durationsNew = <int>[
+      ...existingStops.map((s) => s.durationMinutes),
+    ];
+    final durationsFixed = <int>[
+      ...durationsNew.sublist(0, position),
+      newDuration,
+      ...durationsNew.sublist(position),
+    ];
+
+    final routedTravel = <int?>[for (var i = 0; i < orderedNew.length; i++) null];
+    for (final i in [position, position + 1]) {
+      if (i <= 0 || i >= orderedNew.length) continue;
+      try {
+        final info = await _mapsService.getTravelTime(
+          origin: orderedNew[i - 1].coordinates,
+          destination: orderedNew[i].coordinates,
+          mode: transportMode,
+        );
+        routedTravel[i] = info.durationMinutes.ceil();
+      } catch (e) {
+        debugPrint('[CustomPlace] Routed leg $i failed (estimate kept): $e');
+      }
+    }
+
+    // Re-chain with routed values where available.
+    final dayBase = DateTime(date.year, date.month, date.day);
+    final anchorMinutes = existingStops.isEmpty
+        ? window.startMinutes
+        : existingStops.first.startTime.hour * 60 +
+            existingStops.first.startTime.minute;
+    final slots = <_SlotRecord>[];
+    var cursor = dayBase.add(Duration(minutes: anchorMinutes));
+
+    for (var i = 0; i < orderedNew.length; i++) {
+      final place = orderedNew[i];
+      final duration = durationsFixed[i];
+
+      int travel = 0;
+      if (i > 0) {
+        travel = routedTravel[i] ??
+            _estimateTravelMinutes(
+                    orderedNew[i - 1].coordinates
+                        .distanceTo(place.coordinates),
+                    transportMode)
+                .ceil()
+                .clamp(1, ItineraryConstants.hardMaxTravelMinutes);
+      }
+
+      final start = i == 0 ? cursor : cursor.add(Duration(minutes: travel));
+      final end = start.add(Duration(minutes: duration));
+      final startMin = start.hour * 60 + start.minute;
+      final endMin = end.hour * 60 + end.minute;
+
+      if (startMin < window.startMinutes || endMin > window.endMinutes) {
+        return null;
+      }
+      final openIssue = _checkOpeningHours(
+        place: place,
+        date: date,
+        windowStartMinutes: window.startMinutes,
+        windowEndMinutes: window.endMinutes,
+        visitStartMinutes: startMin,
+        visitEndMinutes: endMin,
+      );
+      if (openIssue != null) return null;
+
+      slots.add((
+        place: place,
+        startTime: start,
+        endTime: end,
+        durationMinutes: duration,
+        travelMinutes: travel,
+      ));
+      cursor = end;
+    }
+    return slots;
+  }
+
+  /// Converts a chained slot list into the pipeline's [ScheduledDay].
+  ScheduledDay _buildScheduledDay({
+    required int dayIndex,
+    required DateTime date,
+    required List<_SlotRecord> slot,
+  }) {
+    final stops = slot
+        .map((s) => ScheduledStop(
+              attraction: ScoredAttraction(
+                place: s.place,
+                score: 0,
+                breakdown: const {},
+              ),
+              startTime: s.startTime,
+              endTime: s.endTime,
+              durationMinutes: s.durationMinutes,
+              travelFromPreviousMinutes: s.travelMinutes,
+              scheduleReason: '',
+              weatherNote: '',
+            ))
+        .toList();
+    return ScheduledDay(
+      dayIndex: dayIndex,
+      date: date,
+      stops: stops,
+      totalDuration: stops.fold<int>(0, (sum, x) => sum + x.durationMinutes),
+      totalTravelTime:
+          stops.fold<double>(0, (sum, x) => sum + x.travelFromPreviousMinutes),
+    );
+  }
+
+  // ── Hard-constraint helpers ─────────────────────────────────
+
+  /// Opening-hours hard check. Two modes:
+  ///   • visit window omitted → "is the place open at some point today?"
+  ///   • visit window given   → "is it open for the whole visit?"
+  String? _checkOpeningHours({
+    required Place place,
+    required DateTime date,
+    required int windowStartMinutes,
+    required int windowEndMinutes,
+    int? visitStartMinutes,
+    int? visitEndMinutes,
+  }) {
+    final hours = place.openingHours;
+    if (hours == null || hours.periods.isEmpty) return null; // unknown = OK
+
+    final weekday = date.weekday % 7; // OpeningHours: 0 = Sunday
+    final dayPeriods =
+        hours.periods.where((p) => p.open.day == weekday).toList();
+    if (dayPeriods.isEmpty) {
+      return "This place isn't open during the available time.";
+    }
+    if (visitStartMinutes == null || visitEndMinutes == null) {
+      return null; // open at some point — finer checks happen per stop
+    }
+
+    for (final period in dayPeriods) {
+      final openMin = _hhmmToMinutes(period.open.time);
+      var closeMin = _hhmmToMinutes(period.close.time);
+      var start = visitStartMinutes;
+      var end = visitEndMinutes;
+      if (closeMin <= openMin) {
+        // Overnight period (e.g. 22:00 → 02:00).
+        closeMin += 1440;
+        if (start < openMin) {
+          start += 1440;
+          end += 1440;
+        }
+      }
+      if (start >= openMin && end <= closeMin) return null;
+    }
+    return "This place isn't open during the available time.";
+  }
+
+  int _hhmmToMinutes(String time) {
+    final h = int.tryParse(time.substring(0, 2)) ?? 0;
+    final m = time.length > 2 ? (int.tryParse(time.substring(2, 4)) ?? 0) : 0;
+    return h * 60 + m;
+  }
+
+  /// Visit duration: existing value → clamped AI suggestion → category
+  /// default. Always clamped to the project's hard duration rules.
+  int _resolveDuration({
+    required Place newPlace,
+    required int? suggested,
+  }) {
+    var base = newPlace.visitDurationMinutes ??
+        ItineraryConstants.baseDurationForCategory(
+            newPlace.placeCategory, ItineraryConstants.defaultDurationMinutes);
+    if (suggested != null && suggested > 0) {
+      base = suggested;
+    }
+    return base.clamp(
+      ItineraryConstants.minimumVisitDurationMinutes,
+      ItineraryConstants.maximumVisitDurationMinutes,
     );
   }
 

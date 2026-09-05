@@ -139,7 +139,16 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
               left: 0,
               right: 0,
               child: ARNotificationBanner(
-                markers: vm.nearbyMarkers,
+                // Straight-distance list for the collapsible attractions
+                // panel — deliberately NOT vm.nearbyMarkers, which is
+                // filtered by each marker's own activationRadiusMeters
+                // (an AR-overlay-only concept). The banner does its own
+                // 80/150/300/500m distance banding internally, so it
+                // needs every fetched marker with geometry, sorted
+                // nearest-first.
+                markers: (List<ARMarker>.from(vm.allComputedMarkers)
+                  ..sort((a, b) => (a.distanceMeters ?? double.infinity)
+                      .compareTo(b.distanceMeters ?? double.infinity))),
               ),
             ),
           ],

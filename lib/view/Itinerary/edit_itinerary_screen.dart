@@ -5,10 +5,14 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/colors.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
+import '../../model/business_logic/itinerary_service/custom_place_service.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
+import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
 import '../../viewmodel/Itinerary/edit_itinerary_vm.dart';
-import 'add_custom_stop_screen.dart';
+import 'manage_itinerary/add_custom_screen.dart';
+import 'widgets/change_location_picker_sheet.dart';
 
 /// Edits a single day of the generated itinerary during preview/review.
 /// Now supports switching between days via a day selector.
@@ -19,6 +23,8 @@ class EditItineraryScreen extends StatefulWidget {
   final DateTime tripStartDate;
   final String explorationTime;
   final List<String> mustVisitPlaceIds;
+  final String transportMode;
+  final List<String> interests;
 
   const EditItineraryScreen({
     super.key,
@@ -28,6 +34,8 @@ class EditItineraryScreen extends StatefulWidget {
     required this.tripStartDate,
     required this.explorationTime,
     required this.mustVisitPlaceIds,
+    this.transportMode = 'walking',
+    this.interests = const [],
   });
 
   @override
@@ -223,15 +231,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   void _reviewChanges() {
     final errors = _vm.validate();
     if (errors.isNotEmpty) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              _friendlyValidationError(errors.first),
-            ),
-          ),
-        );
+      // Invalid temporary itinerary — do NOT leave the edit screen.
+      _showProblem(_friendlyValidationError(errors.first));
       return;
     }
     _vm.applyChanges();
@@ -251,14 +252,115 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     }
   }
 
+  /// Traveler-facing Problem message (never technical details).
+  void _showProblem(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _pickStartTime(int index) async {
-    final stop = _vm.stops[index];
-    final picked = await showTimePicker(
+    // Dart-calculated valid options only — no arbitrary time entry.
+    final options = _vm.availableStartTimes(index);
+    if (options.isEmpty) {
+      _showProblem(_vm.error ??
+          'No alternative start times are available for this stop.');
+      return;
+    }
+
+    final picked = await showModalBottomSheet<TimeOfDay>(
       context: context,
-      initialTime: TimeOfDay(hour: stop.startTime.hour, minute: stop.startTime.minute),
+      backgroundColor: AppColors.surfaceInactive,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        final current = _vm.stops[index].startTime;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Start Time',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.charcoal,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Only times that fit the schedule are listed.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.mutedText,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.4,
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
+                    itemBuilder: (_, i) {
+                      final option = options[i];
+                      final isCurrent = option.hour == current.hour &&
+                          option.minute == current.minute;
+                      return InkWell(
+                        onTap: () => Navigator.pop(sheetContext, option),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isCurrent
+                                ? AppColors.tealGreen.withOpacity(0.12)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isCurrent
+                                  ? AppColors.tealGreen
+                                  : AppColors.taupe.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.schedule,
+                                  size: 16, color: AppColors.terracottaDark),
+                              const SizedBox(width: 10),
+                              Text(
+                                option.format(sheetContext),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.charcoal,
+                                ),
+                              ),
+                              const Spacer(),
+                              if (isCurrent)
+                                const Icon(Icons.check,
+                                    size: 16, color: AppColors.tealGreen),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
-    if (picked == null) return;
-    if (!mounted) return;
+
+    if (picked == null || !mounted) return;
     final ok = _vm.setStartTime(index, picked);
     if (!mounted) return;
     if (ok) {
@@ -266,8 +368,191 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text('Time updated for ${stop.name}. '
+            content: Text('Time updated for ${_vm.stops[index].name}. '
                 'The rest of your schedule has been adjusted.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+    } else {
+      _showProblem(_vm.error ??
+          'This time does not fit the day\'s schedule. Please pick another time.');
+    }
+  }
+
+  /// Visit duration bottom sheet — natural travel-app choices only, hard
+  /// 2-hour maximum, feasibility pre-calculated by the ViewModel.
+  Future<void> _pickDuration(int index) async {
+    final options = _vm.availableDurations(index);
+    if (options.isEmpty) {
+      _showProblem('No alternative durations are available for this stop.');
+      return;
+    }
+
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppColors.surfaceInactive,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        final current = _vm.stops[index].durationMinutes;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Visit Duration',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.charcoal,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Maximum 2 hours. End time adjusts automatically.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.mutedText,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.4,
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
+                    itemBuilder: (_, i) {
+                      final option = options[i];
+                      final isCurrent = option == current;
+                      return InkWell(
+                        onTap: () => Navigator.pop(sheetContext, option),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isCurrent
+                                ? AppColors.tealGreen.withOpacity(0.12)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isCurrent
+                                  ? AppColors.tealGreen
+                                  : AppColors.taupe.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.timelapse,
+                                  size: 16, color: AppColors.terracottaDark),
+                              const SizedBox(width: 10),
+                              Text(
+                                _durationLabel(option),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.charcoal,
+                                ),
+                              ),
+                              const Spacer(),
+                              if (isCurrent)
+                                const Icon(Icons.check,
+                                    size: 16, color: AppColors.tealGreen),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (picked == null || !mounted) return;
+    final ok = _vm.setDuration(index, picked);
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('Visit duration updated for '
+                '${_vm.stops[index].name}. The rest of your schedule has '
+                'been adjusted.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+    } else {
+      _showProblem(_vm.error ??
+          'This duration does not fit the day\'s schedule.');
+    }
+  }
+
+  static String _durationLabel(int minutes) {
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    if (h > 0 && m > 0) return '$h hr $m min';
+    if (h > 0) return '$h hr';
+    return '$m min';
+  }
+  /// Add Place = a SEPARATE operation from Change Location. Opens the real
+  /// Add Custom Place screen (search + bookmarks), which runs fast
+  /// deterministic checks, one compact AI insertion-position request and
+  /// deterministic validation, then returns the validated proposed day.
+  /// The proposal is applied to the TEMPORARY itinerary state only — the
+  /// final Save process persists it later.
+  Future<void> _showAddPicker() async {
+    final result = await Navigator.push<({int dayIndex, ScheduledDay day})>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddCustomStopScreen(
+          itineraryId: 'preview',
+          dayIndex: _vm.dayNumber,
+          dayDate: _vm.dayDate,
+          availableDayIndices: [_vm.dayNumber],
+          explorationTime: widget.explorationTime,
+          travelPace: 'Standard',
+          transportMode: widget.transportMode,
+          interests: widget.interests,
+          // Preview mode: seed the Add screen with the CURRENT TEMPORARY
+          // day schedule so planning runs against uncommitted edits.
+          dayStops: _vm.stops
+              .map((s) => ExistingStopContext(
+                    place: s.place,
+                    startTime: s.startTime,
+                    endTime: s.endTime,
+                    durationMinutes: s.durationMinutes,
+                    travelFromPrevMinutes: s.travelFromPrevMinutes,
+                    isMustVisit: s.isMustVisit,
+                  ))
+              .toList(),
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+
+    final ok = _vm.applyProposedDay(result.day);
+    _fitMapBounds();
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+                '${_vm.stops[result.dayIndex - 1].name} added to Day '
+                '${_vm.dayNumber}. Remember to save your changes.'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -277,114 +562,81 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              _vm.error ??
-                  'This time does not fit the day\'s schedule. Please pick another time.',
+              _vm.error ?? 'This place cannot fit into your current schedule.',
             ),
           ),
         );
     }
   }
-  Future<void> _showAddPicker() async {
-    final candidates = _vm.availableCandidates;
-    if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('No additional candidates available.')),
-        );
-      return;
-    }
 
-    final selected = await Navigator.push<Place>(
-      context,
-      MaterialPageRoute(
-        builder: (ctx) => AddPlaceScreen(
-          candidates: candidates,
-          title: 'Add a Place',
-          subtitle: 'Choose from available candidates',
-        ),
-      ),
-    );
-
-    if (selected != null && mounted) {
-      final ok = _vm.addCandidate(selected);
-      _fitMapBounds();
-      if (ok) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text('${selected.placeName} added to Day '
-                  '${_vm.dayNumber}.'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-      } else {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(
-                _vm.error ??
-                    'Cannot add ${selected.placeName} because there is not '
-                    'enough time remaining in the day.',
-              ),
-            ),
-          );
-      }
-    }
-  }
-
+  /// Change Location = REPLACEMENT, not addition:
+  ///   editability check → AI recommendations + manual search →
+  ///   ViewPlaceDetailScreen (replacement mode) → "Use This Place" →
+  ///   final validation → temporary replacement → recalculation → validate.
   Future<void> _showReplacePicker(int index) async {
-    final currentPlaceId = _vm.stops[index].placeId;
-    final candidates = _vm.availableCandidates
-        .where((p) => p.placeId != currentPlaceId)
-        .toList();
-
-    if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('No replacement candidates available.')),
-        );
+    // 1. Editability gate — Problem message, no recommendation call.
+    final lockedReason = _vm.stopLockedReason(index);
+    if (lockedReason != null) {
+      _showProblem(lockedReason);
       return;
     }
 
-    final selected = await Navigator.push<Place>(
-      context,
-      MaterialPageRoute(
-        builder: (ctx) => AddPlaceScreen(
-          candidates: candidates,
-          title: 'Replace Stop',
-          subtitle: 'Select a replacement from candidates',
+    final stop = _vm.stops[index];
+    final scheduledIds =
+        _vm.stops.map((s) => s.placeId).toSet();
+
+    // 2. Recommendation sheet (AI ranked + manual search inside).
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surfaceInactive,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => ChangeLocationPickerSheet(
+        stop: ItineraryStop(
+          stopId: index + 1, // temporary identity for the preview stop
+          itineraryId: 'preview',
+          placeId: stop.placeId,
+          dayIndex: _vm.dayNumber,
+          stopOrder: index + 1,
+          startTime: stop.startTime,
+          endTime: stop.endTime,
+          durationMinutes: stop.durationMinutes,
+          stopStatus: 'PLANNED',
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+          place: stop.place,
         ),
+        scheduledPlaceIds: scheduledIds,
+        tripDate: _vm.dayDate,
+        interests: const [],
+        explorationTime: widget.explorationTime,
+        // 3. "Use This Place" → final validation + temporary replacement.
+        onUsePlace: (selected) async {
+          final ok = _vm.replaceStop(index, selected);
+          if (ok) {
+            _fitMapBounds();
+            return null; // success
+          }
+          // Failed validation — original stop remains unchanged.
+          return _vm.error ??
+              'This place cannot fit into your remaining schedule.';
+        },
       ),
     );
 
-    if (selected != null && mounted) {
-      final ok = _vm.replaceStop(index, selected);
+    if (confirmed == true && mounted) {
       _fitMapBounds();
-      if (ok) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text('Stop replaced with ${selected.placeName}.'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-      } else {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(
-                _vm.error ?? 'Unable to replace this stop. The replacement '
-                    'does not fit the day\'s schedule.',
-              ),
-            ),
-          );
-      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('Stop replaced with ${_vm.stops[index].name}. '
+                'The schedule has been recalculated.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
     }
   }
 
@@ -518,7 +770,12 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context, null),
+          // "Done" ≠ save to database: validates the temporary itinerary,
+          // stays on the screen with a Problem message when invalid, and
+          // returns the updated ItineraryResult to the Final Screen when
+          // valid. Persistence happens only when the traveler explicitly
+          // saves on the Final Screen.
+          onPressed: _reviewChanges,
           child: const Text(
             'Done',
             style: TextStyle(
@@ -759,6 +1016,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                     isFirst: index == 0,
                     isLast: index == stops.length - 1,
                     onEditTime: () => _pickStartTime(index),
+                    onEditDuration: () => _pickDuration(index),
                     onReplace: () => _showReplacePicker(index),
                     onDelete: () => _removeStop(index),
                   );
@@ -880,6 +1138,7 @@ class _StopItem extends StatelessWidget {
   final bool isFirst;
   final bool isLast;
   final VoidCallback onEditTime;
+  final VoidCallback onEditDuration;
   final VoidCallback onReplace;
   final VoidCallback onDelete;
 
@@ -890,6 +1149,7 @@ class _StopItem extends StatelessWidget {
     required this.isFirst,
     required this.isLast,
     required this.onEditTime,
+    required this.onEditDuration,
     required this.onReplace,
     required this.onDelete,
   });
@@ -1057,19 +1317,25 @@ class _StopItem extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(Icons.schedule, size: 20, color: AppColors.terracottaDark),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Visit: $durationLabel',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w400,
-                          color: AppColors.warmBrown,
+                  GestureDetector(
+                    onTap: onEditDuration,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.schedule, size: 20, color: AppColors.terracottaDark),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Visit: $durationLabel',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: AppColors.warmBrown,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        const Icon(Icons.edit_outlined,
+                            size: 14, color: AppColors.mutedText),
+                      ],
+                    ),
                   ),
                 ],
               ),

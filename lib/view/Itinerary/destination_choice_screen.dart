@@ -17,7 +17,11 @@ class _DestinationChoiceScreenState extends State<DestinationChoiceScreen> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<Step1WhereToViewModel>(
-      create: (_) => Step1WhereToViewModel()..loadDestinations(),
+      create: (context) {
+        final vm = Step1WhereToViewModel();
+        vm.loadDestinations();
+        return vm;
+      },
       child: const _Step1WhereToBody(),
     );
   }
@@ -26,6 +30,27 @@ class _DestinationChoiceScreenState extends State<DestinationChoiceScreen> {
 class _Step1WhereToBody extends StatelessWidget {
   const _Step1WhereToBody();
 
+  void _handleToggle(
+      BuildContext context,
+      Step1WhereToViewModel vm,
+      Destination dest,
+      ) {
+    final accepted = vm.toggleSelection(dest);
+    if (!accepted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'You can select a maximum of '
+                  '${Step1WhereToViewModel.maxDestinations} destinations.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<Step1WhereToViewModel>();
@@ -33,7 +58,6 @@ class _Step1WhereToBody extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.creamBg,
-      // Replaced internal _AppBar with shared WizardAppBar
       appBar: const WizardAppBar(step: 1),
       body: Stack(
         children: [
@@ -45,18 +69,15 @@ class _Step1WhereToBody extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 8),
-                  // Replaced internal _ProgressBar with shared WizardProgressBar
                   const WizardProgressBar(activeSteps: 1),
                   const SizedBox(height: 32),
                   const _Header(),
                   const SizedBox(height: 24),
-                  _SearchBar(
-                    onChanged: vm.searchDestinations,
-                  ),
+                  _SearchBar(onChanged: vm.searchDestinations),
                   const SizedBox(height: 32),
                   _SelectedChips(
                     selected: selected,
-                    onRemove: (dest) => vm.toggleSelection(dest),
+                    onRemove: (dest) => _handleToggle(context, vm, dest),
                   ),
                   const SizedBox(height: 40),
                   if (vm.isLoading)
@@ -68,7 +89,7 @@ class _Step1WhereToBody extends StatelessWidget {
                     _PopularGrid(
                       destinations: vm.filteredDestinations,
                       isSelected: (dest) => vm.isSelected(dest),
-                      onToggle: (dest) => vm.toggleSelection(dest),
+                      onToggle: (dest) => _handleToggle(context, vm, dest),
                     ),
                 ],
               ),
@@ -79,20 +100,15 @@ class _Step1WhereToBody extends StatelessWidget {
             label: 'Continue to Trip Dates',
             onContinue: () {
               try {
-                // Build validated draft from ViewModel
-                final draft = vm.buildTripDraft();
-
-                // Navigate to Step 2 with draft
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => TripCustomizationScreen(
-                      draft: draft,
+                      draft: vm.buildTripDraft(),
                     ),
                   ),
                 );
               } catch (e) {
-                // Show validation error from ViewModel
                 ScaffoldMessenger.of(context)
                   ..hideCurrentSnackBar()
                   ..showSnackBar(
@@ -110,8 +126,7 @@ class _Step1WhereToBody extends StatelessWidget {
   }
 }
 
-// ─── Private sub‑widgets ──────────────────────────────────────
-
+// ─── Private sub‑widgets (unchanged) ──────────────────────────
 class _Header extends StatelessWidget {
   const _Header();
 
@@ -132,7 +147,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          "Select one or more destinations to build your itinerary.",
+          "Select up to ${Step1WhereToViewModel.maxDestinations} destinations to build your itinerary.",
           style: TextStyle(
             fontFamily: 'Inter',
             fontSize: 16,
@@ -194,7 +209,7 @@ class _SelectedChips extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'YOUR ROUTE (${selected.length} Selected)',
+          'YOUR ROUTE (${selected.length}/${Step1WhereToViewModel.maxDestinations} Selected)',
           style: const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
@@ -413,7 +428,7 @@ class _StickyFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isEnabled = count > 0; // Button enabled only when at least 1 destination selected
+    final isEnabled = count > 0;
 
     return Positioned(
       bottom: 0,
@@ -446,7 +461,7 @@ class _StickyFooter extends StatelessWidget {
             elevation: 4,
             shadowColor: AppColors.brandTerracotta.withOpacity(0.3),
           ),
-          onPressed: isEnabled ? onContinue : null, // ✅ Disabled when no destinations
+          onPressed: isEnabled ? onContinue : null,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

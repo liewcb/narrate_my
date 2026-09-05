@@ -21,12 +21,16 @@ class _MustVisitSelectionScreenState extends State<MustVisitSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<Step3AddPlaceVM>(
-      create: (_) => Step3AddPlaceVM(widget.draft, userId: _userId),
+      create: (_) => Step3AddPlaceVM(
+        widget.draft,
+        userId: _userId,
+      ),
       child: const _Step3AddPlaceBody(),
     );
   }
 }
 
+// ─── _Step3AddPlaceBody remains unchanged ──────────────────────────
 class _Step3AddPlaceBody extends StatelessWidget {
   const _Step3AddPlaceBody();
 
@@ -34,12 +38,10 @@ class _Step3AddPlaceBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final vm = context.watch<Step3AddPlaceVM>();
 
-    // ── Compute filtered list based on search query ──
     final query = vm.searchQuery.trim().toLowerCase();
     List<WizardPlace> displayPlaces;
 
     if (vm.selectedTab == 1) {
-      // "Search Maps" tab – filter the default places
       displayPlaces = query.isEmpty
           ? vm.pagedDefaultPlaces
           : vm.pagedDefaultPlaces.where((p) =>
@@ -48,7 +50,6 @@ class _Step3AddPlaceBody extends StatelessWidget {
           p.location.toLowerCase().contains(query)
       ).toList();
     } else {
-      // "Bookmarks" tab – filter the bookmarks list
       displayPlaces = query.isEmpty
           ? vm.availablePlaces
           : vm.availablePlaces.where((p) =>
@@ -80,7 +81,7 @@ class _Step3AddPlaceBody extends StatelessWidget {
                     selectedIndex: vm.selectedTab,
                     onChanged: vm.setTab,
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 14),
                   _SelectedChips(
                     selectedNames: vm.mustVisitPlaces,
                     onRemove: vm.togglePlace,
@@ -96,7 +97,6 @@ class _Step3AddPlaceBody extends StatelessWidget {
                   ],
                   const SizedBox(height: 22),
 
-                  // ── Content area ──
                   if (vm.isLoading)
                     const Padding(
                       padding: EdgeInsets.only(top: 48),
@@ -124,7 +124,6 @@ class _Step3AddPlaceBody extends StatelessWidget {
                           ),
                         ),
                       )
-                    // Show empty state for bookmarks error (no data)
                     else if (vm.selectedTab == 0 && vm.bookmarksError != null && vm.availablePlaces.isEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
@@ -142,7 +141,6 @@ class _Step3AddPlaceBody extends StatelessWidget {
                             ),
                           ),
                         )
-                      // If there's no data at all (and search is empty) – show initial empty state
                       else if (displayPlaces.isEmpty && query.isEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
@@ -156,7 +154,6 @@ class _Step3AddPlaceBody extends StatelessWidget {
                               ),
                             ),
                           )
-                        // Show "No results" if search yields nothing
                         else if (displayPlaces.isEmpty && query.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
@@ -174,13 +171,11 @@ class _Step3AddPlaceBody extends StatelessWidget {
                                 ),
                               ),
                             )
-                          // Show the list with filtered results
                           else
                             _PlaceList(
                               places: displayPlaces,
                               isAdded: vm.isPlaceAdded,
                               onToggle: vm.togglePlace,
-                              // Only show "Load more" when on Search Maps tab, search is empty, and there are more pages
                               showLoadMore: vm.selectedTab == 1 &&
                                   query.isEmpty &&
                                   vm.hasMoreDefaultPlaces,
@@ -197,7 +192,9 @@ class _Step3AddPlaceBody extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => AddAllocationScreen(draft: vm.buildDraft()),
+                    builder: (_) => AddAllocationScreen(
+                      draft: vm.buildDraft(),
+                    ),
                   ),
                 );
               },
@@ -205,7 +202,9 @@ class _Step3AddPlaceBody extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => AddAllocationScreen(draft: vm.buildDraft()),
+                    builder: (_) => AddAllocationScreen(
+                      draft: vm.buildDraft(),
+                    ),
                   ),
                 );
               },
@@ -216,8 +215,6 @@ class _Step3AddPlaceBody extends StatelessWidget {
     );
   }
 }
-
-// ─── Private Sub‑Widgets (unchanged, except _AppBar removed) ─────
 
 class _Title extends StatelessWidget {
   const _Title();
@@ -262,11 +259,9 @@ class _TabToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // Alignment: Shares identical 24px horizontal grid line
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Container(
         height: 48,
-        // Simplification: Subtle background container instead of heavy shadows/borders
         decoration: BoxDecoration(
           color: AppColors.outlineLight.withOpacity(0.4),
           borderRadius: BorderRadius.circular(12),
@@ -311,63 +306,98 @@ class _SelectedChips extends StatelessWidget {
   final List<String> selectedNames;
   final ValueChanged<String> onRemove;
 
-  const _SelectedChips({required this.selectedNames, required this.onRemove});
+  const _SelectedChips({
+    required this.selectedNames,
+    required this.onRemove,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (selectedNames.isEmpty) return const SizedBox.shrink();
+
     return Padding(
-      // Alignment: 24px horizontal grid line
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Hierarchy: 14px regular muted label text
-          Text(
-            "Selected (${selectedNames.length})",
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
-              color: AppColors.outline,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.outlineLight),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "MUST-VISIT PLACES SELECTED",
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                    color: AppColors.outline,
+                  ),
+                ),
+                Text(
+                  "${selectedNames.length}",
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.brandGreen,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: selectedNames.map((name) {
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.brandGreen,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
+            const SizedBox(height: 12),
+            Column(
+              children: selectedNames.map((name) {
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.brandGreenLight.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.check,
+                        size: 18,
+                        color: AppColors.brandGreen,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () => onRemove(name),
-                      child: const Icon(
-                        Icons.close,
-                        color: Colors.white70,
-                        size: 16,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.brandCharcoal,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
+                      GestureDetector(
+                        onTap: () => onRemove(name),
+                        behavior: HitTestBehavior.opaque,
+                        child: const Padding(
+                          padding: EdgeInsets.all(2.0),
+                          child: Icon(
+                            Icons.close,
+                            size: 18,
+                            color: AppColors.outline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -381,11 +411,9 @@ class _SearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // Alignment: 24px horizontal grid margin
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Container(
         height: 56,
-        // Simplification: Soft white container with no elevation or borders
         decoration: BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(12),
@@ -400,7 +428,6 @@ class _SearchBar extends StatelessWidget {
                 onChanged: onChanged,
                 decoration: const InputDecoration(
                   hintText: "Search restaurants or attractions...",
-                  // Hierarchy: 14px regular secondary text for hint
                   hintStyle: TextStyle(
                     color: AppColors.outline,
                     fontSize: 14,
@@ -499,14 +526,12 @@ class _PlaceList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // Alignment: Shared 24px vertical grid line
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
           ...places.map((place) {
             final added = isAdded(place.name);
             return Padding(
-              // Spacing: 16px grid margin between cards
               padding: const EdgeInsets.only(bottom: 16),
               child: _PlaceCard(
                 place: place,
@@ -564,7 +589,6 @@ class _PlaceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top row: image + name + type (unchanged)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -627,12 +651,9 @@ class _PlaceCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-
-          // Bottom row: rating + flexible chips + add button
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Rating chip – fixed width
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -659,8 +680,6 @@ class _PlaceCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-
-              // Middle section: travel + duration chips that wrap
               Expanded(
                 child: Wrap(
                   spacing: 8,
@@ -674,8 +693,6 @@ class _PlaceCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-
-              // Add button – fixed size
               GestureDetector(
                 onTap: () {
                   if (place.isOutsideHotspot) {
@@ -762,12 +779,14 @@ class _StickyFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool hasSelection = selectedCount > 0;
+    final String placeLabel = selectedCount == 1 ? 'Place' : 'Places';
+
     return Positioned(
       bottom: 0,
       left: 0,
       right: 0,
       child: Container(
-        // Alignment & Spacing: Strict 24px side padding grid line, 32px top margin padding
         padding: EdgeInsets.only(
           left: 24,
           right: 24,
@@ -780,38 +799,42 @@ class _StickyFooter extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.brandTerracotta,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0, // Simplification: Flat button aesthetic
-              ),
-              onPressed: onContinue,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "Continue with $selectedCount Places",
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+            if (hasSelection) ...[
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brandTerracotta,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 56),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward, size: 20),
-                ],
+                  elevation: 0,
+                ),
+                onPressed: onContinue,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continue with $selectedCount $placeLabel',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.arrow_forward,
+                      size: 20,
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
             GestureDetector(
               onTap: onSkip,
               child: const Text(
-                "Skip for now",
-                // Hierarchy: 14px regular secondary text
+                'Skip for now',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.normal,
