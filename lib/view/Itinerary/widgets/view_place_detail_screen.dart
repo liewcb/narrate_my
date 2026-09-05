@@ -6,14 +6,6 @@ import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/view_place_detail_vm.dart';
 
 /// Read-only View Place Detail screen.
-///
-/// Resolves a [Place] by its unique `placeId` through
-/// [ViewPlaceDetailViewModel] → `PlaceRepositoryAdapter` (no direct
-/// Supabase / Google Places access from the UI). When the caller already
-/// holds the joined [Place], it is passed via [initialPlace] so the screen
-/// renders immediately and refreshes in the background.
-
-/// Represents the detailed status of a stop within an itinerary day.
 enum StopStatus {
   planned('Planned', Icons.calendar_today, AppColors.teal),
   inProgress('In Progress', Icons.play_circle_outline, AppColors.gold),
@@ -36,6 +28,12 @@ class ViewPlaceDetailScreen extends StatefulWidget {
   final bool showStatusToggle;
   final ValueChanged<bool>? onStatusChanged;
   final StopStatus initialStatus;
+  final bool isReplacement;
+  final Future<String?> Function(Place place)? onUsePlace;
+
+  /// The itinerary stop being replaced (context only — the replacement
+  /// itself is performed by [onUsePlace]). Null outside replacement mode.
+  final String? replacingStopId;
 
   const ViewPlaceDetailScreen({
     Key? key,
@@ -44,6 +42,9 @@ class ViewPlaceDetailScreen extends StatefulWidget {
     this.showStatusToggle = false,
     this.onStatusChanged,
     this.initialStatus = StopStatus.planned,
+    this.isReplacement = false,
+    this.replacingStopId,
+    this.onUsePlace,
   }) : super(key: key);
 
   @override
@@ -53,6 +54,7 @@ class ViewPlaceDetailScreen extends StatefulWidget {
 class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
   late ViewPlaceDetailViewModel _viewModel;
   late StopStatus _currentStatus;
+  bool _isConfirming = false;
 
   @override
   void initState() {
@@ -116,8 +118,6 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
     );
   }
 
-  // ─── Unavailable state ──────────────────────────────────────
-
   Widget _buildUnavailable() {
     final message = _viewModel.error ?? 'Place information is unavailable.';
     return Center(
@@ -139,8 +139,6 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
     );
   }
 
-  // ─── Content ────────────────────────────────────────────────
-
   Widget _buildContent(Place place) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
@@ -148,7 +146,6 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
         _buildHero(place),
         const SizedBox(height: 20),
 
-        // ---- Interactive Status Card & Switch ----
         if (widget.showStatusToggle) ...[
           _buildStatusToggle(),
           const SizedBox(height: 20),
@@ -163,43 +160,111 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
           ),
           const SizedBox(height: 10),
         ],
-        if (place.placeTypes.isNotEmpty) ...[
-          _buildTypeChips(place.placeTypes),
-          const SizedBox(height: 18),
-        ],
+        // ❌ Removed type chips section
         _buildDetailsCard(place),
         const SizedBox(height: 16),
-        if (place.placeRegularOpeningHours != null)
-          _buildOpeningHoursCard(place),
+        // ❌ Removed opening hours card
 
         const SizedBox(height: 24),
+        if (widget.isReplacement && widget.onUsePlace != null) ...[
+          _buildUseThisPlaceButton(place),
+          const SizedBox(height: 12),
+        ],
         _buildBottomBackButton(),
       ],
     );
   }
 
+  Widget _buildUseThisPlaceButton(Place place) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _isConfirming ? null : () => _confirmReplacement(place),
+        icon: _isConfirming
+            ? const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation(Colors.white),
+          ),
+        )
+            : const Icon(Icons.check_circle_outline, size: 20),
+        label: Text(
+          _isConfirming ? 'Updating…' : 'Use This Place',
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.accent,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(0, 48),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+          ),
+          elevation: 0,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmReplacement(Place place) async {
+    if (_isConfirming) return;
+    setState(() => _isConfirming = true);
+    try {
+      final problem = await widget.onUsePlace!(place);
+      if (!mounted) return;
+      if (problem == null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('Location updated successfully.')),
+          );
+        Navigator.pop(context, true);
+      } else {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(problem)));
+      }
+    } finally {
+      if (mounted) setState(() => _isConfirming = false);
+    }
+  }
+
   Widget _buildHero(Place place) {
-    final photoUrl = _placePhotoUrl(place.placePhotoRef, maxWidth: 800);
+    final imageUrl = _buildPhotoUrl(place.placePhotoRef);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppRadius.card),
       child: Container(
         height: 180,
         width: double.infinity,
         color: AppColors.surface2,
-        child: photoUrl != null
+        child: imageUrl != null && imageUrl.isNotEmpty
             ? Image.network(
-          photoUrl,
+          imageUrl,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => const _HeroPlaceholder(),
+          errorBuilder: (_, __, ___) => const _HeroPlaceholder(),
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return const Center(
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          },
         )
             : const _HeroPlaceholder(),
       ),
     );
   }
 
-  /// Builds a Google Places photo URL from a photo reference. Returns null
-  /// when no reference exists. Uses [ApiKeys.googleMapsApiKey].
-  String? _placePhotoUrl(String? photoRef, {int maxWidth = 400}) {
+  String? _buildPhotoUrl(String? photoRef, {int maxWidth = 400}) {
     if (photoRef == null || photoRef.isEmpty) return null;
     return 'https://maps.googleapis.com/maps/api/place/photo'
         '?maxwidth=$maxWidth'
@@ -207,7 +272,6 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
         '&key=${ApiKeys.googleMapsApiKey}';
   }
 
-  /// Bottom Back button — reachable by scrolling to the end of the content.
   Widget _buildBottomBackButton() {
     return SizedBox(
       width: double.infinity,
@@ -234,8 +298,6 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
       ),
     );
   }
-
-  // ─── Combined Status Toggle & Picker Card ────────────────────
 
   Widget _buildStatusToggle() {
     final activeStatus = _viewModel.isStopped
@@ -439,30 +501,7 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
     );
   }
 
-  Widget _buildTypeChips(List<String> types) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: types
-          .map(
-            (type) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: AppColors.surface2,
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-          ),
-          child: Text(
-            type,
-            style: AppTextStyles.labelSm.copyWith(
-              color: AppColors.inkSoft,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      )
-          .toList(),
-    );
-  }
+  // ─── Removed _buildTypeChips ───
 
   Widget _buildDetailsCard(Place place) {
     final items = <(IconData, String)>[
@@ -485,9 +524,9 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
       if (place.placeWebsite != null && place.placeWebsite!.isNotEmpty)
         (Icons.language_outlined, place.placeWebsite!),
       (Icons.map_outlined,
-          '${place.placeLatitude.toStringAsFixed(5)}, '
-              '${place.placeLongitude.toStringAsFixed(5)}'),
-      (Icons.badge_outlined, 'Google ID: ${place.placeId}'),
+      '${place.placeLatitude.toStringAsFixed(5)}, '
+          '${place.placeLongitude.toStringAsFixed(5)}'),
+      // ❌ Removed Google ID line
       if (place.destinationId != null && place.destinationId!.isNotEmpty)
         (Icons.tour_outlined, 'Destination: ${place.destinationId}'),
       if (place.hotspotId != null && place.hotspotId!.isNotEmpty)
@@ -530,7 +569,6 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
     );
   }
 
-  /// Formats a Google Places price level (0..4) into a readable label.
   String _priceLevelLabel(int level) {
     switch (level) {
       case 0:
@@ -548,47 +586,7 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
     }
   }
 
-  Widget _buildOpeningHoursCard(Place place) {
-    final hours = place.placeRegularOpeningHours!;
-    final weekdayText = hours.weekdayText;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.moduleBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.schedule, size: 18, color: AppColors.green),
-              const SizedBox(width: 8),
-              Text(
-                'Opening Hours',
-                style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          if (weekdayText.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            ...weekdayText.map(
-                  (line) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Text(
-                  line,
-                  style: AppTextStyles.bodySm.copyWith(color: AppColors.inkSoft),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+// ❌ Removed _buildOpeningHoursCard
 }
 
 class _HeroPlaceholder extends StatelessWidget {

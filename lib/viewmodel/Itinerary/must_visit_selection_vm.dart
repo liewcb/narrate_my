@@ -100,7 +100,7 @@ class WizardPlace {
 
 /// ViewModel for Step 3 (Must-go attractions).
 class Step3AddPlaceVM extends ChangeNotifier {
-  final TripDraft draft;
+  TripDraft draft;
   final GoogleMapsService _mapsService;
   final DestinationRepository _destinationRepository;
   final BookmarkRepository _bookmarkRepository;
@@ -254,6 +254,14 @@ class Step3AddPlaceVM extends ChangeNotifier {
         _candidateService =
             candidateService ?? CandidateRetrievalService() {
     _ensureSelectedDestinations();
+    // Restore must-visit selections from the draft so BACK
+    // navigation (Step 4 → Step 3) keeps progress.
+    if (draft.mustVisitPlaceIds.isNotEmpty) {
+      _mustVisitPlaceIds.addAll(draft.mustVisitPlaceIds);
+      for (final id in draft.mustVisitPlaceIds) {
+        _mustVisitNameById[id] = id;
+      }
+    }
     loadBookmarks();
   }
 
@@ -395,6 +403,11 @@ class Step3AddPlaceVM extends ChangeNotifier {
       _mustVisitPlaceIds.add(placeId);
       _mustVisitNameById[placeId] = place.name;
     }
+    // Keep the draft's must-visit selections in sync so BACK navigation
+    // keeps the selection.
+    draft = draft.copyWith(
+      mustVisitPlaceIds: _mustVisitPlaceIds,
+    );
     notifyListeners();
   }
 
@@ -404,7 +417,9 @@ class Step3AddPlaceVM extends ChangeNotifier {
     final ids = _mustVisitPlaceIds.isNotEmpty
         ? _mustVisitPlaceIds
         : _mustVisitPlaces;
-    return draft.copyWith(mustVisitPlaceIds: ids);
+    final updated = draft.copyWith(mustVisitPlaceIds: ids);
+    draft = updated;
+    return updated;
   }
 
   // ---------- Search Maps – Default Places ----------
@@ -424,7 +439,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
       }
 
       // ---- Build type list from user interests ----
-      final interests = draft.interests ?? [];
+      final interests = draft.interests;
       final allTypes = <String>[];
       for (final interest in interests) {
         final types = interestToGoogleTypes[interest];
@@ -440,7 +455,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
         final hotspot = await _candidateService.selectBestHotspot(
           destinationName: dest.destinationName,
           destinationId: dest.destinationId,
-          interests: draft.interests,
+          interests: draft.interests.toList(),
         );
         _selectedHotspot = hotspot;
 
@@ -531,7 +546,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
         return;
       }
 
-      final interests = draft.interests ?? [];
+      final interests = draft.interests;
       final allTypes = <String>[];
       for (final interest in interests) {
         final types = interestToGoogleTypes[interest];
@@ -546,7 +561,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
         final hotspot = await _candidateService.selectBestHotspot(
           destinationName: dest.destinationName,
           destinationId: dest.destinationId,
-          interests: draft.interests,
+          interests: draft.interests.toList(),
         );
         _selectedHotspot = hotspot;
 
@@ -667,7 +682,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
   Future<List<Destination>> _resolveSelectedDestinations() async {
     if (draft.destinations.isEmpty) return [];
     final all = await _destinationRepository.getAllDestinations();
-    final names = draft.destinations.map((n) => n.trim().toLowerCase()).toSet();
+    final names = draft.destinationNames.map((n) => n.trim().toLowerCase()).toSet();
     return all.where((d) => names.contains(d.destinationName.trim().toLowerCase())).toList();
   }
 
@@ -765,7 +780,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
   }
 
   (IconData, String) _getTravelModeInfo() {
-    final mode = (draft.transportation ?? 'walking').toString().toLowerCase();
+    final mode = draft.transportation.toString().toLowerCase();
     if (mode.contains('car') || mode.contains('drive') || mode.contains('driving')) {
       return (Icons.directions_car_rounded, 'Drive');
     } else if (mode.contains('transit') || mode.contains('bus') || mode.contains('train')) {

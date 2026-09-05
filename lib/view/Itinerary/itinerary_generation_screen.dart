@@ -57,9 +57,9 @@ class _Step5GenerationBody extends StatelessWidget {
           MaterialPageRoute(
             builder: (_) => ItineraryFinalScreen(
               result: result,
-              title: vm.draft.title.isEmpty ? 'My Trip' : vm.draft.title,
+              title: vm.draft.tripName.isEmpty ? 'My Trip' : vm.draft.tripName,
+              explorationTime: vm.draft.exploration ?? 'Standard',
               itineraryId: vm.savedItineraryId,
-              explorationTime: vm.draft.explorationTime ?? 'Standard',
               mustVisitPlaceIds: List.of(vm.draft.mustVisitPlaceIds),
               tripStartDate: vm.draft.startDate ?? DateTime.now(),
               onRegenerateAlternatives: () => vm.regenerateItinerary(),

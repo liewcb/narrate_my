@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:narrate_my/model/entities/trip_draft.dart';
 
 import '../../../core/config/interest_mapping.dart';
@@ -36,7 +36,7 @@ class HotspotAnchor {
 /// Geographic relationship of a manually-searched place to the selected
 /// hotspot area.
 ///
-/// `suggested_radius_km` is ONLY a nearby-discovery radius — it is never
+/// `suggested_radius_km` is ONLY a nearby-discovery radius â€” it is never
 /// treated as a transportation time/distance.
 enum HotspotDistanceStatus {
   /// The place is within the hotspot's `suggested_radius_km`.
@@ -56,7 +56,7 @@ enum HotspotDistanceStatus {
 }
 
 /// Computes the [HotspotDistanceStatus] of [placeKm] relative to the
-/// hotspot's [radiusKm] (geographic distance only — not travel time).
+/// hotspot's [radiusKm] (geographic distance only â€” not travel time).
 HotspotDistanceStatus classifyHotspotDistance(double placeKm, double radiusKm) {
   if (placeKm <= radiusKm) return HotspotDistanceStatus.withinHotspot;
   if (placeKm <= 50.0) return HotspotDistanceStatus.outsideHotspot;
@@ -135,22 +135,22 @@ class CandidatePool {
   bool contains(String placeId) => findByPlaceId(placeId) != null;
 }
 
-/// Hotspot-driven candidate retrieval — ONE merged pool per itinerary.
+/// Hotspot-driven candidate retrieval â€” ONE merged pool per itinerary.
 ///
 /// This service follows the confirmed pipeline architecture:
 ///
 ///   Selected destinations
-///       ↓
+///       â†“
 ///   Retrieve hotspots for each destination
-///       ↓
+///       â†“
 ///   Prioritize hotspots matching traveler interests
-///       ↓
+///       â†“
 ///   Search Google Places around those hotspots
-///       ↓
+///       â†“
 ///   Merge all results
-///       ↓
+///       â†“
 ///   Deduplicate (by Google place_id)
-///       ↓
+///       â†“
 ///   ONE candidate pool for the entire itinerary
 ///
 /// The trip duration does NOT force one independent Google search per day.
@@ -161,7 +161,7 @@ class CandidateRetrievalService {
   final DestinationRepository _destinationRepository;
   final PlaceRepository _placesRepository;
 
-  // ── Strict food types (only these 5 are queried / classified as food) ──
+  // â”€â”€ Strict food types (only these 5 are queried / classified as food) â”€â”€
   static const List<String> foodTypes = [
     'restaurant',
     'cafe',
@@ -170,7 +170,7 @@ class CandidateRetrievalService {
     'meal_delivery',
   ];
 
-  // ── Hard-banned types (never allowed in either category) ──────────────
+  // â”€â”€ Hard-banned types (never allowed in either category) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static const List<String> _bannedTypes = [
     'lodging',
     'hotel',
@@ -178,7 +178,7 @@ class CandidateRetrievalService {
     'lawyer',
   ];
 
-  // ── Safety thresholds ─────────────────────────────────────────────────
+  // â”€â”€ Safety thresholds â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   static const int maxHotspotsPerDestination = 4;
   static const int minUserRatingsTotal = 5;
   static const double attractionDiversityKm = 0.5;
@@ -216,20 +216,20 @@ class CandidateRetrievalService {
     required TripDraft request,
   }) async {
     if (ItineraryConstants.enableCandidateDebugLogs) {
-      debugPrint('════════════════════════════════════');
-      debugPrint('📍 CANDIDATE RETRIEVAL (HOTSPOT-DRIVEN, MERGED POOL)');
-      debugPrint('════════════════════════════════════');
-      debugPrint('🗺️ Destinations: ${request.destinations}');
-      debugPrint('📅 Trip duration: ${request.totalDays} days');
-      debugPrint('🚶 Travel pace: ${request.travelPace}');
-      debugPrint('🎯 Interests: ${request.interests}');
+      debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
+      debugPrint('ðŸ“ CANDIDATE RETRIEVAL (HOTSPOT-DRIVEN, MERGED POOL)');
+      debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
+      debugPrint('ðŸ—ºï¸ Destinations: ${request.destinationNames}');
+      debugPrint('ðŸ“… Trip duration: ${request.totalDays} days');
+      debugPrint('ðŸš¶ Travel pace: ${request.pace}');
+      debugPrint('ðŸŽ¯ Interests: ${request.interests.toList()}');
     }
 
     // ============================================================
     // 1. RESOLVE INTEREST TAGS + GOOGLE TYPES
     // ============================================================
 
-    final List<String> selectedInterests = request.interests;
+    final List<String> selectedInterests = request.interests.toList();
 
     final List<String> interestTags =
     InterestMapping.databaseTagsForInterests(selectedInterests);
@@ -237,12 +237,12 @@ class CandidateRetrievalService {
     final attractionTypes = _buildAttractionTypeSet(selectedInterests);
 
     if (ItineraryConstants.enableCandidateDebugLogs) {
-      debugPrint('🎯 Interest tags: $interestTags');
-      debugPrint('🎯 Attraction types: $attractionTypes');
+      debugPrint('ðŸŽ¯ Interest tags: $interestTags');
+      debugPrint('ðŸŽ¯ Attraction types: $attractionTypes');
     }
 
     // ============================================================
-    // 2. RESOLVE DESTINATIONS (name → DB destination_id)
+    // 2. RESOLVE DESTINATIONS (name â†’ DB destination_id)
     // ============================================================
 
     final List<QueryDestination> destinations =
@@ -257,24 +257,24 @@ class CandidateRetrievalService {
 
     if (ItineraryConstants.enableCandidateDebugLogs) {
       debugPrint(
-        '📍 Search centres: ${centers.length} across '
+        'ðŸ“ Search centres: ${centers.length} across '
             '${destinations.length} destination(s)',
       );
       for (final c in centers) {
         debugPrint(
-          '   • ${c.sourceLabel} (${c.latitude}, ${c.longitude}) '
+          '   â€¢ ${c.sourceLabel} (${c.latitude}, ${c.longitude}) '
               'radius=${c.radiusKm}km',
         );
       }
     }
 
     if (centers.isEmpty) {
-      debugPrint('⚠️ No search centres resolved — returning empty pool.');
+      debugPrint('âš ï¸ No search centres resolved â€” returning empty pool.');
       return const CandidatePool(attractions: [], food: []);
     }
 
     // ============================================================
-    // 4. GOOGLE PLACES SEARCH — one search per hotspot (not per day)
+    // 4. GOOGLE PLACES SEARCH â€” one search per hotspot (not per day)
     // ============================================================
 
     final mergedAttractions = <Place>[];
@@ -288,7 +288,7 @@ class CandidateRetrievalService {
         debugPrint(
           '[SEARCH] ${center.sourceLabel} '
               '@ (${center.latitude}, ${center.longitude}) '
-              'radius=${center.radiusKm}km → '
+              'radius=${center.radiusKm}km â†’ '
               '${raw.attractions.length} attr, ${raw.food.length} food',
         );
       }
@@ -310,7 +310,7 @@ class CandidateRetrievalService {
     }
 
     debugPrint(
-      '[MERGE] Raw results merged → '
+      '[MERGE] Raw results merged â†’ '
           '${mergedAttractions.length} unique attractions, '
           '${mergedFood.length} unique food '
           '(${seenIds.length} unique place_ids total)',
@@ -331,7 +331,7 @@ class CandidateRetrievalService {
         allowedSpecificTypes: attractionTypes,
         allowSpa: false,
       ),
-      0.05, // light dedup only — do not aggressively shrink the pool
+      0.05, // light dedup only â€” do not aggressively shrink the pool
     );
 
     final filteredFood = _applySpatialFiltering(
@@ -345,10 +345,10 @@ class CandidateRetrievalService {
     );
 
     if (ItineraryConstants.enableCandidateDebugLogs) {
-      debugPrint('════════════════════════════════════');
-      debugPrint('✅ MERGED POOL: ${filteredAttractions.length} attractions, '
+      debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
+      debugPrint('âœ… MERGED POOL: ${filteredAttractions.length} attractions, '
           '${filteredFood.length} food');
-      debugPrint('════════════════════════════════════');
+      debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
     }
 
     return CandidatePool(
@@ -364,7 +364,7 @@ class CandidateRetrievalService {
   /// Deterministically selects the SINGLE most relevant hotspot for a
   /// destination, ranked by the traveler's interests.
   ///
-  /// Ranking (highest → lowest):
+  /// Ranking (highest â†’ lowest):
   ///   1. `primary_theme` matches an interest tag (strongest signal)
   ///   2. any entry in `tags` matches an interest tag (secondary)
   ///   3. no interest match (lowest)
@@ -373,7 +373,7 @@ class CandidateRetrievalService {
   /// depends on arbitrary database ordering.
   ///
   /// Returns the selected [DestinationHotspot] with its preserved
-  /// `latitude`, `longitude` and `suggestedRadiusKm` — exactly what the
+  /// `latitude`, `longitude` and `suggestedRadiusKm` â€” exactly what the
   /// Must-Visit Search Maps screen needs for its Google Places search.
   /// Returns `null` when no hotspot exists for the destination.
   Future<DestinationHotspot?> selectBestHotspot({
@@ -432,14 +432,14 @@ class CandidateRetrievalService {
   }
 
   // ------------------------------------------------------------
-  // Search-centre building (per destination → hotspots)
+  // Search-centre building (per destination â†’ hotspots)
   // ------------------------------------------------------------
 
   /// Builds the list of Google Places search centres for the whole trip.
   ///
   /// For each selected destination it resolves that destination's hotspots,
   /// prioritising hotspots whose tags match the traveler's interests
-  /// (non-matching hotspots are retained as lower-priority fallbacks — they
+  /// (non-matching hotspots are retained as lower-priority fallbacks â€” they
   /// are never permanently eliminated). When a destination has no usable
   /// hotspots its centre point is used instead.
   Future<List<_SearchCenter>> _buildSearchCenters({
@@ -462,7 +462,7 @@ class CandidateRetrievalService {
         );
         for (final h in hotspots) {
           debugPrint(
-            '   ✓ ${h.id} ${h.hotspotName} '
+            '   âœ“ ${h.id} ${h.hotspotName} '
                 'tags=${h.tags}',
           );
         }
@@ -482,7 +482,7 @@ class CandidateRetrievalService {
 
       for (final hotspot in hotspots) {
         centers.add(_SearchCenter(
-          sourceLabel: '${destination.name} → ${hotspot.hotspotName}',
+          sourceLabel: '${destination.name} â†’ ${hotspot.hotspotName}',
           latitude: hotspot.latitude,
           longitude: hotspot.longitude,
           radiusKm: hotspot.suggestedRadiusKm,
@@ -604,7 +604,7 @@ class CandidateRetrievalService {
       debugPrint('[DEST] Destination ID resolution failed: $e');
     }
 
-    return request.destinations.map((name) {
+    return request.destinationNames.map((name) {
       final coords =
           request.destinationCoordinates[name] ??
               request.tripLocation ??
@@ -722,15 +722,15 @@ class CandidateRetrievalService {
   /// For every requested must-visit that is NOT already in the candidate pool,
   /// performs a progressive recovery:
   ///
-  ///   Level 1 — exact place_id lookup (Google Place Details API)
-  ///   Level 2 — lookup in the local / Supabase places table
-  ///   Level 3 — nearby search around the destination / hotspot
-  ///   Level 4 — Google Text Search using the exact name
-  ///   Level 5 — Google Text Search using the normalized name
-  ///   Level 6 — contextual query (name + destination)
+  ///   Level 1 â€” exact place_id lookup (Google Place Details API)
+  ///   Level 2 â€” lookup in the local / Supabase places table
+  ///   Level 3 â€” nearby search around the destination / hotspot
+  ///   Level 4 â€” Google Text Search using the exact name
+  ///   Level 5 â€” Google Text Search using the normalized name
+  ///   Level 6 â€” contextual query (name + destination)
   ///
   /// Each recovered candidate is validated by name similarity and geographic
-  /// proximity.  A missing must-visit is NEVER silently discarded — it is
+  /// proximity.  A missing must-visit is NEVER silently discarded â€” it is
   /// reported so the pipeline can surface a clear generation issue.
   ///
   /// [requestedMustVisitIds] may contain either Google place_ids or place
@@ -755,22 +755,22 @@ class CandidateRetrievalService {
           : id; // Fallback: the id itself may be a name.
 
       debugPrint('');
-      debugPrint('════════════════════════════════════');
+      debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
       debugPrint('[MUST-VISIT RECOVERY] Requested: $name');
       debugPrint('[MUST-VISIT RECOVERY] Place ID: $id');
       debugPrint('[MUST-VISIT RECOVERY] Destination: $destinationName');
-      debugPrint('════════════════════════════════════');
+      debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
 
-      // Already in the pool → verified.
+      // Already in the pool â†’ verified.
       if (alreadyRetrievedIds.contains(id)) {
         verifiedIds.add(id);
-        debugPrint('[MUST-VISIT RECOVERY] Already in pool → verified.');
+        debugPrint('[MUST-VISIT RECOVERY] Already in pool â†’ verified.');
         continue;
       }
 
       Place? result;
 
-      // ── Level 1: exact place_id lookup ──────────────────────────
+      // â”€â”€ Level 1: exact place_id lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       debugPrint('[MUST-VISIT RECOVERY] Level 1: place_id lookup');
       result = await _placesDataSource.getPlaceDetails(id);
       if (result != null && result.placeId.isNotEmpty) {
@@ -781,7 +781,7 @@ class CandidateRetrievalService {
       }
       debugPrint('[MUST-VISIT RECOVERY] Level 1 result: NOT FOUND');
 
-      // ── Level 2: local / Supabase places table lookup ────────────
+      // â”€â”€ Level 2: local / Supabase places table lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       debugPrint('[MUST-VISIT RECOVERY] Level 2: local/Supabase lookup');
       try {
         final localPlace = await _placesRepository.getPlace(id);
@@ -794,7 +794,7 @@ class CandidateRetrievalService {
       } catch (_) {}
       debugPrint('[MUST-VISIT RECOVERY] Level 2 result: NOT FOUND');
 
-      // ── Level 3: nearby search ───────────────────────────────────
+      // â”€â”€ Level 3: nearby search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (searchCenter != null) {
         debugPrint('[MUST-VISIT RECOVERY] Level 3: Nearby Search');
         final nearby = await _placesDataSource.searchNearbyPlaces(
@@ -813,7 +813,7 @@ class CandidateRetrievalService {
         debugPrint('[MUST-VISIT RECOVERY] Level 3 result: NOT FOUND');
       }
 
-      // ── Level 4: text search exact name ─────────────────────────
+      // â”€â”€ Level 4: text search exact name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       debugPrint('[MUST-VISIT RECOVERY] Level 4: Text Search');
       final textResults = await _placesDataSource.searchPlacesByText(
         name,
@@ -831,7 +831,7 @@ class CandidateRetrievalService {
       }
       debugPrint('[MUST-VISIT RECOVERY] Level 4 result: NOT FOUND');
 
-      // ── Level 5: normalized text search ──────────────────────────
+      // â”€â”€ Level 5: normalized text search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       final normalized = name.toLowerCase().trim();
       if (normalized != name) {
         debugPrint('[MUST-VISIT RECOVERY] Level 5: normalized Text Search');
@@ -852,7 +852,7 @@ class CandidateRetrievalService {
         debugPrint('[MUST-VISIT RECOVERY] Level 5 result: NOT FOUND');
       }
 
-      // ── Level 6: contextual query (name + destination) ──────────
+      // â”€â”€ Level 6: contextual query (name + destination) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (destinationName != null && destinationName.isNotEmpty) {
         final contextualQuery = '$name $destinationName';
         debugPrint('[MUST-VISIT RECOVERY] Level 6: contextual search '
@@ -874,11 +874,11 @@ class CandidateRetrievalService {
         debugPrint('[MUST-VISIT RECOVERY] Level 6 result: NOT FOUND');
       }
 
-      // ── All levels exhausted ─────────────────────────────────────
+      // â”€â”€ All levels exhausted â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       unretrievable.add(id);
-      debugPrint('[MUST-VISIT RECOVERY] ❌ Recovery exhausted');
-      debugPrint('[MUST-VISIT RECOVERY] ❌ Missing: $name');
-      debugPrint('[MUST-VISIT RECOVERY] ❌ Generation blocked because '
+      debugPrint('[MUST-VISIT RECOVERY] âŒ Recovery exhausted');
+      debugPrint('[MUST-VISIT RECOVERY] âŒ Missing: $name');
+      debugPrint('[MUST-VISIT RECOVERY] âŒ Generation blocked because '
           'hard requirement is unsatisfied');
     }
 
@@ -954,7 +954,7 @@ class CandidateRetrievalService {
   /// Expands NORMAL candidate search when the pool is insufficient.
   ///
   /// Uses a broader radius around the destination centres (a separate
-  /// mechanism from must-visit recovery — expansion never performs targeted
+  /// mechanism from must-visit recovery â€” expansion never performs targeted
   /// must-visit lookups).
   Future<CandidatePool> expandCandidates({
     required TripDraft request,
@@ -962,9 +962,9 @@ class CandidateRetrievalService {
     double radiusMultiplier = 1.0,
   }) async {
     final destinations = await _resolveDestinations(request);
-    final attractionTypes = _buildAttractionTypeSet(request.interests);
+    final attractionTypes = _buildAttractionTypeSet(request.interests.toList());
     final wantsWellness = InterestMapping
-        .databaseTagsForInterests(request.interests)
+        .databaseTagsForInterests(request.interests.toList())
         .contains('wellness_relaxation');
 
     // Search around each destination centre with an expanded radius.
@@ -1016,7 +1016,7 @@ class CandidateRetrievalService {
       foodDiversityKm,
     );
 
-    debugPrint('[CANDIDATE EXPANSION] radius=${baseRadius}km → '
+    debugPrint('[CANDIDATE EXPANSION] radius=${baseRadius}km â†’ '
         '${filteredAttractions.length} new attractions, '
         '${filteredFood.length} new food');
 

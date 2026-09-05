@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 
 import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../model/business_logic/itinerary_service/custom_place_service.dart';
+import '../../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/add_custom_place_vm.dart';
 
@@ -18,6 +20,11 @@ class AddCustomStopScreen extends StatefulWidget {
   final List<String> interests;
   final String userId;
 
+  /// Preview mode: when provided, the day context comes from the caller's
+  /// TEMPORARY itinerary state (no database read for this day) and the
+  /// returned proposed day is applied by the host — never persisted here.
+  final List<ExistingStopContext>? dayStops;
+
   const AddCustomStopScreen({
     Key? key,
     required this.itineraryId,
@@ -29,6 +36,7 @@ class AddCustomStopScreen extends StatefulWidget {
     this.transportMode = 'walking',
     this.interests = const [],
     this.userId = '',
+    this.dayStops,
   }) : super(key: key);
 
   @override
@@ -53,6 +61,11 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
       interests: widget.interests,
       userId: widget.userId,
     );
+    // Preview mode: seed the temporary day context BEFORE loading so no
+    // database query is made for this day.
+    if (widget.dayStops != null) {
+      _viewModel.seedDayContext(widget.dayIndex, widget.dayStops!);
+    }
     _viewModel.load();
     _viewModel.loadBookmarks();
   }
@@ -162,9 +175,9 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     if (vm.searchError != null) errors.add(vm.searchError!);
     if (vm.planError != null) errors.add(vm.planError!);
     if (vm.planResult != null && !vm.planResult!.success) {
-      errors.add(vm.planResult!.message ?? 'Planning failed.');
+      errors.add(vm.planResult!.message ??
+          "We couldn't plan this place right now. Please try again.");
     }
-    if (vm.saveError != null) errors.add(vm.saveError!);
     if (vm.loadError != null) errors.add(vm.loadError!);
     if (errors.isEmpty) return const SizedBox.shrink();
     return Container(
@@ -880,7 +893,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
 
   Widget _buildStickyFooter() {
     final vm = _viewModel;
-    final canAdd = vm.hasPlan && vm.planResult!.success && !vm.isSaving;
+    final canAdd = vm.hasPlan && vm.planResult!.success && !vm.isPlanning;
 
     return Positioned(
       bottom: 0, left: 0, right: 0,
@@ -938,7 +951,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                     ),
                     onPressed: canAdd ? () => _onAdd(context) : null,
                     child: Text(
-                      vm.isSaving ? 'Updating...' : 'Add to Itinerary',
+                      vm.isPlanning ? 'Planning...' : 'Add to Itinerary',
                       style: const TextStyle(
                         fontFamily: 'Inter', fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -954,16 +967,37 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     );
   }
 
+  /// Confirm → return the validated proposed day to the caller. The
+  /// temporary itinerary is updated by the HOST (EditItinerary state) —
+  /// nothing is persisted here. The final Save process persists later.
   Future<void> _onAdd(BuildContext context) async {
     final vm = _viewModel;
-    if (vm.isSaving) return; // prevent duplicate saves
+    if (vm.isPlanning) return; // no action while planning runs
+
+    final proposedDay = vm.confirmedProposedDay();
+    if (proposedDay == null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              vm.planError ??
+                  vm.planResult?.message ??
+                  "We couldn't plan this place right now. Please try again.",
+            ),
+          ),
+        );
+      return;
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Add this place?'),
         content: Text(
-          'This will update Day ${vm.dayIndex} of your saved itinerary.',
+          '${vm.selectedPlace?.placeName ?? 'This place'} will be added to '
+          'Day ${vm.dayIndex} of your itinerary preview. '
+          'Changes become permanent only when you save.',
         ),
         actions: [
           TextButton(
@@ -977,30 +1011,9 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
         ],
       ),
     );
-    if (confirmed != true) return;
-    if (!mounted) return;
+    if (confirmed != true || !mounted) return;
 
-    final ok = await vm.confirmAndSave();
-    if (!mounted) return;
-    if (ok) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Your itinerary has been updated.')),
-        );
-      debugPrint('[ADD_CUSTOM] Returning to Manage Itinerary');
-      Navigator.pop(context, true);
-    } else {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              vm.saveError ?? 'Unable to save your itinerary. '
-                  'Please try again.',
-            ),
-          ),
-        );
-    }
+    // Return the validated proposed day — NO database write here.
+    Navigator.pop(context, (dayIndex: vm.dayIndex, day: proposedDay));
   }
 }

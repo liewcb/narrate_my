@@ -1,188 +1,181 @@
+// lib/viewmodel/Itinerary/trip_customization_vm.dart
+//
+// ViewModel for Step 2 (Trip Style) of the trip wizard.
+//
+// Holds the immutable [TripDraft] locally. No external manager – the
+// draft is passed explicitly from the previous screen and later forwarded
+// to the next step.
+
 import 'package:flutter/foundation.dart';
-import '../../model/entities/trip_draft.dart';
+
+import '../../core/config/itinerary_constants.dart';
 import '../../model/business_logic/itinerary_service/itinerary_validation_service.dart';
+import '../../model/entities/trip_draft.dart';
 
-/// ViewModel for Step 2 (Trip Style).
+/// ViewModel for Step 2: Trip Customization.
 class Step2TripStyleVM extends ChangeNotifier {
-  final TripDraft _incomingDraft;
+  // ─── Limits (single source of truth for this step) ─────────
+  static const int maxTripDaysLimit = 3;
+  static const int maxInterestsLimit = 2;
+  final int maxTripDays = maxTripDaysLimit;
+  final int maxInterests = maxInterestsLimit;
 
-  Step2TripStyleVM(this._incomingDraft);
+  TripDraft _draft;
 
-  String _tripName = '';
-  String? _travelType;
-  DateTime? _startDate;
-  DateTime? _endDate;
-  String? _exploration;
-  String? _pace;
-  String? _transportation;
-  final Set<String> _interests = {};
+  /// Transportation chosen by the user in this session. Null until the
+  /// traveler explicitly picks a mode (the draft's storage default is not
+  /// treated as a choice, preserving the "must select" rule).
+  String? _transportationSelection;
 
-  // ─── Getters ──────────────────────────────────────────────────────
+  // ─── Constructor ────────────────────────────────────────────
+  Step2TripStyleVM({required TripDraft initialDraft})
+      : _draft = initialDraft;
 
-  String get tripName => _tripName;
-  String? get travelType => _travelType;
-  DateTime? get startDate => _startDate;
-  DateTime? get endDate => _endDate;
-  String? get exploration => _exploration;
-  String? get pace => _pace;
-  String? get transportation => _transportation;
-  Set<String> get interests => Set.unmodifiable(_interests);
+  // ─── Getters ────────────────────────────────────────────────
+  TripDraft get draft => _draft;
+  String get tripName => _draft.tripName;
+  DateTime? get startDate => _draft.startDate;
+  DateTime? get endDate => _draft.endDate;
+  String? get travelType => _draft.travelType;
+  String? get exploration => _draft.exploration;
+  String? get pace => _draft.pace;
 
-  // ✅ FIX: _draft → _incomingDraft
-  List<String> get destinations => _incomingDraft.destinations;
+  /// Selected interests as an unmodifiable [Set].
+  Set<String> get interests => Set.unmodifiable(_draft.interests);
+
+  /// Null until the traveler explicitly selects a transportation mode.
+  String? get transportation => _transportationSelection;
+
+  List<String> get destinations =>
+      _draft.destinations.map((d) => d.destinationName).toList();
 
   int get totalDays {
-    if (_startDate == null || _endDate == null) return 0;
-    return _endDate!.difference(_startDate!).inDays + 1;
+    if (startDate == null || endDate == null) return 0;
+    return endDate!.difference(startDate!).inDays + 1;
   }
 
-  /// Weather coverage status for the selected dates.
+  // ─── Weather (existing ItineraryValidationService logic) ────
   WeatherCoverage get weatherCoverage =>
-      ItineraryValidationService.getWeatherCoverage(_startDate, _endDate);
+      ItineraryValidationService.getWeatherCoverage(
+          _draft.startDate, _draft.endDate);
 
-  /// Warning message for weather (null = no warning).
-  String? get weatherWarning =>
-      ItineraryValidationService.getWeatherWarning(_startDate, _endDate);
+  String? get weatherWarning => ItineraryValidationService.getWeatherWarning(
+      _draft.startDate, _draft.endDate);
 
-  bool get canProceed {
-    return _tripName.trim().isNotEmpty &&
-        _travelType != null &&
-        _startDate != null &&
-        _endDate != null &&
-        _exploration != null &&
-        _pace != null &&
-        _interests.isNotEmpty &&
-        _transportation != null;
-  }
+  // ─── User actions (called by the View) ─────────────────────
 
-  // ─── Mutators ──────────────────────────────────────────────────────
-
-  void setTripName(String value) {
-    _tripName = value;
+  void setTripName(String name) {
+    _draft = _draft.copyWith(tripName: name);
     notifyListeners();
   }
 
-  void setTravelType(String value) {
-    _travelType = value;
-    notifyListeners();
-  }
-
-  /// Set dates with business-logic clamping.
-  /// Returns true if dates were clamped (for snackbar in UI).
+  /// Sets the travel dates. Enforces [maxTripDays] (3): an end date beyond
+  /// start + maxTripDays - 1 is clamped. Returns true when clamping was
+  /// applied (the picker should already prevent this).
   bool setDates({required DateTime start, required DateTime end}) {
-    final clampedEnd = ItineraryValidationService.clampEndDate(start, end);
+    final latest = latestPossibleEndDate(fromStart: start);
+    final clampedEnd = end.isAfter(latest) ? latest : end;
     final wasClamped = clampedEnd != end;
-
-    _startDate = start;
-    _endDate = clampedEnd;
+    _draft = _draft.copyWith(startDate: start, endDate: clampedEnd);
     notifyListeners();
-
     return wasClamped;
   }
 
-  /// Check if a proposed end date would be clamped.
-  bool wouldClamp(DateTime start, DateTime end) {
-    return ItineraryValidationService.clampEndDate(start, end) != end;
-  }
-
-  /// Latest end date the user can pick, considering:
-  /// 1. Weather forecast window (16 days from today)
-  /// 2. Max trip length (5 days from start)
-  ///
-  /// Used as `lastDate` in the date picker.
-  DateTime latestPossibleEndDate({DateTime? fromStart}) {
-    final today = DateTime.now();
-    final todayOnly = DateTime(today.year, today.month, today.day);
-
-    // Constraint 1: Weather forecast limit
-    final weatherLimit = todayOnly.add(
-      Duration(days: ItineraryValidationService.primaryForecastDays - 1),
-    );
-
-    // Constraint 2: If start is known, end can't exceed start + maxTripDays
-    if (fromStart != null) {
-      final tripLimit = fromStart.add(
-        Duration(days: ItineraryValidationService.maxTripDays - 1),
-      );
-      // Return whichever is earlier
-      return tripLimit.isBefore(weatherLimit) ? tripLimit : weatherLimit;
-    }
-
-    return weatherLimit;
-  }
-
-  /// Latest start date the user can pick so that
-  /// the full trip (start + maxTripDays) stays within forecast.
-  DateTime get latestPossibleStartDate {
-    final today = DateTime.now();
-    final todayOnly = DateTime(today.year, today.month, today.day);
-    return todayOnly.add(
-      Duration(
-        days: ItineraryValidationService.primaryForecastDays
-            - ItineraryValidationService.maxTripDays,
-      ),
-    );
+  void setTravelType(String type) {
+    _draft = _draft.copyWith(travelType: type);
+    notifyListeners();
   }
 
   void setExploration(String value) {
-    _exploration = value;
+    _draft = _draft.copyWith(exploration: value);
     notifyListeners();
   }
 
   void setPace(String value) {
-    _pace = value;
+    _draft = _draft.copyWith(pace: value);
+    notifyListeners();
+  }
+
+  /// Toggles an interest, enforcing [maxInterests] (2).
+  void toggleInterest(String interest) {
+    final updated = Set<String>.from(_draft.interests);
+    if (updated.contains(interest)) {
+      updated.remove(interest);
+    } else {
+      if (updated.length >= maxInterests) return;
+      updated.add(interest);
+    }
+    _draft = _draft.copyWith(interests: updated);
     notifyListeners();
   }
 
   void setTransportation(String value) {
-    _transportation = value;
+    _transportationSelection = value;
+    _draft = _draft.copyWith(transportation: value);
     notifyListeners();
   }
 
-  void toggleInterest(String interest) {
-    if (_interests.contains(interest)) {
-      _interests.remove(interest);
-    } else {
-      if (_interests.length < ItineraryValidationService.maxInterests) {
-        _interests.add(interest);
-      }
-    }
-    notifyListeners();
+  // ─── Date helpers ──────────────────────────────────────────
+
+  /// Latest selectable end date: the earlier of
+  ///   • start + (maxTripDays - 1)  — the 3-day trip limit
+  ///   • the weather-forecast window from today
+  DateTime latestPossibleEndDate({DateTime? fromStart}) {
+    final start = fromStart ?? startDate;
+    final tripLimit = start == null
+        ? null
+        : start.add(Duration(days: maxTripDays - 1));
+
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final weatherLimit = todayOnly.add(Duration(
+      days: ItineraryValidationService.primaryForecastDays - 1,
+    ));
+
+    if (tripLimit == null) return weatherLimit;
+    return tripLimit.isBefore(weatherLimit) ? tripLimit : weatherLimit;
   }
 
-  // ─── Validation ───────────────────────────────────────────────────
+  // ─── Validation ────────────────────────────────────────────
+
+  bool get canProceed {
+    return startDate != null &&
+        endDate != null &&
+        travelType != null &&
+        tripName.trim().isNotEmpty &&
+        exploration != null &&
+        pace != null &&
+        interests.isNotEmpty &&
+        transportation != null;
+  }
 
   Map<String, String> validate() {
-    final errors = ItineraryValidationService.validateAll(
-      tripName: _tripName,
-      startDate: _startDate,
-      endDate: _endDate,
-      exploration: _exploration,
-      pace: _pace,
-      interests: _interests,
-      transportation: _transportation
-    );
-
+    final errors = <String, String>{};
+    if (startDate == null || endDate == null) {
+      errors['dates'] = 'Pick your travel dates.';
+    } else if (totalDays > maxTripDays) {
+      errors['dates'] = 'Trips are limited to $maxTripDays days.';
+    }
+    if (travelType == null) {
+      errors['travelType'] = 'Select a travel type.';
+    }
+    if (tripName.trim().isEmpty) {
+      errors['tripName'] = 'Give your trip a name.';
+    }
+    if (exploration == null) {
+      errors['exploration'] = 'Select an exploration time.';
+    }
+    if (pace == null) {
+      errors['pace'] = 'Select a travel pace.';
+    }
+    if (interests.isEmpty) {
+      errors['interests'] = 'Select at least one interest.';
+    }
+    if (transportation == null) {
+      errors['transportation'] = 'Select a transportation mode.';
+    }
     return errors;
   }
 
-  // ─── Build Draft ─────────────────────────────────────────────
-
-  TripDraft buildDraft() {
-    final errors = validate();
-    if (errors.isNotEmpty) {
-      throw StateError(errors.values.first);
-    }
-
-    return _incomingDraft.copyWith(
-      title: _tripName.trim(),
-      startDate: _startDate,
-      endDate: _endDate,
-      explorationTime: _exploration,
-      travelPace: _pace,
-      interests: _interests.toList(),
-      transportation: _transportation,
-      travelType: _travelType,
-    );
-  }
+  TripDraft buildDraft() => _draft;
 }

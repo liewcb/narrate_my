@@ -8,8 +8,6 @@ import 'dart:convert';
 
 import '../../../core/config/itinerary_constants.dart';
 import '../../../core/services/ai_service.dart';
-import '../../entities/openning_hours.dart';
-import '../../entities/place.dart';
 
 /// A single validation error, formatted for regeneration feedback.
 class AiValidationIssue {
@@ -58,9 +56,6 @@ class AiScheduleValidator {
   /// [placeIdToDestination] maps each candidate placeId to its destination
   /// name (used to verify per-day destination allocation).
   /// [routeMatrix] may carry `"A→B" → "N min"` when available.
-  /// [placeLookup] maps placeId → full [Place] so the validator can perform
-  /// deterministic opening-hours checks and produce place-named messages.
-  /// [travelPace] drives the transition buffer used for day-capacity checks.
   AiValidationResult validate({
     required List<AIDaySchedule> days,
     required Set<String> knownPlaceIds,
@@ -71,8 +66,6 @@ class AiScheduleValidator {
     Map<String, int>? allocatedDaysPerDestination,
     Map<String, String>? placeIdToDestination,
     Map<String, String>? routeMatrix,
-    Map<String, Place>? placeLookup,
-    String travelPace = 'Standard',
   }) {
     final issues = <AiValidationIssue>[];
 
@@ -96,7 +89,7 @@ class AiScheduleValidator {
         issues.add(AiValidationIssue(
           type: 'day_index',
           message:
-              'Day index ${day.dayIndex} is out of range (0–${totalDays - 1}).',
+          'Day index ${day.dayIndex} is out of range (0–${totalDays - 1}).',
           dayIndex: day.dayIndex,
         ));
         continue;
@@ -129,17 +122,6 @@ class AiScheduleValidator {
 
     for (final day in days) {
       final dayStops = day.schedule;
-      final dayDate = DateTime.tryParse(day.date);
-
-      // Exploration window (computed once per day for all stops + capacity).
-      final window = ItineraryConstants.explorationWindows[explorationTime] ??
-          ItineraryConstants.explorationWindows['Standard']!;
-      final windowStart = window.startHour * 60 + window.startMinute;
-      final windowEnd = window.endHour * 60 + window.endMinute;
-
-      // Day-level totals for the capacity check (Task 5 rule 24).
-      var dayVisitTotal = 0;
-      var dayTravelTotal = 0;
 
       // ── 17. Duplicate stop order ───────────────────────────────
       final orders = <int>{};
@@ -154,8 +136,7 @@ class AiScheduleValidator {
         }
       }
 
-      for (var i = 0; i < dayStops.length; i++) {
-        final stop = dayStops[i];
+      for (final stop in dayStops) {
         // ── 3. No invented places ────────────────────────────────
         if (!knownPlaceIds.contains(stop.placeId)) {
           issues.add(AiValidationIssue(
@@ -167,14 +148,11 @@ class AiScheduleValidator {
           continue;
         }
 
-        // ── 4. No duplicate place IDs (GLOBAL across all days) ──
+        // ── 4. No duplicate place IDs (unless explicitly allowed) ─
         if (!seenPlaceIds.add(stop.placeId)) {
-          final name = placeLookup?[stop.placeId]?.placeName ?? '';
-          final namePart = name.isNotEmpty ? ' ($name)' : '';
           issues.add(AiValidationIssue(
             type: 'duplicate_place',
-            message: 'Place "${stop.placeId}"$namePart appears more than '
-                'once in the generated itinerary.',
+            message: 'Place "${stop.placeId}" appears more than once.',
             dayIndex: day.dayIndex,
             placeId: stop.placeId,
           ));
@@ -191,7 +169,7 @@ class AiScheduleValidator {
           issues.add(AiValidationIssue(
             type: 'invalid_time',
             message:
-                'Invalid time "start=${stop.startTime} end=${stop.endTime}".',
+            'Invalid time "start=${stop.startTime} end=${stop.endTime}".',
             dayIndex: day.dayIndex,
             placeId: stop.placeId,
           ));
@@ -219,86 +197,19 @@ class AiScheduleValidator {
         }
 
         // ── 11. Fits exploration time ────────────────────────────
+        final window = ItineraryConstants.explorationWindows[explorationTime] ??
+            ItineraryConstants.explorationWindows['Standard']!;
+        final windowStart = window.startHour * 60 + window.startMinute;
+        final windowEnd = window.endHour * 60 + window.endMinute;
         if (start < windowStart || end > windowEnd) {
           issues.add(AiValidationIssue(
             type: 'window',
             message:
-                'Stop ${stop.startTime}–${stop.endTime} is outside the '
+            'Stop ${stop.startTime}–${stop.endTime} is outside the '
                 'exploration window '
                 '(${_hhmm(windowStart)}–${_hhmm(windowEnd)}).',
             dayIndex: day.dayIndex,
             placeId: stop.placeId,
-          ));
-        }
-
-        // ── 17. endTime == startTime + visitDuration ─────────────
-        if (end - start != stop.visitDurationMinutes) {
-          issues.add(AiValidationIssue(
-            type: 'duration_mismatch',
-            message: 'visitDurationMinutes ${stop.visitDurationMinutes} does '
-                'not match scheduled span '
-                '(${stop.startTime}–${stop.endTime}).',
-            dayIndex: day.dayIndex,
-            placeId: stop.placeId,
-          ));
-        }
-
-        // ── 18/19. Travel time can fit between consecutive stops ─
-        if (dayStops.indexOf(stop) > 0) {
-          final prevStop = dayStops[dayStops.indexOf(stop) - 1];
-          final prevEnd = _parseHHmm(prevStop.endTime);
-          if (prevEnd != null && start < prevEnd + stop.travelFromPreviousMinutes) {
-            issues.add(AiValidationIssue(
-              type: 'travel_time',
-              message: 'Stop ${stop.startTime} starts before the previous '
-                  'stop ends plus ${stop.travelFromPreviousMinutes} min of '
-                  'travel.',
-              dayIndex: day.dayIndex,
-              placeId: stop.placeId,
-            ));
-          }
-        }
-
-        // ── 21/22/23. Opening hours on the actual day ────────────
-        final place = placeLookup?[stop.placeId];
-        if (place != null && dayDate != null) {
-          final hours = place.openingHours;
-          if (hours != null && hours.periods.isNotEmpty) {
-            final openingIssue = _validateOpeningHours(
-              place: place,
-              hours: hours,
-              dayDate: dayDate,
-              start: start,
-              end: end,
-            );
-            if (openingIssue != null) {
-              issues.add(AiValidationIssue(
-                type: 'opening_hours',
-                message: openingIssue,
-                dayIndex: day.dayIndex,
-                placeId: stop.placeId,
-              ));
-            }
-          }
-        }
-
-        dayVisitTotal += stop.visitDurationMinutes;
-        dayTravelTotal += stop.travelFromPreviousMinutes;
-      }
-
-      // ── 24. Day total duration exceeds available time ─────────
-      if (dayStops.isNotEmpty) {
-        final buffer = ItineraryConstants.bufferForPace(travelPace);
-        final required =
-            dayVisitTotal + dayTravelTotal + buffer * (dayStops.length - 1);
-        if (required > window.totalMinutes) {
-          final excess = required - window.totalMinutes;
-          issues.add(AiValidationIssue(
-            type: 'day_capacity',
-            message: 'Day ${day.dayIndex + 1} total schedule ($required min) '
-                'exceeds the exploration window '
-                '(${window.totalMinutes} min) by $excess minutes.',
-            dayIndex: day.dayIndex,
           ));
         }
       }
@@ -329,7 +240,6 @@ class AiScheduleValidator {
       issues: issues,
       days: days,
       routeMatrix: routeMatrix,
-      placeLookup: placeLookup,
     );
 
     return AiValidationResult(
@@ -395,7 +305,6 @@ class AiScheduleValidator {
     required List<AiValidationIssue> issues,
     required List<AIDaySchedule> days,
     Map<String, String>? routeMatrix,
-    Map<String, Place>? placeLookup,
   }) {
     if (routeMatrix == null || routeMatrix.isEmpty) return;
     final hardMax = ItineraryConstants.hardMaxTravelMinutes;
@@ -407,14 +316,12 @@ class AiScheduleValidator {
         final to = stops[i].placeId;
         final key = '$from→$to';
         final minutes = _parseMinutes(routeMatrix[key]);
-        if (minutes == null) continue;
+        if (minutes == null) continue; // no hard data → validator skips
         if (minutes > hardMax) {
-          final fromName = placeLookup?[from]?.placeName ?? from;
-          final toName = placeLookup?[to]?.placeName ?? to;
           issues.add(AiValidationIssue(
             type: 'route_jump',
-            message: 'Travel from $fromName to $toName requires $minutes '
-                'minutes, exceeding the configured hard travel limit '
+            message: 'Place $from → $to requires $minutes minutes, '
+                'exceeding the configured hard travel limit '
                 '($hardMax minutes).',
             dayIndex: day.dayIndex,
             placeId: to,
@@ -424,46 +331,9 @@ class AiScheduleValidator {
     }
   }
 
-  // ── Opening hours validation ──────────────────────────────────
-
-  String? _validateOpeningHours({
-    required Place place,
-    required OpeningHours hours,
-    required DateTime dayDate,
-    required int start,
-    required int end,
-  }) {
-    final weekday = dayDate.weekday % 7;
-    final dayPeriods =
-        hours.periods.where((p) => p.open.day == weekday).toList();
-
-    if (dayPeriods.isEmpty) {
-      return '${place.placeName} is closed on ${_weekdayName(dayDate.weekday)}.';
-    }
-
-    for (final period in dayPeriods) {
-      final openMin = _hhmmToMinutes(period.open.time);
-      var closeMin = _hhmmToMinutes(period.close.time);
-      var s = start;
-      var e = end;
-      if (closeMin <= openMin) {
-        closeMin += 1440;
-        if (s < openMin) {
-          s += 1440;
-          e += 1440;
-        }
-      }
-      if (s >= openMin && e <= closeMin) return null;
-    }
-
-    final first = dayPeriods.first;
-    return '${place.placeName} is not open during the planned visit time. '
-        'It is open from ${_hhmm(_hhmmToMinutes(first.open.time))} to '
-        '${_hhmm(_hhmmToMinutes(first.close.time))} (scheduled: '
-        '${_hhmm(start)}–${_hhmm(end)}).';
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────
+  // ============================================================
+  // Helpers
+  // ============================================================
 
   int? _parseHHmm(String value) {
     final parts = value.split(':');
@@ -485,37 +355,90 @@ class AiScheduleValidator {
     final m = (minutesOfDay % 60).toString().padLeft(2, '0');
     return '$h:$m';
   }
+}
 
-  int _hhmmToMinutes(String time) {
-    final h = time.length >= 2 ? (int.tryParse(time.substring(0, 2)) ?? 0) : 0;
-    final m =
-        time.length >= 4 ? (int.tryParse(time.substring(2, 4)) ?? 0) : 0;
-    return h * 60 + m;
+/// A single day of the COMPACT AI plan.
+///
+/// The optimized architecture asks DeepSeek to return ONLY the day index,
+/// the ordered places (with optional AI-estimated visit minutes) and a short
+/// reason. All clock times and travel times are computed deterministically
+/// in Dart afterwards.
+class AiCompactPlanDay {
+  final int dayIndex;
+  final List<String> placeIds;
+
+  /// AI-estimated visit duration per placeId (minutes). Absent entries fall
+  /// back to the Dart category baseline during schedule construction.
+  final Map<String, int> visitMinutes;
+  final String reason;
+
+  const AiCompactPlanDay({
+    required this.dayIndex,
+    required this.placeIds,
+    this.visitMinutes = const {},
+    this.reason = '',
+  });
+}
+
+/// Parses the COMPACT DeepSeek planner JSON into a list of [AiCompactPlanDay].
+///
+/// Accepted shapes:
+///   { "days": [ { "dayIndex": 1,
+///                 "places":  [ { "placeId": "p12", "visitMinutes": 120 } ],
+///                 "reason": "short" } ] }
+///   { "days": [ { "dayIndex": 1, "placeIds": ["p12", "p04"] } ] }
+///
+/// Throws a [FormatException] when the JSON is structurally invalid so the
+/// pipeline can fall back to the deterministic planner.
+List<AiCompactPlanDay> parseCompactPlanJson(String rawJson) {
+  final data = jsonDecode(rawJson) as Map<String, dynamic>;
+  final rawDays = data['days'];
+  if (rawDays is! List) {
+    throw const FormatException('AI compact output has no "days" array.');
   }
 
-  String _weekdayName(int dartWeekday) {
-    const names = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    return names[dartWeekday - 1];
+  final days = <AiCompactPlanDay>[];
+  for (final rawDay in rawDays) {
+    final map = rawDay as Map<String, dynamic>;
+    final placeIds = <String>[];
+    final visitMinutes = <String, int>{};
+
+    final rawPlaces = map['places'];
+    final rawIds = map['placeIds'] ?? map['place_ids'];
+    if (rawPlaces is List) {
+      // Rich shape: [{placeId, visitMinutes}]
+      for (final p in rawPlaces) {
+        if (p is! Map) continue;
+        final id = (p['placeId'] ?? p['place_id'] ?? p['id'])?.toString().trim();
+        if (id == null || id.isEmpty) continue;
+        placeIds.add(id);
+        final mins = (p['visitMinutes'] ?? p['visit_minutes']) as num?;
+        if (mins != null && mins > 0) {
+          visitMinutes[id] = mins.toInt().clamp(15, 360);
+        }
+      }
+    } else if (rawIds is List) {
+      // Simple shape: [ids]
+      placeIds.addAll(rawIds
+          .whereType<String>()
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty));
+    }
+
+    days.add(AiCompactPlanDay(
+      dayIndex: (map['dayIndex'] as num?)?.toInt() ?? -1,
+      placeIds: placeIds,
+      visitMinutes: visitMinutes,
+      reason: map['reason'] as String? ?? '',
+    ));
   }
+  return days;
 }
 
 /// Parses raw DeepSeek JSON into a list of [AIDaySchedule].
 ///
 /// Throws a [FormatException] when the JSON is structurally invalid so the
 /// pipeline can treat it as a regeneration trigger.
-///
-/// The model returns each day's stops in chronological array order; the
-/// `stopOrder` field is assigned sequentially here (1, 2, 3, ...) so the
-/// final ordering is deterministic and owned by Dart — an AI-supplied
-/// `stopOrder` is never trusted.
 List<AIDaySchedule> parseAiScheduleJson(String rawJson) {
   final data = jsonDecode(rawJson) as Map<String, dynamic>;
   final rawDays = data['days'];
@@ -528,19 +451,18 @@ List<AIDaySchedule> parseAiScheduleJson(String rawJson) {
     final map = rawDay as Map<String, dynamic>;
     final rawSchedule = map['schedule'];
     final schedule = <AIScheduleStop>[];
-    var order = 1;
     if (rawSchedule is List) {
       for (final rawStop in rawSchedule) {
         final s = rawStop as Map<String, dynamic>;
         schedule.add(AIScheduleStop(
-          stopOrder: order++,
+          stopOrder: (s['stopOrder'] as num?)?.toInt() ?? 0,
           placeId: s['placeId'] as String? ?? '',
           startTime: s['startTime'] as String? ?? '',
           endTime: s['endTime'] as String? ?? '',
           visitDurationMinutes:
-              (s['visitDurationMinutes'] as num?)?.toInt() ?? 0,
+          (s['visitDurationMinutes'] as num?)?.toInt() ?? 0,
           travelFromPreviousMinutes:
-              (s['travelFromPreviousMinutes'] as num?)?.toInt() ?? 0,
+          (s['travelFromPreviousMinutes'] as num?)?.toInt() ?? 0,
           scheduleReason: s['reason'] as String? ?? '',
         ));
       }

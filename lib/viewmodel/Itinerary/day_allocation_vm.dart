@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../model/entities/destination.dart';
 import '../../model/entities/trip_draft.dart';
 import 'package:intl/intl.dart';
 
@@ -29,7 +30,7 @@ class AddAllocationVM extends ChangeNotifier {
   final Map<String, int> _daySplit = {};
 
   AddAllocationVM(this._incomingDraft) {
-    destinations = List.of(_incomingDraft.destinations);
+    destinations = List.of(_incomingDraft.destinationNames);
 
     if (_incomingDraft.daySplit.isNotEmpty) {
       _daySplit.addAll(_incomingDraft.daySplit);
@@ -179,7 +180,19 @@ class AddAllocationVM extends ChangeNotifier {
       throw StateError(errors.values.first);
     }
     return (prior ?? _incomingDraft).copyWith(
-      destinations: List.of(destinations),
+      destinations: [
+        for (final name in destinations)
+          _incomingDraft.destinations.firstWhere(
+            (d) => d.destinationName == name,
+            orElse: () => _incomingDraft.destinations.isNotEmpty
+                ? _incomingDraft.destinations.first
+                : Destination(
+                    destinationId: name,
+                    destinationName: name,
+                    imageUrl: '',
+                  ),
+          ),
+      ],
       daySplit: Map.of(_daySplit),
     );
   }

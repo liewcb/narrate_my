@@ -21,6 +21,19 @@ class PlacesRemoteDataSource {
       : _client = client ?? http.Client(),
         _apiKey = apiKey ?? ApiKeys.googleMapsApiKey;
 
+  /// Guards every Google Places request against a missing API key so a
+  /// configuration failure surfaces as a clear error instead of a silent
+  /// "0 places found" (which would hide the real problem).
+  void _ensureApiKey() {
+    if (_apiKey.isEmpty) {
+      throw StateError(
+        'Google Places API authentication failed. '
+        'Please check the GOOGLE_MAPS_API_KEY configuration '
+        '(set via --dart-define).',
+      );
+    }
+  }
+
   /// Search for places near a location.
   Future<List<Place>> searchNearbyPlaces({
     required double latitude,
@@ -28,6 +41,8 @@ class PlacesRemoteDataSource {
     required double radiusMeters,
     required List<String> types,
   }) async {
+    _ensureApiKey();
+
     final url = Uri.parse(
       '$_nearbySearchUrl'
           '?location=$latitude,$longitude'
@@ -55,7 +70,8 @@ class PlacesRemoteDataSource {
         );
       }
       return [];
-    } catch (_) {
+    } catch (e) {
+      _rethrowAuthError(e);
       return [];
     }
   }
@@ -66,6 +82,8 @@ class PlacesRemoteDataSource {
         double? latitude,
         double? longitude,
       }) async {
+    _ensureApiKey();
+
     final url = Uri.parse(
       '$_textSearchUrl'
           '?query=${Uri.encodeComponent(query)}'
@@ -92,13 +110,16 @@ class PlacesRemoteDataSource {
         );
       }
       return [];
-    } catch (_) {
+    } catch (e) {
+      _rethrowAuthError(e);
       return [];
     }
   }
 
   /// Get detailed place information by Google Place ID.
   Future<Place?> getPlaceDetails(String placeId) async {
+    _ensureApiKey();
+
     final url = Uri.parse(
       '$_detailsUrl'
           '?place_id=${Uri.encodeComponent(placeId)}'
@@ -118,8 +139,24 @@ class PlacesRemoteDataSource {
         'Google Places API error: ${data['status']}'
             '${data['error_message'] != null ? ' — ${data['error_message']}' : ''}',
       );
-    } catch (_) {
+    } catch (e) {
+      _rethrowAuthError(e);
       return null;
+    }
+  }
+
+  /// Distinguishes authentication / configuration failures from transient
+  /// network errors. Auth errors propagate so the generation layer can
+  /// report the real problem; transient errors are silently returned as
+  /// empty results (the caller will either skip or expand).
+  void _rethrowAuthError(Object error) {
+    final message = error.toString();
+    if (message.contains('REQUEST_DENIED') ||
+        message.contains('INVALID_REQUEST') ||
+        message.contains('OVER_QUERY_LIMIT') ||
+        message.contains('API key') ||
+        message.contains('not configured')) {
+      throw error is Exception ? error : Exception(error.toString());
     }
   }
 }
