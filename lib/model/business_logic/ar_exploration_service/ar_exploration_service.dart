@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/config/app_config.dart';
@@ -7,12 +8,38 @@ import '../../repositories/interfaces/ar_repository.dart';
 import '../shared_services/location_service.dart';
 import '../../../core/services/orientation_service.dart';
 
+/// Two-band grouping of nearby markers for the "Nearby Attractions" list
+/// UI. This is a plain straight-line distance cut, independent of each
+/// marker's own [ARMarker.activationRadiusMeters] — that field only
+/// governs the AR camera overlay / notification banner (see
+/// [ARSceneState.nearbyMarkers]). Both bands are sorted nearest-first.
+class NearbyAttractionsSections {
+  /// Attractions with a direct distance under
+  /// [ARExplorationService.veryNearRadiusMeters] (currently 80m).
+  final List<ARMarker> veryNear;
+
+  /// Attractions with a direct distance at or beyond [veryNear]'s cutoff
+  /// but under [ARExplorationService.nearRadiusMeters] (currently 150m).
+  final List<ARMarker> near;
+
+  const NearbyAttractionsSections({
+    this.veryNear = const [],
+    this.near = const [],
+  });
+
+  static const empty = NearbyAttractionsSections();
+}
+
 /// Immutable snapshot of the AR scene at a point in time — what the View
 /// actually renders.
 class ARSceneState {
   /// All markers within scan radius AND within their own activation
   /// radius, sorted nearest-first. (BF-4, BF-5 minus the notification UI).
   final List<ARMarker> nearbyMarkers;
+
+  /// The two-band (<80m / <150m) grouping for the Nearby Attractions list
+  /// panel, with direct distances already computed on each [ARMarker].
+  final NearbyAttractionsSections nearbyAttractions;
 
   /// The single marker the tourist is currently directly facing, if any
   /// (BF-6, BF-7). Null when no marker is within heading tolerance.
@@ -42,6 +69,7 @@ class ARSceneState {
 
   const ARSceneState({
     required this.nearbyMarkers,
+    this.nearbyAttractions = NearbyAttractionsSections.empty,
     required this.primaryMarker,
     required this.deviceHeadingDegrees,
     this.devicePitchDegrees = 0,
@@ -69,6 +97,15 @@ class ARExplorationService {
   final ARRepository _repository;
   final LocationService _locationService;
   final OrientationService _orientationService;
+
+  /// Cutoff (meters) for the "very near" section of the Nearby
+  /// Attractions list.
+  static const double veryNearRadiusMeters = 80;
+
+  /// Cutoff (meters) for the "near" section of the Nearby Attractions
+  /// list. Markers between [veryNearRadiusMeters] and this value fall
+  /// into the second section; anything beyond this isn't listed.
+  static const double nearRadiusMeters = 150;
 
   StreamSubscription<Position>? _positionSub;
   StreamSubscription<CompassEvent>? _compassSub;
@@ -161,6 +198,8 @@ class ARExplorationService {
       ..sort((a, b) => (a.distanceMeters ?? double.infinity)
           .compareTo(b.distanceMeters ?? double.infinity));
 
+    final nearbyAttractions = _buildNearbyAttractionsSections(allWithGeometry);
+
     // Primary = smallest angular difference to device heading among the
     // markers currently facing (BF-7: "the building the tourist is
     // directly facing"). Skipped entirely while the phone is pitched
@@ -182,6 +221,7 @@ class ARExplorationService {
 
     _controller.add(ARSceneState(
       nearbyMarkers: computed,
+      nearbyAttractions: nearbyAttractions,
       primaryMarker: primary,
       deviceHeadingDegrees: _lastHeading,
       devicePitchDegrees: _lastPitch,
@@ -190,6 +230,44 @@ class ARExplorationService {
       rawFetchedCount: _lastFetchedMarkers.length,
       allComputedMarkers: allWithGeometry,
     ));
+  }
+
+  /// Splits every geometry-computed marker into the two Nearby
+  /// Attractions list bands by straight-line distance
+  /// ([veryNearRadiusMeters] / [nearRadiusMeters]), each sorted
+  /// nearest-first. Unlike [nearbyMarkers], this ignores each marker's
+  /// own `activationRadiusMeters` — it's a flat distance cut for the
+  /// list UI, not the AR overlay eligibility check.
+  NearbyAttractionsSections _buildNearbyAttractionsSections(List<ARMarker> allWithGeometry) {
+    final withDistance = allWithGeometry.where((m) => m.distanceMeters != null).toList()
+      ..sort((a, b) => a.distanceMeters!.compareTo(b.distanceMeters!));
+
+    // TEMP DEBUG: dumps every fetched marker's name + computed direct
+    // (haversine) distance, in meters, every time this recomputes. Compare
+    // these numbers against Google Maps' measure-distance tool for the
+    // same marker coordinates and your live GPS fix (userLat/userLng in
+    // ARSceneState) to see whether a mismatch is a bad marker coordinate,
+    // stale GPS, or a real bug. Remove once confirmed.
+    debugPrint('[NearbyAttractions] --- recompute ---');
+    for (final m in withDistance) {
+      debugPrint(
+          '[NearbyAttractions] ${m.name} (id=${m.markerId}) '
+              'lat=${m.latitude}, lng=${m.longitude} '
+              '-> distance=${m.distanceMeters!.toStringAsFixed(1)}m');
+    }
+
+    final veryNear = withDistance.where((m) => m.distanceMeters! < veryNearRadiusMeters).toList();
+
+    final near = withDistance
+        .where((m) =>
+    m.distanceMeters! >= veryNearRadiusMeters && m.distanceMeters! < nearRadiusMeters)
+        .toList();
+
+    debugPrint(
+        '[NearbyAttractions] veryNear(<${veryNearRadiusMeters}m)=${veryNear.length}, '
+            'near(${veryNearRadiusMeters}-${nearRadiusMeters}m)=${near.length}');
+
+    return NearbyAttractionsSections(veryNear: veryNear, near: near);
   }
 
   double _angularDiff(double a, double b) {
