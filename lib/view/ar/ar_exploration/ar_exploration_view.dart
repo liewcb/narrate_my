@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../viewmodel/ar/ar_exploration_vm.dart';
 import '../../../model/entities/ar_object.dart';
 import '../ar_placement/ar_placement_view.dart';
@@ -159,6 +160,7 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
 
   void _navigateToPlacement(BuildContext context, ARMarker marker) async {
     final vm = context.read<ARExplorationViewModel>();
+    context.read<GlobalAiAssistantController>().selectArMarker(marker);
 
     // Stop this screen's GPS/compass/accelerometer streams AND release
     // the physical camera before ARCore starts its own session on the

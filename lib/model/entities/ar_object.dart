@@ -9,6 +9,7 @@ import 'dart:math' as math;
 /// heading (see [ARMarker.withComputedGeometry]).
 class ARMarker {
   final String markerId;
+  final String? attractionId;
   final double latitude;
   final double longitude;
   final double? altitude;
@@ -40,6 +41,7 @@ class ARMarker {
 
   const ARMarker({
     required this.markerId,
+    this.attractionId,
     required this.latitude,
     required this.longitude,
     this.altitude,
@@ -67,6 +69,7 @@ class ARMarker {
 
     return ARMarker(
       markerId: markerId,
+      attractionId: attractionId,
       latitude: latitude,
       longitude: longitude,
       altitude: altitude,
@@ -83,6 +86,7 @@ class ARMarker {
 
   ARMarker copyWith({
     String? markerId,
+    String? attractionId,
     double? latitude,
     double? longitude,
     double? altitude,
@@ -97,6 +101,7 @@ class ARMarker {
   }) {
     return ARMarker(
       markerId: markerId ?? this.markerId,
+      attractionId: attractionId ?? this.attractionId,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       altitude: altitude ?? this.altitude,

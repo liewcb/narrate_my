@@ -18,12 +18,16 @@ class TravelAssistantScreen extends StatelessWidget {
     super.key,
     this.attractionId,
     this.attractionName,
+    this.markerId,
+    this.placeId,
     this.contextSource = 'none',
     this.bookmarkPlace,
   });
 
   final String? attractionId;
   final String? attractionName;
+  final String? markerId;
+  final String? placeId;
   final String contextSource;
 
   /// A verified place supplied by Recommendation or Itinerary. Gemini text is
@@ -34,16 +38,19 @@ class TravelAssistantScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final cleanId = attractionId?.trim();
     final cleanName = attractionName?.trim();
-    final placeId = bookmarkPlace?.placeId.trim();
+    final cleanPlaceId = placeId?.trim();
+    final bookmarkPlaceId = bookmarkPlace?.placeId.trim();
     final placeName = bookmarkPlace?.placeName.trim();
-    final resolvedAttractionId = cleanId?.isNotEmpty == true
-        ? cleanId
-        : placeId;
+    final resolvedAttractionId = cleanId?.isNotEmpty == true ? cleanId : null;
+    final resolvedPlaceId = cleanPlaceId?.isNotEmpty == true
+        ? cleanPlaceId
+        : bookmarkPlaceId;
     final resolvedAttractionName = cleanName?.isNotEmpty == true
         ? cleanName
         : placeName;
     final hasContext =
         (resolvedAttractionId?.isNotEmpty ?? false) ||
+        (resolvedPlaceId?.isNotEmpty ?? false) ||
         (resolvedAttractionName?.isNotEmpty ?? false);
 
     return ChangeNotifierProvider(
@@ -52,6 +59,8 @@ class TravelAssistantScreen extends StatelessWidget {
             ? AiAttractionContext(
                 attractionId: resolvedAttractionId,
                 attractionName: resolvedAttractionName,
+                markerId: markerId,
+                placeId: resolvedPlaceId,
                 source: contextSource,
               )
             : null,

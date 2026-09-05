@@ -1,5 +1,8 @@
 // lib/view/Itinerary/manage_itinerary/view_place_detail_screen.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/entities/place.dart';
@@ -55,6 +58,7 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
   late ViewPlaceDetailViewModel _viewModel;
   late StopStatus _currentStatus;
   bool _isConfirming = false;
+  String? _registeredContextKey;
 
   @override
   void initState() {
@@ -82,6 +86,19 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
     if (_viewModel.isStopped != isCompleted) {
       _viewModel.toggleStopped();
     }
+  }
+
+  void _registerAttractionContext(Place place) {
+    final key =
+        '${place.id}|${place.placeId}|${place.placeName}|${place.category}';
+    if (_registeredContextKey == key) return;
+    _registeredContextKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context
+          .read<GlobalAiAssistantController>()
+          .selectPlace(place, source: 'itinerary');
+    });
   }
 
   @override
@@ -112,6 +129,7 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
             return _buildUnavailable();
           }
 
+          _registerAttractionContext(place);
           return _buildContent(place);
         },
       ),

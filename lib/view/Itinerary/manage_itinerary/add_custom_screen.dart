@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
+import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/business_logic/itinerary_service/custom_place_service.dart';
@@ -75,6 +77,13 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     _searchController.dispose();
     _viewModel.dispose();
     super.dispose();
+  }
+
+  void _selectPlace(Place place) {
+    _viewModel.selectPlace(place.placeId);
+    context
+        .read<GlobalAiAssistantController>()
+        .selectPlace(place, source: 'itinerary');
   }
 
   @override
@@ -316,7 +325,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GestureDetector(
-        onTap: () => _viewModel.selectPlace(place.placeId),
+        onTap: () => _selectPlace(place),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -436,7 +445,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: GestureDetector(
-                    onTap: () => vm.selectPlace(place.placeId),
+                    onTap: () => _selectPlace(place),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 8),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../../core/widgets/place_image.dart';
 import '../../../../model/entities/ar_recommendation.dart';
 import '../../../../viewmodel/ar/ar_recommendation_vm.dart';
@@ -268,6 +269,13 @@ class _ARRecommendationCardState extends State<_ARRecommendationCard> {
     }
   }
 
+  void _selectAndToggle() {
+    context
+        .read<GlobalAiAssistantController>()
+        .selectArRecommendation(widget.recommendation);
+    widget.onToggle();
+  }
+
   @override
   Widget build(BuildContext context) {
     final recommendation = widget.recommendation;
@@ -291,7 +299,7 @@ class _ARRecommendationCardState extends State<_ARRecommendationCard> {
       child: Column(
         children: [
           InkWell(
-            onTap: widget.onToggle,
+            onTap: _selectAndToggle,
             child: Padding(
               padding: const EdgeInsets.all(13),
               child: Row(

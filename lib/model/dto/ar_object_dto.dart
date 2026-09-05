@@ -41,6 +41,7 @@ class ARObjectDto {
 /// Standard DTO mapping the `Marker` table in Supabase
 class ARMarkerDto {
   final String markerId;
+  final String? attractionId;
   final double latitude;
   final double longitude;
   final double? altitude;
@@ -52,6 +53,7 @@ class ARMarkerDto {
 
   const ARMarkerDto({
     required this.markerId,
+    this.attractionId,
     required this.latitude,
     required this.longitude,
     this.altitude,
@@ -63,6 +65,7 @@ class ARMarkerDto {
   });
 
   factory ARMarkerDto.fromJson(Map<String, dynamic> json) {
+    String? attractionId;
     String? attractionName;
     String? attractionContent;
     List<String> labels = const [];
@@ -71,11 +74,13 @@ class ARMarkerDto {
     if (rawAttraction is List && rawAttraction.isNotEmpty) {
       final first = rawAttraction.first;
       if (first is Map<String, dynamic>) {
+        attractionId = first['attraction_id'] as String?;
         attractionName = first['name'] as String?;
         attractionContent = first['attraction_content'] as String?;
         labels = _parseLabels(first['labels']);
       }
     } else if (rawAttraction is Map<String, dynamic>) {
+      attractionId = rawAttraction['attraction_id'] as String?;
       attractionName = rawAttraction['name'] as String?;
       attractionContent = rawAttraction['attraction_content'] as String?;
       labels = _parseLabels(rawAttraction['labels']);
@@ -83,6 +88,7 @@ class ARMarkerDto {
 
     return ARMarkerDto(
       markerId: json['marker_id'] as String? ?? json['id'] as String? ?? '',
+      attractionId: attractionId,
       latitude: _parseDouble(json['latitude']),
       longitude: _parseDouble(json['longitude']),
       altitude: _parseDoubleNullable(json['altitude']),
@@ -117,6 +123,7 @@ class ARMarkerDto {
   ARMarker toEntity({required double fallbackActivationRadiusMeters}) {
     return ARMarker(
       markerId: markerId,
+      attractionId: attractionId,
       latitude: latitude,
       longitude: longitude,
       altitude: altitude,

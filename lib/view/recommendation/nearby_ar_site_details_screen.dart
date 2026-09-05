@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/ai_assistant/global_ai_assistant.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
@@ -10,6 +12,11 @@ Future<void> showNearbyArSiteDetails(
   required Coordinates userLocation,
   VoidCallback? onOpenAr,
 }) {
+  context.read<GlobalAiAssistantController>().selectArSite(
+    site,
+    latitude: userLocation.latitude,
+    longitude: userLocation.longitude,
+  );
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,

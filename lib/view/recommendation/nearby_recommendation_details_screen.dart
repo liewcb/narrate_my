@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/ai_assistant/global_ai_assistant.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/place_image.dart';
 import '../../model/entities/ar_site.dart';
@@ -18,6 +19,10 @@ Future<void> showNearbyRecommendationDetails(
   Coordinates? userLocation,
   VoidCallback? onOpenAr,
 }) {
+  context.read<GlobalAiAssistantController>().selectPlace(
+    _placeFromRecommendation(recommendation),
+    source: 'recommendation',
+  );
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -38,6 +43,17 @@ Future<void> showNearbyRecommendationDetails(
   );
 }
 
+Place _placeFromRecommendation(Recommendation recommendation) => Place(
+  placeId: recommendation.placeId,
+  placeName: recommendation.name,
+  placeAddress: recommendation.address,
+  placeLatitude: recommendation.latitude,
+  placeLongitude: recommendation.longitude,
+  placeRating: recommendation.rating ?? 0,
+  placeTypes: [recommendation.category],
+  category: recommendation.category,
+);
+
 class NearbyRecommendationDetailsScreen extends StatelessWidget {
   final Recommendation recommendation;
   final ARSite? arSite;
@@ -52,16 +68,7 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
     this.onOpenAr,
   });
 
-  Place get _bookmarkPlace => Place(
-    placeId: recommendation.placeId,
-    placeName: recommendation.name,
-    placeAddress: recommendation.address,
-    placeLatitude: recommendation.latitude,
-    placeLongitude: recommendation.longitude,
-    placeRating: recommendation.rating ?? 0,
-    placeTypes: [recommendation.category],
-    category: recommendation.category,
-  );
+  Place get _bookmarkPlace => _placeFromRecommendation(recommendation);
 
   Future<void> _handleBookmark(
     BuildContext context,

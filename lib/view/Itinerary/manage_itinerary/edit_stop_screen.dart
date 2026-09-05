@@ -1,7 +1,10 @@
-﻿// lib/view/Itinerary/manage_itinerary/edit_stop_screen.dart
+// lib/view/Itinerary/manage_itinerary/edit_stop_screen.dart
 import 'dart:ui'; // For BackdropFilter
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
+import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../core/config/api_keys.dart';
 import '../../../core/services/google_maps_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -50,6 +53,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
   // Track whether any progress change was persisted, so the parent
   // screen can reload on return.
   bool _hasChanges = false;
+  bool _registeredInitialContext = false;
 
   /// Back-button handler: if there are unsaved edits, ask whether to
   /// discard them before leaving; otherwise pop normally — reporting any
@@ -88,6 +92,19 @@ class _EditStopScreenState extends State<EditStopScreen> {
     _skipReasonController =
         TextEditingController(text: widget.stop.skipReason ?? '');
     _viewModel.refreshTimeOptions();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_registeredInitialContext) return;
+    _registeredInitialContext = true;
+    final place = widget.stop.place;
+    if (place != null) {
+      context
+          .read<GlobalAiAssistantController>()
+          .selectPlace(place, source: 'itinerary');
+    }
   }
 
   @override
