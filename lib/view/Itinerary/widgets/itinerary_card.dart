@@ -13,7 +13,6 @@ class ItineraryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color primaryColor = AppColors.brandGreen;
     const Color textColor = AppColors.brandCharcoal;
     final Color subtitleColor = AppColors.outline;
 
@@ -35,31 +34,41 @@ class ItineraryCard extends StatelessWidget {
         itinerary.coverImageUrl ??
             'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=800&q=80';
 
-    // ─── Card Background Color based on status ────────────────
-    Color cardBackgroundColor = AppColors.white; // default
+    // ─── Status Colors Configuration ──────────────────────────────────
+    Color cardBackgroundColor;
+    Color badgeBgColor;
+    Color badgeTextColor;
+    Color badgeIconColor;
 
-    if (isUpcoming) {
-      cardBackgroundColor = AppColors.brandGreenLight; // light green tint
-    } else if (isOngoing) {
-      cardBackgroundColor = AppColors.creamBg; // warm cream tint
-    } else if (isPast) {
-      cardBackgroundColor = AppColors.brandGrayLight; // light gray tint
-    }
-
-    // ─── Status badge colors ──────────────────────────────────
-    Color badgeBgColor = Colors.white.withOpacity(0.92);
-    Color badgeTextColor = primaryColor;
-    Color badgeIconColor = primaryColor;
-
-    if (isPast) {
-      badgeTextColor = subtitleColor;
-      badgeIconColor = subtitleColor;
+    if (isOngoing) {
+      // ✅ ONGOING: Green theme with white text
+      cardBackgroundColor = Colors.green.shade50;
+      badgeBgColor = Colors.green.shade600; // Strong green background
+      badgeTextColor = Colors.white; // White text
+      badgeIconColor = Colors.white; // White icon
+    } else if (isUpcoming) {
+      // ✅ UPCOMING: Yellow theme with red text
+      cardBackgroundColor = Colors.yellow.shade50;
+      badgeBgColor = Colors.yellow.shade400; // Vibrant yellow background
+      badgeTextColor = Colors.red.shade800; // Dark red text for contrast
+      badgeIconColor = Colors.red.shade800; // Dark red icon
+    } else {
+      // ✅ PAST: Orange theme
+      cardBackgroundColor = Colors.orange.shade50;
+      badgeBgColor = Colors.orange.shade100;
+      badgeTextColor = Colors.deepOrange.shade900;
+      badgeIconColor = Colors.deepOrange.shade900;
     }
 
     return Container(
       decoration: BoxDecoration(
-        color: cardBackgroundColor, // ✅ changes based on status
+        color: cardBackgroundColor,
         borderRadius: BorderRadius.circular(16),
+        // Dynamic border that perfectly matches the active status color
+        border: Border.all(
+          color: badgeBgColor.withOpacity(0.6),
+          width: 1.2,
+        ),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0A004D40),
@@ -74,17 +83,16 @@ class ItineraryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image with Status Badge
+            // Image with Status Badge and Gradient
             Stack(
               children: [
+                // 1. The Base Image
                 SizedBox(
                   height: 136,
                   width: double.infinity,
                   child: Image.network(
                     imageUrl,
                     fit: BoxFit.cover,
-                    color: isPast ? Colors.grey : null,
-                    colorBlendMode: isPast ? BlendMode.saturation : null,
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         color: AppColors.brandGrayLight,
@@ -98,6 +106,28 @@ class ItineraryCard extends StatelessWidget {
                     },
                   ),
                 ),
+
+                // 2. Subtle Top Gradient for Badge Readability
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 54,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.35),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 3. The Status Badge
                 Positioned(
                   top: 12,
                   right: 12,
@@ -127,7 +157,7 @@ class ItineraryCard extends StatelessWidget {
                           itinerary.status,
                           style: GoogleFonts.inter(
                             fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             color: badgeTextColor,
                           ),
                         ),

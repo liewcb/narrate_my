@@ -3,9 +3,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/config/api_keys.dart';
+import '../../core/config/itinerary_constants.dart';
 import '../../core/services/database_manager.dart';
 import '../../core/services/google_maps_service.dart';
 import '../../model/business_logic/itinerary_service/candidate_retrieval_service.dart';
+import '../../model/business_logic/itinerary_service/candidate_retrieval_service.dart'
+    as hotspot_svc;
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/destination.dart';
 import '../../model/entities/destination_hotspot.dart';
@@ -13,6 +16,26 @@ import '../../model/entities/place.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../model/repositories/interfaces/bookmark_repository.dart';
 import '../../model/repositories/interfaces/destination_repository.dart';
+
+/// Outcome of a must-visit selection attempt. The UI only displays the
+/// result — every validation rule lives in this ViewModel.
+enum MustVisitSelectionStatus { added, warning, rejected }
+
+class MustVisitSelectionResult {
+  final MustVisitSelectionStatus status;
+  final String message;
+
+  const MustVisitSelectionResult._(this.status, this.message);
+
+  factory MustVisitSelectionResult.added() =>
+      const MustVisitSelectionResult._(MustVisitSelectionStatus.added, '');
+
+  factory MustVisitSelectionResult.warning(String message) =>
+      MustVisitSelectionResult._(MustVisitSelectionStatus.warning, message);
+
+  factory MustVisitSelectionResult.rejected(String message) =>
+      MustVisitSelectionResult._(MustVisitSelectionStatus.rejected, message);
+}
 
 /// UI model for a place shown in the Step 3 wizard.
 class WizardPlace {
@@ -131,9 +154,29 @@ class Step3AddPlaceVM extends ChangeNotifier {
   bool isLoadingMore = false;
 
   // ─── Shared selection ───────────────────────────────────────
-  final List<String> _mustVisitPlaces = [];
+  /// REQ_MV_05 — a traveler may select at most 3 must-visit places.
+  static const int maxMustVisits = 3;
+
   final List<String> _mustVisitPlaceIds = [];
   final Map<String, String> _mustVisitNameById = {};
+  final Map<String, MustVisitPlaceInfo> _mustVisitMeta = {};
+
+  /// Full Place records (coordinates, types, identity) keyed by stable
+  /// place_id — used for must-visit validation on selection.
+  final Map<String, Place> _placeById = {};
+
+  /// Best-hotspot cache per destination_id (distance validation).
+  final Map<String, DestinationHotspot?> _hotspotCache = {};
+
+  /// Non-travel categories never accepted as must-visits (REQ_MV_11).
+  /// Mirrors CandidateRetrievalService's hard-banned types.
+  static const List<String> _bannedMustVisitTypes = [
+    'lodging',
+    'hotel',
+    'real_estate_agency',
+    'lawyer',
+    'spa',
+  ];
 
   // ─── Destination cache ──────────────────────────────────────
   List<Destination> _cachedSelectedDestinations = [];
@@ -256,9 +299,14 @@ class Step3AddPlaceVM extends ChangeNotifier {
     _ensureSelectedDestinations();
     // Restore must-visit selections from the draft so BACK
     // navigation (Step 4 → Step 3) keeps progress.
-    if (draft.mustVisitPlaceIds.isNotEmpty) {
-      _mustVisitPlaceIds.addAll(draft.mustVisitPlaceIds);
-      for (final id in draft.mustVisitPlaceIds) {
+    for (final id in draft.mustVisitPlaceIds) {
+      if (id.isEmpty || _mustVisitPlaceIds.contains(id)) continue;
+      _mustVisitPlaceIds.add(id);
+      final meta = draft.mustVisitPlaceInfo[id];
+      if (meta != null) {
+        _mustVisitMeta[id] = meta;
+        _mustVisitNameById[id] = meta.placeName;
+      } else {
         _mustVisitNameById[id] = id;
       }
     }
@@ -289,10 +337,20 @@ class Step3AddPlaceVM extends ChangeNotifier {
   bool get hasMoreDefaultPlaces =>
       pagedDefaultPlaces.length < _defaultPlaces.length;
 
-  List<String> get mustVisitPlaces => _mustVisitPlaces;
+  List<String> get mustVisitPlaces =>
+      _mustVisitPlaceIds.map((id) => _mustVisitNameById[id] ?? id).toList();
   List<String> get mustVisitPlaceIds => List.unmodifiable(_mustVisitPlaceIds);
+  Map<String, MustVisitPlaceInfo> get mustVisitPlaceInfo =>
+      Map.unmodifiable(_mustVisitMeta);
+
+  /// (placeId, displayName) pairs for the selected chips (REQ_MV_07).
+  List<(String, String)> get mustVisitEntries => [
+    for (final id in _mustVisitPlaceIds) (id, _mustVisitNameById[id] ?? id),
+  ];
+
   DestinationHotspot? get selectedHotspot => _selectedHotspot;
   double? get selectedHotspotRadiusKm => _selectedHotspot?.suggestedRadiusKm;
+  bool get isSelectionLimitReached => _mustVisitPlaceIds.length >= maxMustVisits;
 
   // ---------- Init / Load ----------
   Future<void> _ensureSelectedDestinations() async {
@@ -311,6 +369,8 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
     try {
       await _ensureSelectedDestinations();
+      // REQ_MV_01 — the repository query is scoped to the authenticated
+      // user's ID, so only that traveler's bookmarks are ever returned.
       final dtos = await _bookmarkRepository.getBookmarksWithPlaces(user_id);
       final mapped = dtos.map((dto) {
         try {
@@ -320,6 +380,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
         }
       }).where((w) => w != null).cast<WizardPlace>().toList();
 
+      // REQ_MV_02 — only destination-relevant bookmarks are selectable.
       final filtered = mapped.where((w) => _belongsToAnySelectedDestinationByPlace(w)).toList();
       if (filtered.isEmpty && mapped.isNotEmpty) {
         _bookmarks = mapped.map((w) => w.copyWith(isEnabled: false)).toList();
@@ -335,10 +396,17 @@ class Step3AddPlaceVM extends ChangeNotifier {
     }
   }
 
+  /// REQ_MV_02 — a bookmark is destination-compatible when its underlying
+  /// Place belongs to one of the selected destinations (coordinates first,
+  /// name match as fallback). When destinations cannot be resolved the check
+  /// is skipped so a transient database failure cannot hide every bookmark;
+  /// selection-time validation re-applies the rule whenever destinations are
+  /// known.
   bool _belongsToAnySelectedDestinationByPlace(WizardPlace w) {
-    // Placeholder: you can implement actual geofencing or name matching
-    // For now, we treat all bookmarks as enabled.
-    return true;
+    if (_cachedSelectedDestinations.isEmpty) return true;
+    final place = _placeById[w.placeId];
+    if (place == null) return false;
+    return _belongsToAnySelectedDestination(place);
   }
 
   bool _belongsToAnySelectedDestination(Place place) {
@@ -349,7 +417,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
           : null;
       if (destCoords != null) {
         final distance = destCoords.distanceTo(place.coordinates);
-        if (distance <= 50.0) return true;
+        if (distance <= ItineraryConstants.maxSearchRadiusKm) return true;
       }
       final combined = (place.placeAddress + ' ' + place.placeName).toLowerCase();
       if (combined.contains(dest.destinationName.toLowerCase())) {
@@ -378,48 +446,223 @@ class Step3AddPlaceVM extends ChangeNotifier {
     _searchMaps(query);
   }
 
-  void togglePlace(String placeName) {
-    final place = availablePlaces.firstWhere(
-          (p) => p.name == placeName,
-      orElse: () => WizardPlace(
-          placeId: '',
-          name: '',
-          type: '',
-          typeIcon: Icons.place,
-          rating: 0,
-          isEnabled: false),
-    );
-    if (!place.isEnabled) return;
-
-    final placeId = place.placeId.isNotEmpty ? place.placeId : placeName;
-
-    if (_mustVisitPlaces.contains(placeName) ||
-        _mustVisitPlaceIds.contains(placeId)) {
-      _mustVisitPlaces.remove(placeName);
-      _mustVisitPlaceIds.remove(placeId);
-      _mustVisitNameById.remove(placeId);
-    } else {
-      _mustVisitPlaces.add(placeName);
-      _mustVisitPlaceIds.add(placeId);
-      _mustVisitNameById[placeId] = place.name;
-    }
-    // Keep the draft's must-visit selections in sync so BACK navigation
-    // keeps the selection.
-    draft = draft.copyWith(
-      mustVisitPlaceIds: _mustVisitPlaceIds,
-    );
+  /// Removes a selected must-visit (REQ_MV_07): updates the selected place
+  /// IDs, metadata and the TripDraft, then refreshes the UI state.
+  void removeMustVisit(String placeId) {
+    _mustVisitPlaceIds.remove(placeId);
+    _mustVisitNameById.remove(placeId);
+    _mustVisitMeta.remove(placeId);
+    _syncDraft();
     notifyListeners();
   }
 
-  bool isPlaceAdded(String name) => _mustVisitPlaces.contains(name);
+  void _syncDraft() {
+    draft = draft.copyWith(
+      mustVisitPlaceIds: List.of(_mustVisitPlaceIds),
+      mustVisitPlaceInfo: Map.of(_mustVisitMeta),
+    );
+  }
+
+  /// Adds or removes a place. The [confirmOutsideHotspot] flag is the UI's
+  /// answer to the OUTSIDE_HOTSPOT warning — it never bypasses any other
+  /// validation rule (§19).
+  Future<MustVisitSelectionResult> togglePlace(
+    String placeId, {
+    String? placeName,
+    required String source,
+    bool confirmOutsideHotspot = false,
+  }) async {
+    // Toggle-off path: the place is already selected → remove it.
+    if (_mustVisitPlaceIds.contains(placeId)) {
+      removeMustVisit(placeId);
+      return MustVisitSelectionResult.added();
+    }
+
+    // Toggle-on path — full validation chain.
+    final result = await _validateAndAdd(
+      placeId: placeId,
+      placeName: placeName,
+      source: source,
+      confirmOutsideHotspot: confirmOutsideHotspot,
+    );
+    notifyListeners();
+    return result;
+  }
+
+  Future<MustVisitSelectionResult> _validateAndAdd({
+    required String placeId,
+    String? placeName,
+    required String source,
+    required bool confirmOutsideHotspot,
+  }) async {
+    // ── REQ_MV_08 — valid, stable place identity (never the name). ──
+    if (placeId.trim().isEmpty) {
+      return MustVisitSelectionResult.rejected(
+        'This place does not have a valid place ID and cannot be added.',
+      );
+    }
+    final id = placeId.trim();
+
+    // ── REQ_MV_05 / REQ_MV_06 — maximum 3 must-visit places. ──
+    if (_mustVisitPlaceIds.length >= maxMustVisits) {
+      return MustVisitSelectionResult.rejected(
+        'You can select a maximum of 3 must-visit places.',
+      );
+    }
+
+    final place = _placeById[id];
+
+    // ── REQ_MV_09 — valid coordinates. ──
+    if (place == null ||
+        place.placeLatitude == 0.0 && place.placeLongitude == 0.0 ||
+        place.placeLatitude < -90 ||
+        place.placeLatitude > 90 ||
+        place.placeLongitude < -180 ||
+        place.placeLongitude > 180) {
+      return MustVisitSelectionResult.rejected(
+        'This place does not have valid coordinates and cannot be added.',
+      );
+    }
+
+    // ── REQ_MV_12 — duplicate prevention by stable place_id. ──
+    if (_mustVisitPlaceIds.contains(id)) {
+      return MustVisitSelectionResult.rejected(
+        'This place has already been selected.',
+      );
+    }
+
+    // ── REQ_MV_11 — valid place category (must-visits are attractions /
+    // places of interest, never clearly non-travel categories). Mirrors the
+    // candidate retrieval service's banned types; food categories stay
+    // allowed because the existing pipeline explicitly supports them. ──
+    if (place.placeTypes.any(_bannedMustVisitTypes.contains)) {
+      return MustVisitSelectionResult.rejected(
+        'This place is not a valid attraction and cannot be added as a '
+        'must-visit.',
+      );
+    }
+
+    // ── REQ_MV_10 — destination compatibility (geographic distance). ──
+    if (_cachedSelectedDestinations.isNotEmpty &&
+        !_belongsToAnySelectedDestination(place)) {
+      return MustVisitSelectionResult.rejected(
+        'This place cannot be added because its location is outside your '
+        'selected destinations.',
+      );
+    }
+
+    // ── REQ_MV_13 — hotspot distance validation. ──
+    final warning = await _hotspotWarningFor(place);
+    if (warning != null && !confirmOutsideHotspot) {
+      return MustVisitSelectionResult.warning(warning);
+    }
+
+    // ── All validation passed → preserve stable identity + metadata. ──
+    _mustVisitPlaceIds.add(id);
+    _mustVisitNameById[id] = place.placeName.isNotEmpty
+        ? place.placeName
+        : (placeName ?? id);
+    _mustVisitMeta[id] = MustVisitPlaceInfo(
+      placeId: id,
+      placeName: place.placeName,
+      destinationId: place.destinationId ??
+          _destinationIdForPlace(place),
+      source: source,
+      latitude: place.placeLatitude,
+      longitude: place.placeLongitude,
+    );
+    _syncDraft();
+    return MustVisitSelectionResult.added();
+  }
+
+  /// OUTSIDE_HOTSPOT → confirmation message; WITHIN_HOTSPOT / FAR → null.
+  /// FAR_FROM_DESTINATION is rejected earlier by destination compatibility;
+  /// a null here means "add normally".
+  Future<String?> _hotspotWarningFor(Place place) async {
+    if (_cachedSelectedDestinations.isEmpty) return null;
+    for (final dest in _cachedSelectedDestinations) {
+      final destCoords = (dest.latitude != null && dest.longitude != null)
+          ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
+          : null;
+      if (destCoords == null) continue;
+      final distanceKm = _mapsService.distanceKm(destCoords, place.coordinates);
+      if (distanceKm <= ItineraryConstants.maxSearchRadiusKm) {
+        // Inside the destination's travel area — warn only when the place
+        // sits beyond the destination hotspot's suggested radius.
+        final hotspot = _selectedHotspot ??
+            await _hotspotForDestination(dest.destinationId);
+        if (hotspot != null) {
+          final hotspotDistance = _mapsService.distanceKm(
+            Coordinates(
+              latitude: hotspot.latitude,
+              longitude: hotspot.longitude,
+            ),
+            place.coordinates,
+          );
+          final status = hotspot_svc.classifyHotspotDistance(
+            hotspotDistance,
+            hotspot.suggestedRadiusKm,
+          );
+          if (status == HotspotDistanceStatus.outsideHotspot) {
+            return 'This place is outside the recommended area for this '
+                'destination. Do you still want to add it as a must-visit?';
+          }
+        }
+        return null;
+      }
+    }
+    return null;
+  }
+
+  Future<DestinationHotspot?> _hotspotForDestination(String destinationId) async {
+    if (_hotspotCache.containsKey(destinationId)) {
+      return _hotspotCache[destinationId];
+    }
+    DestinationHotspot? hotspot;
+    try {
+      final dest = _cachedSelectedDestinations.firstWhere(
+        (d) => d.destinationId == destinationId,
+      );
+      hotspot = await _candidateService.selectBestHotspot(
+        destinationName: dest.destinationName,
+        destinationId: dest.destinationId,
+        interests: draft.interests.toList(),
+      );
+    } catch (e) {
+      debugPrint('Hotspot resolution failed: $e');
+    }
+    _hotspotCache[destinationId] = hotspot;
+    return hotspot;
+  }
+
+  String? _destinationIdForPlace(Place place) {
+    for (final dest in _cachedSelectedDestinations) {
+      final destCoords = (dest.latitude != null && dest.longitude != null)
+          ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
+          : null;
+      if (destCoords != null &&
+          destCoords.distanceTo(place.coordinates) <=
+              ItineraryConstants.maxSearchRadiusKm) {
+        return dest.destinationId;
+      }
+    }
+    return null;
+  }
+
+  bool isPlaceAdded(String placeId) => _mustVisitPlaceIds.contains(placeId);
+
+  /// Exposes the underlying Place record for a candidate so the UI can hand
+  /// full validation data (coordinates, types) back to the ViewModel.
+  Place? placeById(String placeId) => _placeById[placeId];
+
+  void registerPlace(Place place) {
+    if (place.placeId.isEmpty) return;
+    _placeById[place.placeId] = place;
+  }
 
   TripDraft buildDraft() {
-    final ids = _mustVisitPlaceIds.isNotEmpty
-        ? _mustVisitPlaceIds
-        : _mustVisitPlaces;
-    final updated = draft.copyWith(mustVisitPlaceIds: ids);
-    draft = updated;
-    return updated;
+    _syncDraft();
+    return draft;
   }
 
   // ---------- Search Maps – Default Places ----------
@@ -712,6 +955,10 @@ class Step3AddPlaceVM extends ChangeNotifier {
         String? destinationId,
         String? hotspotId,
       }) {
+    // Keep the full Place record so selection-time validation can check
+    // identity, coordinates, category and destination compatibility.
+    registerPlace(place);
+
     final primaryType = _resolvePrimaryCategory(place.placeTypes ?? []);
     final typeIcon = _getCategoryIcon(place.placeTypes ?? []);
     final (travelIcon, travelLabel) = _getTravelModeInfo();

@@ -455,18 +455,22 @@ class _StatusBadge extends StatelessWidget {
 
     switch (status) {
       case ItineraryTemporalStatus.past:
-        bgColor = AppColors.surface2;
-        fgColor = AppColors.inkFaint;
+        bgColor = Colors.orange.shade100;
+        fgColor = Colors.deepOrange.shade900;
         icon = Icons.history;
         label = 'Past';
         break;
       case ItineraryTemporalStatus.ongoing:
-        label = 'Ongoing';
+        bgColor = Colors.green.shade600;
+        fgColor = Colors.white;
         icon = Icons.play_circle_outline;
+        label = 'Ongoing';
         break;
       case ItineraryTemporalStatus.upcoming:
-        label = 'Upcoming';
+        bgColor = Colors.yellow.shade400;
+        fgColor = Colors.red.shade800;
         icon = Icons.event_available;
+        label = 'Upcoming';
         break;
     }
 

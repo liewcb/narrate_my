@@ -40,6 +40,30 @@ class ValidationResult {
 ///   4. Must-visit places appear somewhere (warning)
 ///   5. Places are open on the scheduled date
 class ValidationService {
+
+  String? validateTripName(String? name) {
+    // 1. Presence Check
+    if (name == null || name.trim().isEmpty) {
+      return 'Trip name cannot be empty.';
+    }
+
+    final trimmedName = name.trim();
+
+    // 2. Length Check (Max 50 characters)
+    if (trimmedName.length > 50) {
+      return 'Trip name must be 50 characters or less.';
+    }
+
+    // 3. Format/Pattern Check (Alphanumeric, spaces, hyphens, commas)
+    final isValidFormat = RegExp(r'^[a-zA-Z0-9\s\-,]+$').hasMatch(trimmedName);
+    if (!isValidFormat) {
+      return 'Invalid characters. Use only letters, numbers, spaces, hyphens, or commas.';
+    }
+
+    // Passed all checks!
+    return null;
+  }
+
   /// Validate the complete itinerary against hard constraints.
   ValidationResult validate({
     required List<ScheduledDay> scheduledDays,

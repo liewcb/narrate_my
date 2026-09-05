@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/must_visit_selection_vm.dart';
@@ -16,14 +17,24 @@ class MustVisitSelectionScreen extends StatefulWidget {
 }
 
 class _MustVisitSelectionScreenState extends State<MustVisitSelectionScreen> {
-  static const String _userId = '252f0924-192c-42fe-8643-881da7bbf285';
-
   @override
   Widget build(BuildContext context) {
+    final user = Supabase.instance.client.auth.currentUser;
+
+    print('CURRENT USER: ${user?.id}');
+
+    if (user == null) {
+      return const Scaffold(
+        body: Center(
+          child: Text('No user logged in'),
+        ),
+      );
+    }
+
     return ChangeNotifierProvider<Step3AddPlaceVM>(
       create: (_) => Step3AddPlaceVM(
         widget.draft,
-        userId: _userId,
+        userId: user.id,
       ),
       child: const _Step3AddPlaceBody(),
     );
@@ -62,6 +73,7 @@ class _Step3AddPlaceBody extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (_) => SplitDaysScreen(
+          draft: draft,
           destinations: destinationsWithDays,
           totalPlannedDays: totalDays,
         ),
@@ -118,8 +130,8 @@ class _Step3AddPlaceBody extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   _SelectedChips(
-                    selectedNames: vm.mustVisitPlaces,
-                    onRemove: vm.togglePlace,
+                    selectedEntries: vm.mustVisitEntries,
+                    onRemove: vm.removeMustVisit,
                   ),
                   const SizedBox(height: 14),
                   _SearchBar(onChanged: vm.searchPlaces),
@@ -210,7 +222,16 @@ class _Step3AddPlaceBody extends StatelessWidget {
                             _PlaceList(
                               places: displayPlaces,
                               isAdded: vm.isPlaceAdded,
-                              onToggle: vm.togglePlace,
+                              onToggle: (placeId, {confirmOutsideHotspot = false}) =>
+                                  vm.togglePlace(
+                                    placeId,
+                                    // REQ_MV_08 §8 — preserve the selection
+                                    // source through to generation.
+                                    source: vm.selectedTab == 0
+                                        ? 'BOOKMARK'
+                                        : 'GOOGLE_SEARCH',
+                                    confirmOutsideHotspot: confirmOutsideHotspot,
+                                  ),
                               showLoadMore: vm.selectedTab == 1 &&
                                   query.isEmpty &&
                                   vm.hasMoreDefaultPlaces,
@@ -222,7 +243,7 @@ class _Step3AddPlaceBody extends StatelessWidget {
               ),
             ),
             _StickyFooter(
-              selectedCount: vm.mustVisitPlaces.length,
+              selectedCount: vm.mustVisitPlaceIds.length,
               onContinue: () {
                 final draft = vm.buildDraft();
                 _navigateToSplitDays(context, draft);
@@ -323,13 +344,16 @@ class _TabToggle extends StatelessWidget {
 }
 
 class _SelectedChips extends StatelessWidget {
-  final List<String> selectedNames;
+  final List<(String, String)> selectedEntries; // (placeId, displayName)
   final ValueChanged<String> onRemove;
-  const _SelectedChips({required this.selectedNames, required this.onRemove});
+  const _SelectedChips({
+    required this.selectedEntries,
+    required this.onRemove,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (selectedNames.isEmpty) return const SizedBox.shrink();
+    if (selectedEntries.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Container(
@@ -346,12 +370,13 @@ class _SelectedChips extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text("MUST-VISIT PLACES SELECTED", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.1, color: AppColors.outline)),
-                Text("${selectedNames.length}", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.brandGreen)),
+                Text("${selectedEntries.length}", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.brandGreen)),
               ],
             ),
             const SizedBox(height: 12),
             Column(
-              children: selectedNames.map((name) {
+              children: selectedEntries.map((entry) {
+                final (placeId, name) = entry;
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -372,7 +397,7 @@ class _SelectedChips extends StatelessWidget {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => onRemove(name),
+                        onTap: () => onRemove(placeId),
                         behavior: HitTestBehavior.opaque,
                         child: const Padding(
                           padding: EdgeInsets.all(2.0),
@@ -471,7 +496,8 @@ class _HotspotBanner extends StatelessWidget {
 class _PlaceList extends StatelessWidget {
   final List<WizardPlace> places;
   final bool Function(String) isAdded;
-  final ValueChanged<String> onToggle;
+  final Future<MustVisitSelectionResult> Function(String placeId,
+      {bool confirmOutsideHotspot}) onToggle;
   final bool showLoadMore;
   final VoidCallback? onLoadMore;
   final bool isLoadingMore;
@@ -484,6 +510,54 @@ class _PlaceList extends StatelessWidget {
     this.isLoadingMore = false,
   });
 
+  Future<void> _handleToggle(
+      BuildContext context, WizardPlace place) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await onToggle(
+      place.placeId,
+      confirmOutsideHotspot: false,
+    );
+
+    switch (result.status) {
+      case MustVisitSelectionStatus.added:
+        break;
+      case MustVisitSelectionStatus.warning:
+        // OUTSIDE_HOTSPOT — traveler may confirm (§19). "Add Anyway" only
+        // means "outside the recommended hotspot"; it never bypasses the
+        // other validation rules.
+        if (!context.mounted) break;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Outside recommended hotspot'),
+            content: Text(result.message),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Add Anyway')),
+            ],
+          ),
+        );
+        if (confirmed == true) {
+          await onToggle(place.placeId, confirmOutsideHotspot: true);
+        }
+        break;
+      case MustVisitSelectionStatus.rejected:
+        // Validation failure — clear message, never a raw exception.
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -491,13 +565,13 @@ class _PlaceList extends StatelessWidget {
       child: Column(
         children: [
           ...places.map((place) {
-            final added = isAdded(place.name);
+            final added = isAdded(place.placeId);
             return Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: _PlaceCard(
                 place: place,
                 isAdded: added,
-                onToggle: () => onToggle(place.name),
+                onToggle: () => _handleToggle(context, place),
               ),
             );
           }).toList(),
@@ -613,27 +687,9 @@ class _PlaceCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: () {
-                  if (place.isOutsideHotspot) {
-                    showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Outside recommended hotspot'),
-                        content: Text(
-                          'This location is outside the recommended hotspot area.\nDistance from selected hotspot: ${place.distanceKm?.toStringAsFixed(1)} km.',
-                        ),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add Anyway')),
-                        ],
-                      ),
-                    ).then((confirmed) {
-                      if (confirmed == true) onToggle();
-                    });
-                  } else {
-                    onToggle();
-                  }
-                },
+                // Selection decisions live in the ViewModel; the card only
+                // triggers the toggle and displays the resulting feedback.
+                onTap: onToggle,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(

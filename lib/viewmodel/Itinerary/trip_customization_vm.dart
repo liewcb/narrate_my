@@ -108,6 +108,12 @@ class Step2TripStyleVM extends ChangeNotifier {
     } else if (totalDays > maxTripDays) {
       errors['dates'] = 'Trips are limited to $maxTripDays days.';
     }
+
+    // New rule: multiple destinations require at least 2 travel days
+    if (destinations.length > 1 && totalDays < 2) {
+      errors['dates'] = 'Multiple destinations require a minimum trip duration of 2 days.';
+    }
+
     if (travelType == null) errors['travelType'] = 'Select a travel type.';
     if (tripName.trim().isEmpty) errors['tripName'] = 'Give your trip a name.';
     if (exploration == null) errors['exploration'] = 'Select an exploration time.';

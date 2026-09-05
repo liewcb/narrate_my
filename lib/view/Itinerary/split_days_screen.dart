@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import '../../core/theme/app_theme.dart';
+import '../../model/entities/destination.dart';
+import '../../model/entities/trip_draft.dart';
+import 'generation_screen.dart';
 
 class DestinationWithDays {
   final String id;
@@ -16,11 +20,13 @@ class DestinationWithDays {
 }
 
 class SplitDaysScreen extends StatefulWidget {
+  final TripDraft draft; // Added field
   final List<DestinationWithDays> destinations;
   final int totalPlannedDays;
 
   const SplitDaysScreen({
     Key? key,
+    required this.draft, // Required parameter
     required this.destinations,
     required this.totalPlannedDays,
   }) : super(key: key);
@@ -41,6 +47,7 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
   ];
 
   late final Map<String, Color> _destinationColors;
+
   final Color _bgColor = AppColors.bg;
   final Color _subtitleColor = AppColors.inkFaint;
   final Color _textColor = AppColors.ink;
@@ -64,7 +71,8 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     return _destinationColors[id] ?? _colorPalette.first;
   }
 
-  int get _totalAllocated => widget.destinations.fold(0, (sum, d) => sum + d.days);
+  int get _totalAllocated =>
+      widget.destinations.fold(0, (sum, d) => sum + d.days);
 
   void _updateDays(int index, int change) {
     setState(() {
@@ -93,9 +101,16 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bgColor,
-      appBar: _buildAppBar(),
+      // Replaced _buildAppBar() with WizardAppBar
+      appBar: const WizardAppBar(
+        step: 4,
+        totalSteps: 5,
+      ),
       body: Stack(
         children: [
+          const SizedBox(height: 8),
+          const WizardProgressBar(activeSteps: 4),
+          const SizedBox(height: 24),
           SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
             child: Column(
@@ -105,7 +120,10 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                 const SizedBox(height: 32),
                 _buildSummaryCard(),
                 const SizedBox(height: 32),
-                Text("DESTINATIONS & SCHEDULE", style: AppTextStyles.sectionLabel),
+                Text(
+                  "DESTINATIONS & SCHEDULE",
+                  style: AppTextStyles.sectionLabel,
+                ),
                 const SizedBox(height: 16),
                 for (int i = 0; i < widget.destinations.length; i++)
                   _buildDestinationCard(
@@ -132,30 +150,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    final primaryColor = widget.destinations.isNotEmpty
-        ? _getColorForDestination(widget.destinations.first.id)
-        : AppColors.primary;
-    return AppBar(
-      backgroundColor: _bgColor.withOpacity(0.9),
-      elevation: 0,
-      centerTitle: true,
-      leading: IconButton(
-        icon: Icon(Icons.arrow_back, color: primaryColor),
-        onPressed: () => Navigator.maybePop(context),
-      ),
-      title: Text(
-        "STEP 4 OF 5",
-        style: AppTextStyles.labelSm.copyWith(
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.5,
-          color: _subtitleColor,
-        ),
-      ),
-      actions: const [SizedBox(width: 48)],
-    );
-  }
-
   Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,7 +167,10 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
         Text(
           "You have ${widget.totalPlannedDays} total days planned. "
               "Allocate how many days to spend in each destination.",
-          style: AppTextStyles.bodySm.copyWith(color: _subtitleColor, height: 1.5),
+          style: AppTextStyles.bodySm.copyWith(
+            color: _subtitleColor,
+            height: 1.5,
+          ),
         ),
       ],
     );
@@ -185,14 +182,25 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        boxShadow: const [BoxShadow(color: AppShadows.card, blurRadius: 20, offset: Offset(0, 4))],
+        boxShadow: const [
+          BoxShadow(
+            color: AppShadows.card,
+            blurRadius: 20,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("Total Duration", style: AppTextStyles.bodySm.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                "Total Duration",
+                style: AppTextStyles.bodySm.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
@@ -201,7 +209,10 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                 ),
                 child: Text(
                   "$_totalAllocated / ${widget.totalPlannedDays} Days Allocated",
-                  style: AppTextStyles.labelSm.copyWith(fontWeight: FontWeight.w600, color: AppColors.green),
+                  style: AppTextStyles.labelSm.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.green,
+                  ),
                 ),
               ),
             ],
@@ -217,9 +228,12 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                     if (widget.destinations[i].days > 0) ...[
                       Expanded(
                         flex: widget.destinations[i].days,
-                        child: Container(color: _getColorForDestination(widget.destinations[i].id)),
+                        child: Container(
+                          color: _getColorForDestination(widget.destinations[i].id),
+                        ),
                       ),
-                      if (i < widget.destinations.length - 1 && widget.destinations[i + 1].days > 0)
+                      if (i < widget.destinations.length - 1 &&
+                          widget.destinations[i + 1].days > 0)
                         const SizedBox(width: 4),
                     ],
                   if (_totalAllocated < widget.totalPlannedDays) ...[
@@ -241,7 +255,8 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
               for (int i = 0; i < widget.destinations.length; i++)
                 _buildLegendItem(
                   color: _getColorForDestination(widget.destinations[i].id),
-                  label: "${widget.destinations[i].name} (${widget.destinations[i].days}d)",
+                  label: "${widget.destinations[i].name} "
+                      "(${widget.destinations[i].days}d)",
                 ),
             ],
           ),
@@ -250,7 +265,10 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     );
   }
 
-  Widget _buildLegendItem({required Color color, required String label}) {
+  Widget _buildLegendItem({
+    required Color color,
+    required String label,
+  }) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -260,11 +278,22 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: color.withOpacity(0.25), blurRadius: 4)],
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.25),
+                blurRadius: 4,
+              ),
+            ],
           ),
         ),
         const SizedBox(width: 7),
-        Text(label, style: AppTextStyles.labelSm.copyWith(fontWeight: FontWeight.w600, color: _textColor)),
+        Text(
+          label,
+          style: AppTextStyles.labelSm.copyWith(
+            fontWeight: FontWeight.w600,
+            color: _textColor,
+          ),
+        ),
       ],
     );
   }
@@ -284,13 +313,23 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        boxShadow: const [BoxShadow(color: AppShadows.card, blurRadius: 20, offset: Offset(0, 4))],
+        boxShadow: const [
+          BoxShadow(
+            color: AppShadows.card,
+            blurRadius: 20,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppRadius.card),
         child: Row(
           children: [
-            Container(width: 6, height: 112, color: color),
+            Container(
+              width: 6,
+              height: 112,
+              color: color,
+            ),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -304,10 +343,15 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                         child: Image.network(
                           imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: AppColors.bg,
-                            child: Icon(Icons.image_not_supported_outlined, color: color.withOpacity(0.6)),
-                          ),
+                          errorBuilder: (_, __, ___) {
+                            return Container(
+                              color: AppColors.bg,
+                              child: Icon(
+                                Icons.image_not_supported_outlined,
+                                color: color.withOpacity(0.6),
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -328,14 +372,21 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                                 alignment: Alignment.center,
                                 child: Text(
                                   "${index + 1}",
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: color),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: color,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   title.replaceFirst(RegExp(r'^[0-9]+\.\s*'), ''),
-                                  style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.w700, color: _textColor),
+                                  style: AppTextStyles.bodyLg.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: _textColor,
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -344,12 +395,19 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                           const SizedBox(height: 6),
                           Row(
                             children: [
-                              Icon(Icons.calendar_today_outlined, size: 14, color: color),
+                              Icon(
+                                Icons.calendar_today_outlined,
+                                size: 14,
+                                color: color,
+                              ),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
                                   days > 0 ? dateRange : "No days allocated",
-                                  style: AppTextStyles.labelSm.copyWith(fontWeight: FontWeight.w600, color: color),
+                                  style: AppTextStyles.labelSm.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: color,
+                                  ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -358,11 +416,18 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                           const SizedBox(height: 12),
                           Row(
                             children: [
-                              _buildStepperBtn(icon: Icons.remove, color: color, onTap: onRemove),
+                              _buildStepperBtn(
+                                icon: Icons.remove,
+                                color: color,
+                                onTap: onRemove,
+                              ),
                               const SizedBox(width: 10),
                               Container(
                                 constraints: const BoxConstraints(minWidth: 64),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
                                 decoration: BoxDecoration(
                                   color: color.withOpacity(0.08),
                                   borderRadius: BorderRadius.circular(20),
@@ -370,11 +435,19 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                                 child: Text(
                                   "$days ${days == 1 ? 'Day' : 'Days'}",
                                   textAlign: TextAlign.center,
-                                  style: AppTextStyles.labelSm.copyWith(fontWeight: FontWeight.w700, color: color, fontSize: 13),
+                                  style: AppTextStyles.labelSm.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: color,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 10),
-                              _buildStepperBtn(icon: Icons.add, color: color, onTap: onAdd),
+                              _buildStepperBtn(
+                                icon: Icons.add,
+                                color: color,
+                                onTap: onAdd,
+                              ),
                             ],
                           ),
                         ],
@@ -406,9 +479,59 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
           decoration: BoxDecoration(
             color: color.withOpacity(0.08),
             shape: BoxShape.circle,
-            border: Border.all(color: color.withOpacity(0.35), width: 1.2),
+            border: Border.all(
+              color: color.withOpacity(0.35),
+              width: 1.2,
+            ),
           ),
-          child: Icon(icon, size: 17, color: color),
+          child: Icon(
+            icon,
+            size: 17,
+            color: color,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Navigates to the next screen with the updated day allocation.
+  void _onContinue() {
+    // Build a new mutable map from the current allocations
+    final allocatedDays = <String, int>{};
+    for (final dest in widget.destinations) {
+      allocatedDays[dest.name] = dest.days;
+    }
+
+    // If the draft is available (passed via widget.draft), copy it with new daySplit.
+    // Otherwise, construct a minimal draft from the available data.
+    final TripDraft updatedDraft;
+    if (widget.draft != null) {
+      // Use copyWith (immutable update) to create a new draft with the new daySplit.
+      updatedDraft = widget.draft!.copyWith(daySplit: allocatedDays);
+    } else {
+      // Fallback: build a new draft from destinations (if full Destination objects are stored)
+      // Here we assume we can reconstruct from what we have.
+      updatedDraft = TripDraft(
+        destinations: widget.destinations.map((d) {
+          // Re‑create Destination objects – you may have a better way to get them.
+          return Destination(
+            destinationId: d.id,
+            destinationName: d.name,
+            imageUrl: d.imageUrl,
+          );
+        }).toList(),
+        daySplit: allocatedDays,
+        // Copy other fields from original draft if needed; otherwise defaults.
+      );
+    }
+
+    // Navigate to the next screen (e.g., ItineraryGenerationScreen or whatever comes after split days)
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GenerationScreen(
+          draft: updatedDraft,
+          //userId: 'current_user_id_here', // replace with actual userId
         ),
       ),
     );
@@ -426,7 +549,11 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [_bgColor, _bgColor.withOpacity(0.9), _bgColor.withOpacity(0.0)],
+          colors: [
+            _bgColor,
+            _bgColor.withOpacity(0.9),
+            _bgColor.withOpacity(0.0),
+          ],
         ),
       ),
       child: ElevatedButton(
@@ -434,23 +561,36 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
           backgroundColor: isComplete ? accentColor : AppColors.moduleBorder,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(32),
+          ),
           elevation: isComplete ? 8 : 0,
           shadowColor: accentColor.withOpacity(0.5),
           textStyle: AppTextStyles.button,
         ),
-        onPressed: isComplete
-            ? () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('All days allocated! ✅')),
-          );
-        }
-            : null,
+        onPressed: () {
+          if (!isComplete) {
+            final diff = widget.totalPlannedDays - _totalAllocated;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  diff > 0
+                      ? 'Please allocate $diff more day(s).'
+                      : 'Please remove ${diff.abs()} allocated day(s).',
+                ),
+              ),
+            );
+            return;
+          }
+          _onContinue(); // ✅ Call the new method
+        },
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              isComplete ? "Continue to Trip Details" : "Allocate all ${widget.totalPlannedDays} days",
+              isComplete
+                  ? "Continue to Trip Details"
+                  : "Allocate all ${widget.totalPlannedDays} days",
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,

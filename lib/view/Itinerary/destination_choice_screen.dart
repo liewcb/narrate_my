@@ -100,11 +100,12 @@ class _Step1WhereToBody extends StatelessWidget {
             label: 'Continue to Trip Dates',
             onContinue: () {
               try {
-                final draft = vm.buildTripDraft();
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => TripCustomizationScreen(draft: draft),
+                    builder: (_) => TripCustomizationScreen(
+                      draft: vm.buildTripDraft(),
+                    ),
                   ),
                 );
               } catch (e) {
@@ -125,8 +126,7 @@ class _Step1WhereToBody extends StatelessWidget {
   }
 }
 
-// ─── Sub‑widgets ──────────────────────────────────────────────────
-
+// ─── Private sub‑widgets (unchanged) ──────────────────────────
 class _Header extends StatelessWidget {
   const _Header();
 

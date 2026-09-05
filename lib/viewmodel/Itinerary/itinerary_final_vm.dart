@@ -351,10 +351,14 @@ class ItineraryFinalViewModel extends ChangeNotifier {
       }
     }
 
-    // Persist must-visits (itinerary_must_visits).
+    // Persist must-visits (itinerary_must_visits). Each row keeps the
+    // validated place identity (stable place_id), display name, destination
+    // association and selection source preserved by Step 3.
     final mustVisitRepo = DatabaseManager().itineraryMustVisitRepository;
     for (final mvId in _mustVisitPlaceIds) {
-      final mvName = generated.placeRegistry?.byId(mvId)?.placeName ??
+      final meta = _draft?.mustVisitPlaceInfo[mvId];
+      final mvName = meta?.placeName ??
+          generated.placeRegistry?.byId(mvId)?.placeName ??
           'Must visit $mvId';
       try {
         await mustVisitRepo.addMustVisit(ItineraryMustVisit(
@@ -362,7 +366,8 @@ class ItineraryFinalViewModel extends ChangeNotifier {
           itineraryId: saved.itineraryId,
           placeId: mvId,
           placeName: mvName,
-          source: 'GOOGLE_SEARCH',
+          destinationId: meta?.destinationId,
+          source: meta?.source ?? 'GOOGLE_SEARCH',
           isVerified: true,
           createdAt: now,
         ));

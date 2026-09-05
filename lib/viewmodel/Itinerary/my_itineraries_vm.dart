@@ -27,25 +27,51 @@ class MyItinerariesVM extends ChangeNotifier {
   void _applyFilters() {
     var filtered = List<Itinerary>.from(_allTrips);
 
+    // 1. Apply Status Filter
     if (_activeFilter != 'All') {
       filtered = filtered.where((itinerary) {
         final resolvedStatus = ItineraryStatusResolver.resolve(
           startDate: itinerary.startDate,
           endDate: itinerary.endDate,
         );
-
-        return resolvedStatus.name.toUpperCase() ==
-            _activeFilter.toUpperCase();
+        return resolvedStatus.name.toUpperCase() == _activeFilter.toUpperCase();
       }).toList();
     }
 
+    // 2. Apply Search Filter
     if (_searchQuery.trim().isNotEmpty) {
       final q = _searchQuery.trim().toLowerCase();
-
       filtered = filtered
           .where((t) => t.title.toLowerCase().contains(q))
           .toList();
     }
+
+    // 3. SMART SORTING LOGIC
+    filtered.sort((a, b) {
+      // Assign priority: Ongoing (0) > Upcoming (1) > Past (2)
+      int getPriority(String status) {
+        if (status == 'ONGOING') return 0;
+        if (status == 'UPCOMING') return 1;
+        return 2; // PAST
+      }
+
+      int priorityA = getPriority(a.status);
+      int priorityB = getPriority(b.status);
+
+      // Sort by status priority first
+      if (priorityA != priorityB) {
+        return priorityA.compareTo(priorityB);
+      }
+
+      // If they have the same status, sort by date
+      if (a.status == 'PAST') {
+        // For past trips, show the most recently completed first (Descending)
+        return b.endDate.compareTo(a.endDate);
+      } else {
+        // For upcoming/ongoing, show the closest start date first (Ascending)
+        return a.startDate.compareTo(b.startDate);
+      }
+    });
 
     _filteredTrips = filtered;
   }
