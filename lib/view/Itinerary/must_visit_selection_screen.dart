@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/must_visit_selection_vm.dart';
-import 'day_allocation_screen.dart';
+import 'split_days_screen.dart';
 
 class MustVisitSelectionScreen extends StatefulWidget {
   final TripDraft draft;
@@ -30,9 +30,44 @@ class _MustVisitSelectionScreenState extends State<MustVisitSelectionScreen> {
   }
 }
 
-// ─── _Step3AddPlaceBody remains unchanged ──────────────────────────
 class _Step3AddPlaceBody extends StatelessWidget {
   const _Step3AddPlaceBody();
+
+  List<DestinationWithDays> _buildDestinationsWithDays(TripDraft draft) {
+    return draft.destinations.map((dest) {
+      final allocatedDays = draft.daySplit[dest.destinationName] ?? 1;
+      return DestinationWithDays(
+        id: dest.id,
+        name: dest.destinationName,
+        imageUrl: dest.imageUrl,
+        initialDays: allocatedDays,
+      );
+    }).toList();
+  }
+
+  void _navigateToSplitDays(BuildContext context, TripDraft draft) {
+    final destinationsWithDays = _buildDestinationsWithDays(draft);
+    int totalDays = draft.totalDays;
+
+    if (draft.daySplit.isEmpty && destinationsWithDays.isNotEmpty) {
+      final count = destinationsWithDays.length;
+      final base = totalDays ~/ count;
+      final extra = totalDays % count;
+      for (int i = 0; i < count; i++) {
+        destinationsWithDays[i].days = base + (i < extra ? 1 : 0);
+      }
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SplitDaysScreen(
+          destinations: destinationsWithDays,
+          totalPlannedDays: totalDays,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -189,24 +224,12 @@ class _Step3AddPlaceBody extends StatelessWidget {
             _StickyFooter(
               selectedCount: vm.mustVisitPlaces.length,
               onContinue: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AddAllocationScreen(
-                      draft: vm.buildDraft(),
-                    ),
-                  ),
-                );
+                final draft = vm.buildDraft();
+                _navigateToSplitDays(context, draft);
               },
               onSkip: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AddAllocationScreen(
-                      draft: vm.buildDraft(),
-                    ),
-                  ),
-                );
+                final draft = vm.buildDraft();
+                _navigateToSplitDays(context, draft);
               },
             ),
           ],
@@ -215,6 +238,8 @@ class _Step3AddPlaceBody extends StatelessWidget {
     );
   }
 }
+
+// ─── Sub‑widgets ──────────────────────────────────────────────────
 
 class _Title extends StatelessWidget {
   const _Title();
@@ -238,11 +263,7 @@ class _Title extends StatelessWidget {
           const SizedBox(height: 8),
           const Text(
             "Select places you want to visit during your trip.",
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
-              color: AppColors.outline,
-            ),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: AppColors.outline),
           ),
         ],
       ),
@@ -253,7 +274,6 @@ class _Title extends StatelessWidget {
 class _TabToggle extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onChanged;
-
   const _TabToggle({required this.selectedIndex, required this.onChanged});
 
   @override
@@ -305,16 +325,11 @@ class _TabToggle extends StatelessWidget {
 class _SelectedChips extends StatelessWidget {
   final List<String> selectedNames;
   final ValueChanged<String> onRemove;
-
-  const _SelectedChips({
-    required this.selectedNames,
-    required this.onRemove,
-  });
+  const _SelectedChips({required this.selectedNames, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
     if (selectedNames.isEmpty) return const SizedBox.shrink();
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Container(
@@ -330,23 +345,8 @@ class _SelectedChips extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  "MUST-VISIT PLACES SELECTED",
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.1,
-                    color: AppColors.outline,
-                  ),
-                ),
-                Text(
-                  "${selectedNames.length}",
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.brandGreen,
-                  ),
-                ),
+                const Text("MUST-VISIT PLACES SELECTED", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.1, color: AppColors.outline)),
+                Text("${selectedNames.length}", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.brandGreen)),
               ],
             ),
             const SizedBox(height: 12),
@@ -361,20 +361,12 @@ class _SelectedChips extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.check,
-                        size: 18,
-                        color: AppColors.brandGreen,
-                      ),
+                      const Icon(Icons.check, size: 18, color: AppColors.brandGreen),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           name,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.brandCharcoal,
-                          ),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.brandCharcoal),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -384,11 +376,7 @@ class _SelectedChips extends StatelessWidget {
                         behavior: HitTestBehavior.opaque,
                         child: const Padding(
                           padding: EdgeInsets.all(2.0),
-                          child: Icon(
-                            Icons.close,
-                            size: 18,
-                            color: AppColors.outline,
-                          ),
+                          child: Icon(Icons.close, size: 18, color: AppColors.outline),
                         ),
                       ),
                     ],
@@ -405,7 +393,6 @@ class _SelectedChips extends StatelessWidget {
 
 class _SearchBar extends StatelessWidget {
   final ValueChanged<String> onChanged;
-
   const _SearchBar({required this.onChanged});
 
   @override
@@ -428,11 +415,7 @@ class _SearchBar extends StatelessWidget {
                 onChanged: onChanged,
                 decoration: const InputDecoration(
                   hintText: "Search restaurants or attractions...",
-                  hintStyle: TextStyle(
-                    color: AppColors.outline,
-                    fontSize: 14,
-                    fontWeight: FontWeight.normal,
-                  ),
+                  hintStyle: TextStyle(color: AppColors.outline, fontSize: 14, fontWeight: FontWeight.normal),
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
@@ -451,11 +434,7 @@ class _SearchBar extends StatelessWidget {
 class _HotspotBanner extends StatelessWidget {
   final String hotspotName;
   final double radiusKm;
-
-  const _HotspotBanner({
-    required this.hotspotName,
-    required this.radiusKm,
-  });
+  const _HotspotBanner({required this.hotspotName, required this.radiusKm});
 
   @override
   Widget build(BuildContext context) {
@@ -471,31 +450,14 @@ class _HotspotBanner extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(
-              Icons.location_on_outlined,
-              color: AppColors.brandGreen,
-              size: 20,
-            ),
+            const Icon(Icons.location_on_outlined, color: AppColors.brandGreen, size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Searching around $hotspotName',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.brandGreen,
-                    ),
-                  ),
-                  Text(
-                    'Recommended radius: ${radiusKm.toStringAsFixed(1)} km',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.outline,
-                    ),
-                  ),
+                  Text('Searching around $hotspotName', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.brandGreen)),
+                  Text('Recommended radius: ${radiusKm.toStringAsFixed(1)} km', style: const TextStyle(fontSize: 12, color: AppColors.outline)),
                 ],
               ),
             ),
@@ -513,7 +475,6 @@ class _PlaceList extends StatelessWidget {
   final bool showLoadMore;
   final VoidCallback? onLoadMore;
   final bool isLoadingMore;
-
   const _PlaceList({
     required this.places,
     required this.isAdded,
@@ -546,18 +507,12 @@ class _PlaceList extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: isLoadingMore ? null : onLoadMore,
                 icon: isLoadingMore
-                    ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.expand_more),
                 label: Text(isLoadingMore ? 'Loading...' : 'Load more places'),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ),
@@ -571,21 +526,13 @@ class _PlaceCard extends StatelessWidget {
   final WizardPlace place;
   final bool isAdded;
   final VoidCallback onToggle;
-
-  const _PlaceCard({
-    required this.place,
-    required this.isAdded,
-    required this.onToggle,
-  });
+  const _PlaceCard({required this.place, required this.isAdded, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -604,16 +551,14 @@ class _PlaceCard extends StatelessWidget {
                     width: 72,
                     height: 72,
                     color: AppColors.outlineLight,
-                    child: const Icon(Icons.image_not_supported,
-                        color: AppColors.outline),
+                    child: const Icon(Icons.image_not_supported, color: AppColors.outline),
                   ),
                 )
                     : Container(
                   width: 72,
                   height: 72,
                   color: AppColors.outlineLight,
-                  child: const Icon(Icons.landscape,
-                      color: AppColors.outline),
+                  child: const Icon(Icons.landscape, color: AppColors.outline),
                 ),
               ),
               const SizedBox(width: 16),
@@ -623,25 +568,14 @@ class _PlaceCard extends StatelessWidget {
                   children: [
                     Text(
                       place.name,
-                      style: GoogleFonts.playfairDisplay(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.brandGreen,
-                        height: 1.2,
-                      ),
+                      style: GoogleFonts.playfairDisplay(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.brandGreen, height: 1.2),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      place.location.isNotEmpty
-                          ? '${place.type} · ${place.location}'
-                          : place.type,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.normal,
-                        color: AppColors.outline,
-                      ),
+                      place.location.isNotEmpty ? '${place.type} · ${place.location}' : place.type,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: AppColors.outline),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -656,26 +590,12 @@ class _PlaceCard extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.brandGreenLight,
-                  borderRadius: BorderRadius.circular(6),
-                ),
+                decoration: BoxDecoration(color: AppColors.brandGreenLight, borderRadius: BorderRadius.circular(6)),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.star,
-                      size: 14,
-                      color: AppColors.brandTerracotta,
-                    ),
+                    const Icon(Icons.star, size: 14, color: AppColors.brandTerracotta),
                     const SizedBox(width: 4),
-                    Text(
-                      place.rating.toStringAsFixed(1),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.brandCharcoal,
-                      ),
-                    ),
+                    Text(place.rating.toStringAsFixed(1), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.brandCharcoal)),
                   ],
                 ),
               ),
@@ -687,8 +607,7 @@ class _PlaceCard extends StatelessWidget {
                   alignment: WrapAlignment.start,
                   children: [
                     _infoChip(place.travelIcon, place.travelTime),
-                    if (place.duration != null)
-                      _infoChip(Icons.hourglass_bottom, place.duration!),
+                    if (place.duration != null) _infoChip(Icons.hourglass_bottom, place.duration!),
                   ],
                 ),
               ),
@@ -701,19 +620,11 @@ class _PlaceCard extends StatelessWidget {
                       builder: (ctx) => AlertDialog(
                         title: const Text('Outside recommended hotspot'),
                         content: Text(
-                          'This location is outside the recommended '
-                              'hotspot area.\nDistance from selected hotspot: '
-                              '${place.distanceKm?.toStringAsFixed(1)} km.',
+                          'This location is outside the recommended hotspot area.\nDistance from selected hotspot: ${place.distanceKm?.toStringAsFixed(1)} km.',
                         ),
                         actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('Add Anyway'),
-                          ),
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add Anyway')),
                         ],
                       ),
                     ).then((confirmed) {
@@ -731,11 +642,7 @@ class _PlaceCard extends StatelessWidget {
                   ),
                   child: Text(
                     isAdded ? "Added ✓" : "+ Add",
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: isAdded ? Colors.white : AppColors.brandCharcoal,
-                    ),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: isAdded ? Colors.white : AppColors.brandCharcoal),
                   ),
                 ),
               ),
@@ -752,15 +659,7 @@ class _PlaceCard extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: AppColors.outline),
         const SizedBox(width: 4),
-        Text(
-          label,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.normal,
-            color: AppColors.outline,
-          ),
-        ),
+        Text(label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.normal, color: AppColors.outline)),
       ],
     );
   }
@@ -770,12 +669,7 @@ class _StickyFooter extends StatelessWidget {
   final int selectedCount;
   final VoidCallback onContinue;
   final VoidCallback onSkip;
-
-  const _StickyFooter({
-    required this.selectedCount,
-    required this.onContinue,
-    required this.onSkip,
-  });
+  const _StickyFooter({required this.selectedCount, required this.onContinue, required this.onSkip});
 
   @override
   Widget build(BuildContext context) {
@@ -793,9 +687,7 @@ class _StickyFooter extends StatelessWidget {
           top: 32,
           bottom: MediaQuery.of(context).padding.bottom + 24,
         ),
-        decoration: BoxDecoration(
-          color: AppColors.creamBg.withOpacity(0.95),
-        ),
+        decoration: BoxDecoration(color: AppColors.creamBg.withOpacity(0.95)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -805,27 +697,16 @@ class _StickyFooter extends StatelessWidget {
                   backgroundColor: AppColors.brandTerracotta,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   elevation: 0,
                 ),
                 onPressed: onContinue,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      'Continue with $selectedCount $placeLabel',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Text('Continue with $selectedCount $placeLabel', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(width: 8),
-                    const Icon(
-                      Icons.arrow_forward,
-                      size: 20,
-                    ),
+                    const Icon(Icons.arrow_forward, size: 20),
                   ],
                 ),
               ),
@@ -833,14 +714,7 @@ class _StickyFooter extends StatelessWidget {
             ],
             GestureDetector(
               onTap: onSkip,
-              child: const Text(
-                'Skip for now',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.normal,
-                  color: AppColors.outline,
-                ),
-              ),
+              child: const Text('Skip for now', style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: AppColors.outline)),
             ),
           ],
         ),
