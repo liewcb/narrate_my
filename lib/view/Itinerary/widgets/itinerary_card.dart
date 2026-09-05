@@ -9,7 +9,7 @@ class ItineraryCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const ItineraryCard({Key? key, required this.itinerary, required this.onTap})
-    : super(key: key);
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -25,15 +25,40 @@ class ItineraryCard extends StatelessWidget {
     final String planSummary =
         '${itinerary.totalDays} days • ${itinerary.interests.length} interests';
 
-    final bool isUpcoming = itinerary.status.toUpperCase() == 'UPCOMING';
+    final String status = itinerary.status.toUpperCase();
+
+    final bool isUpcoming = status == 'UPCOMING';
+    final bool isOngoing = status == 'ONGOING';
+    final bool isPast = status == 'PAST';
 
     final String imageUrl =
         itinerary.coverImageUrl ??
-        'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=800&q=80';
+            'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=800&q=80';
+
+    // ─── Card Background Color based on status ────────────────
+    Color cardBackgroundColor = AppColors.white; // default
+
+    if (isUpcoming) {
+      cardBackgroundColor = AppColors.brandGreenLight; // light green tint
+    } else if (isOngoing) {
+      cardBackgroundColor = AppColors.creamBg; // warm cream tint
+    } else if (isPast) {
+      cardBackgroundColor = AppColors.brandGrayLight; // light gray tint
+    }
+
+    // ─── Status badge colors ──────────────────────────────────
+    Color badgeBgColor = Colors.white.withOpacity(0.92);
+    Color badgeTextColor = primaryColor;
+    Color badgeIconColor = primaryColor;
+
+    if (isPast) {
+      badgeTextColor = subtitleColor;
+      badgeIconColor = subtitleColor;
+    }
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: cardBackgroundColor, // ✅ changes based on status
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
@@ -58,8 +83,8 @@ class ItineraryCard extends StatelessWidget {
                   child: Image.network(
                     imageUrl,
                     fit: BoxFit.cover,
-                    color: isUpcoming ? null : Colors.grey,
-                    colorBlendMode: isUpcoming ? null : BlendMode.saturation,
+                    color: isPast ? Colors.grey : null,
+                    colorBlendMode: isPast ? BlendMode.saturation : null,
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         color: AppColors.brandGrayLight,
@@ -82,7 +107,7 @@ class ItineraryCard extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.92),
+                      color: badgeBgColor,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -91,9 +116,11 @@ class ItineraryCard extends StatelessWidget {
                         Icon(
                           isUpcoming
                               ? Icons.event_rounded
+                              : isOngoing
+                              ? Icons.play_circle_rounded
                               : Icons.history_rounded,
                           size: 13,
-                          color: isUpcoming ? primaryColor : subtitleColor,
+                          color: badgeIconColor,
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -101,7 +128,7 @@ class ItineraryCard extends StatelessWidget {
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: isUpcoming ? primaryColor : subtitleColor,
+                            color: badgeTextColor,
                           ),
                         ),
                       ],

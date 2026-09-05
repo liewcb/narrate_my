@@ -6,9 +6,12 @@ import '../../../core/config/api_keys.dart';
 import '../../../core/services/google_maps_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_confirmation_dialog.dart';
+import '../../../model/business_logic/itinerary_service/change_location_service.dart';
 import '../../../model/entities/itinerary_stop.dart';
 import '../../../model/entities/place.dart';
+import '../../../viewmodel/Itinerary/change_location_vm.dart';
 import '../../../viewmodel/Itinerary/edit_stop_vm.dart';
+import '../widgets/view_place_detail_screen.dart';
 
 /// Edits the traveler's progress for a single stop.
 ///
@@ -49,10 +52,14 @@ class _EditStopScreenState extends State<EditStopScreen> {
   bool _hasChanges = false;
 
   /// Back-button handler: if there are unsaved edits, ask whether to
-  /// discard them before leaving; otherwise pop normally.
+  /// discard them before leaving; otherwise pop normally — reporting any
+  /// already-persisted changes ([_hasChanges]) so the parent screen can
+  /// reload the updated itinerary.
   Future<void> _handleBack() async {
-    if (!_hasChanges && !_viewModel.hasUnsavedChanges) {
-      Navigator.maybePop(context, false);
+    if (!_viewModel.hasUnsavedChanges) {
+      // No pending edits: persisted changes (location/status/time) are
+      // already saved, so report them instead of asking to discard.
+      Navigator.maybePop(context, _hasChanges);
       return;
     }
     final discard = await showConfirmationDialog(
@@ -173,144 +180,158 @@ class _EditStopScreenState extends State<EditStopScreen> {
                 letterSpacing: -0.5,
               ),
             ),
-            // actions: [
-            //   TextButton(
-            //     onPressed: _viewModel.isSaving ? null : () => _save(context),
-            //     child: Text(
-            //       "Save",
-            //       style: TextStyle(
-            //         fontFamily: 'Inter',
-            //         fontSize: 14,
-            //         fontWeight: FontWeight.w500,
-            //         color: _terracotta,
-            //       ),
-            //     ),
-            //   ),
-            //   const SizedBox(width: 12),
-            // ],
           ),
         ),
       ),
     );
   }
 
+  // ─── Compact Hero (now clickable) ─────────────────────────────
+
   Widget _buildCompactHero() {
     final place = _viewModel.stop.place;
     final photoUrl = place?.photoReference != null
         ? 'https://maps.googleapis.com/maps/api/place/photo'
-            '?maxwidth=400&photoreference=${place!.photoReference}'
-            '&key=${ApiKeys.googleMapsApiKey}'
+        '?maxwidth=400&photoreference=${place!.photoReference}'
+        '&key=${ApiKeys.googleMapsApiKey}'
         : null;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _surfaceCard,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          )
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Thumbnail Image
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: photoUrl != null
-                ? Image.network(
-                    photoUrl,
-                    width: 72,
-                    height: 72,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _photoPlaceholder(),
-                  )
-                : _photoPlaceholder(),
-          ),
-          const SizedBox(width: 16),
+    return GestureDetector(
+      onTap: () => _openPlaceDetail(),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: _surfaceCard,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            )
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Thumbnail Image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: photoUrl != null
+                  ? Image.network(
+                photoUrl,
+                width: 72,
+                height: 72,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _photoPlaceholder(),
+              )
+                  : _photoPlaceholder(),
+            ),
+            const SizedBox(width: 16),
 
-          // Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Tag
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.attractions,
-                        size: 14,
-                        color: Colors.grey.shade700,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        (place?.category ?? 'STOP').toUpperCase(),
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
+            // Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Tag
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.attractions,
+                          size: 14,
                           color: Colors.grey.shade700,
                         ),
+                        const SizedBox(width: 4),
+                        Text(
+                          (place?.category ?? 'STOP').toUpperCase(),
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+
+                  // Title
+                  Text(
+                    place?.name ?? _viewModel.stop.placeId,
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: _onSurface,
+                    ),
+                  ),
+
+                  // Location
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          place?.address ?? 'Address unmapped',
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: Colors.grey,
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 4),
-
-                // Title
-                Text(
-                  place?.name ?? _viewModel.stop.placeId,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: _onSurface,
-                  ),
-                ),
-
-                // Location
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on,
-                      size: 14,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        place?.address ?? 'Address unmapped',
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Opens the existing ViewPlaceDetailScreen for the current stop.
+  Future<void> _openPlaceDetail() async {
+    final place = _viewModel.stop.place;
+    if (place == null) {
+      _showMessage(context, 'Place details are unavailable.');
+      return;
+    }
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ViewPlaceDetailScreen(
+          placeId: place.placeId,
+          initialPlace: place,
+          showStatusToggle: false,
+        ),
       ),
     );
   }
@@ -426,34 +447,27 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  /// Opens the Search Maps style location picker and replaces the current
-  /// stop's place with the selected one via the ViewModel.
+  /// Opens the Change Location flow:
+  ///   editability check → AI recommendations (+ existing manual search) →
+  ///   tap a place → existing ViewPlaceDetailScreen → "Use This Place" →
+  ///   final validation → replacement → recalculation → save.
   Future<void> _openLocationSearch() async {
-    final selected = await showModalBottomSheet<Place>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: _surfaceCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _LocationSearchSheet(),
+      builder: (_) => _ChangeLocationSheet(stop: _viewModel.stop),
     );
-    if (selected == null || !mounted) return;
-
-    final ok = await _viewModel.changePlace(selected);
-    if (!mounted) return;
-    if (ok) {
+    if (confirmed == true && mounted) {
       _hasChanges = true;
       setState(() {});
-      _showMessage(context, 'Location updated successfully.');
-    } else {
-      _showMessage(
-        context,
-        'Unable to update location: '
-        '${_viewModel.error ?? 'please try again.'}',
-      );
     }
   }
+
+  // ─── Time & Duration (simplified – start time only) ────────
 
   Widget _buildTimeAndDuration() {
     final timeFormat = DateFormat('hh:mm a');
@@ -468,7 +482,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
         Padding(
           padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
           child: Text(
-            "TIME & DURATION",
+            "TIME",
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 10,
@@ -503,39 +517,8 @@ class _EditStopScreenState extends State<EditStopScreen> {
                 color: Colors.grey.shade100,
               ),
               const SizedBox(height: 12),
-              // Duration dropdown
-              _buildDurationDropdown(readOnly),
-              const SizedBox(height: 16),
-              // Derived end time (read-only)
-              Row(
-                children: [
-                  const Icon(
-                    Icons.arrow_forward,
-                    color: AppColors.inkFaint,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'End Time',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: _textMuted,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${timeFormat.format(editedStart)} → '
-                    '${timeFormat.format(editedEnd)}',
-                    style: TextStyle(
-                      color: _terracotta,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
+              // End Time (read-only, derived)
+              _buildEndTimeDropdown(timeFormat, readOnly),
             ],
           ),
         ),
@@ -607,10 +590,10 @@ class _EditStopScreenState extends State<EditStopScreen> {
                     onChanged: _viewModel.isSaving
                         ? null
                         : (value) {
-                            if (value != null) {
-                              _onStartTimeSelected(value);
-                            }
-                          },
+                      if (value != null) {
+                        _onStartTimeSelected(value);
+                      }
+                    },
                   ),
                 ),
             ],
@@ -620,9 +603,11 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  Widget _buildDurationDropdown(bool readOnly) {
-    final options = _viewModel.availableDurations;
-    final current = _viewModel.editedDurationMinutes;
+  /// End Time dropdown – when no options are available, shows a disabled
+  /// field with a meaningful message.
+  Widget _buildEndTimeDropdown(DateFormat timeFormat, bool readOnly) {
+    final options = _viewModel.availableEndTimes;
+    final current = _viewModel.editedEndTime;
     final selected = options.contains(current)
         ? current
         : (options.isNotEmpty ? options.first : null);
@@ -630,7 +615,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
     return Row(
       children: [
         const Icon(
-          Icons.timelapse,
+          Icons.arrow_forward,
           color: AppColors.inkFaint,
           size: 18,
         ),
@@ -640,7 +625,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'VISIT DURATION',
+                'END TIME',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 10,
@@ -652,16 +637,26 @@ class _EditStopScreenState extends State<EditStopScreen> {
               const SizedBox(height: 4),
               if (readOnly)
                 Text(
-                  _durationLabel(current),
+                  timeFormat.format(current),
                   style: const TextStyle(
                     color: AppColors.ink,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
                 )
+              else if (options.isEmpty)
+              // No available end times – show a message
+                Text(
+                  'No available end times',
+                  style: TextStyle(
+                    color: AppColors.inkFaint,
+                    fontSize: 15,
+                    fontStyle: FontStyle.italic,
+                  ),
+                )
               else
                 DropdownButtonHideUnderline(
-                  child: DropdownButton<int>(
+                  child: DropdownButton<DateTime>(
                     value: selected,
                     isExpanded: true,
                     icon: const Icon(
@@ -675,19 +670,19 @@ class _EditStopScreenState extends State<EditStopScreen> {
                       color: AppColors.ink,
                     ),
                     items: [
-                      for (final d in options)
-                        DropdownMenuItem<int>(
-                          value: d,
-                          child: Text(_durationLabel(d)),
+                      for (final t in options)
+                        DropdownMenuItem<DateTime>(
+                          value: t,
+                          child: Text(timeFormat.format(t)),
                         ),
                     ],
                     onChanged: _viewModel.isSaving
                         ? null
                         : (value) {
-                            if (value != null) {
-                              _onDurationSelected(value);
-                            }
-                          },
+                      if (value != null) {
+                        _onEndTimeSelected(value);
+                      }
+                    },
                   ),
                 ),
             ],
@@ -697,13 +692,40 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  /// Human-readable duration label, e.g. 90 → "1 hr 30 min".
-  String _durationLabel(int minutes) {
-    final h = minutes ~/ 60;
-    final m = minutes % 60;
-    if (h > 0 && m > 0) return '$h hr $m min';
-    if (h > 0) return '$h hr';
-    return '$m min';
+  /// Applies a dropdown end-time selection via the ViewModel, then asks
+  /// the traveler to confirm before persisting.
+  Future<void> _onEndTimeSelected(DateTime picked) async {
+    if (_viewModel.isSaving) return;
+    final applied = await _viewModel.setEndTime(picked);
+    if (!mounted) return;
+    if (!applied) {
+      _showMessage(
+        context,
+        'Unable to update end time: ${_viewModel.error ?? 'invalid end time.'}',
+      );
+      return;
+    }
+
+    final confirmed = await _confirmTimeChange(context);
+    if (!mounted) return;
+    if (confirmed != true) {
+      _viewModel.resetTimeEdits();
+      _showMessage(context, 'Time change cancelled.');
+      return;
+    }
+
+    final saved = await _viewModel.saveTimeChanges();
+    if (!mounted) return;
+    if (saved) {
+      _hasChanges = true;
+      setState(() {});
+      _showMessage(context, 'Stop time updated successfully.');
+    } else {
+      _showMessage(
+        context,
+        'Unable to update time: ${_viewModel.error ?? 'please try again.'}',
+      );
+    }
   }
 
   /// Applies a dropdown start-time selection via the ViewModel, then asks
@@ -738,41 +760,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
       _showMessage(
         context,
         'Unable to update time: ${_viewModel.error ?? 'please try again.'}',
-      );
-    }
-  }
-
-  /// Applies a dropdown duration selection via the ViewModel, then asks the
-  /// traveler to confirm before persisting.
-  Future<void> _onDurationSelected(int picked) async {
-    if (_viewModel.isSaving) return;
-    final applied = await _viewModel.setDuration(picked);
-    if (!mounted) return;
-    if (!applied) {
-      final reason = _viewModel.error ?? 'invalid duration.';
-      _showMessage(context, 'Unable to update duration: $reason');
-      return;
-    }
-
-    final confirmed = await _confirmDurationChange(context);
-    if (!mounted) return;
-    if (confirmed != true) {
-      _viewModel.resetTimeEdits();
-      _showMessage(context, 'Duration change cancelled.');
-      return;
-    }
-
-    final saved = await _viewModel.saveTimeChanges();
-    if (!mounted) return;
-    if (saved) {
-      _hasChanges = true;
-      setState(() {});
-      _showMessage(context, 'Visit duration updated successfully.');
-    } else {
-      _showMessage(
-        context,
-        'Unable to update duration: '
-        '${_viewModel.error ?? 'please try again.'}',
       );
     }
   }
@@ -880,7 +867,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
       _showMessage(
         context,
         'You must go back to Planned first before changing to '
-        '${target[0]}${target.substring(1).toLowerCase()}.',
+            '${target[0]}${target.substring(1).toLowerCase()}.',
       );
       return;
     }
@@ -890,7 +877,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
       _showMessage(
         context,
         'This stop cannot be completed yet.\n'
-        'Please wait until its scheduled time.',
+            'Please wait until its scheduled time.',
       );
       return;
     }
@@ -901,12 +888,8 @@ class _EditStopScreenState extends State<EditStopScreen> {
     }
 
     // 5. Confirm the status change BEFORE persisting.
-    debugPrint('[EDIT STOP] Status change requested');
-    debugPrint('[EDIT STOP] From: ${_viewModel.status}');
-    debugPrint('[EDIT STOP] To: $target');
-
     final confirmed = await _confirmStatusChange(context, target);
-    if (confirmed != true) return; // Status remains unchanged.
+    if (confirmed != true) return;
 
     final success = await _viewModel.updateStatus(
       target,
@@ -923,7 +906,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
       _showMessage(
         context,
         'Unable to update status: '
-        '${_viewModel.error ?? 'please try again.'}',
+            '${_viewModel.error ?? 'please try again.'}',
       );
     }
   }
@@ -983,6 +966,8 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
+  // ─── Schedule Info (fixed invalid symbols) ──────────────────
+
   Widget _buildScheduleInfo() {
     final stop = _viewModel.stop;
     return Container(
@@ -1018,7 +1003,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
               Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade500),
               const SizedBox(width: 8),
               Text(
-                'Day ${stop.dayIndex} � Stop ${stop.stopOrder}',
+                'Day ${stop.dayIndex} • Stop ${stop.stopOrder}', // ✅ Fixed symbol
                 style: const TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 13,
@@ -1033,8 +1018,8 @@ class _EditStopScreenState extends State<EditStopScreen> {
               Icon(Icons.access_time, size: 16, color: Colors.grey.shade500),
               const SizedBox(width: 8),
               Text(
-                '${DateFormat('HH:mm').format(stop.startTime)} � '
-                '${DateFormat('HH:mm').format(stop.endTime)}',
+                '${DateFormat('HH:mm').format(stop.startTime)} – '
+                    '${DateFormat('HH:mm').format(stop.endTime)}',
                 style: const TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 13,
@@ -1083,7 +1068,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
             maxLines: 3,
             decoration: InputDecoration(
               hintText:
-                  "e.g., Rainy weather, closed for maintenance, or ran out of time...",
+              "e.g., Rainy weather, closed for maintenance, or ran out of time...",
               hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
               border: InputBorder.none,
               isDense: true,
@@ -1122,41 +1107,41 @@ class _EditStopScreenState extends State<EditStopScreen> {
         onPressed: _viewModel.isSaving
             ? null
             : () async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Remove this stop?'),
-                    content: const Text(
-                      'This will remove the stop from the itinerary. '
-                      'The affected schedule and route will be recalculated.',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Remove'),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirmed == true && mounted) {
-                  final ok = await _viewModel.deleteStop();
-                  if (!mounted) return;
-                  if (ok) {
-                    _showMessage(context, 'Stop removed from itinerary.');
-                    Navigator.pop(context, true);
-                  } else {
-                    _showMessage(
-                      context,
-                      'Unable to remove the stop: '
-                      '${_viewModel.error ?? 'please try again.'}',
-                    );
-                  }
-                }
-              },
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Remove this stop?'),
+              content: const Text(
+                'This will remove the stop from the itinerary. '
+                    'The affected schedule and route will be recalculated.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Remove'),
+                ),
+              ],
+            ),
+          );
+          if (confirmed == true && mounted) {
+            final ok = await _viewModel.deleteStop();
+            if (!mounted) return;
+            if (ok) {
+              _showMessage(context, 'Stop removed from itinerary.');
+              Navigator.pop(context, true);
+            } else {
+              _showMessage(
+                context,
+                'Unable to remove the stop: '
+                    '${_viewModel.error ?? 'please try again.'}',
+              );
+            }
+          }
+        },
         icon: Icon(Icons.delete, size: 18, color: _dangerText),
         label: Text(
           "Remove from itinerary",
@@ -1189,13 +1174,10 @@ class _EditStopScreenState extends State<EditStopScreen> {
 
     // 2. Persist pending time change (with confirmation).
     if (_viewModel.hasTimeChanges) {
-      debugPrint('[EDIT STOP] Time change requires confirmation');
       final confirmed = await _confirmTimeChange(context);
       if (confirmed != true) {
-        // Time change cancelled — do not persist it.
         return;
       }
-      debugPrint('[EDIT STOP] Time change confirmed');
       final timeSaved = await _viewModel.saveTimeChanges();
       if (!timeSaved) {
         _showMessage(context, _viewModel.error ?? 'Unable to update time.');
@@ -1215,44 +1197,13 @@ class _EditStopScreenState extends State<EditStopScreen> {
     final to = '${timeFormat.format(_viewModel.editedStartTime)} – '
         '${timeFormat.format(_viewModel.editedEndTime)}';
 
-    String message;
-    if (_viewModel.hasDurationChanges) {
-      message = 'Change this stop from\n$from'
-          '\n(${_durationLabel(_viewModel.stop.durationMinutes)})\n'
-          '\nto\n$to\n'
-          '(${_durationLabel(_viewModel.editedDurationMinutes)})?\n\n'
-          'This will update the scheduled time for this stop.';
-    } else {
-      message = 'Change this stop from\n$from\n\nto\n$to?\n\n'
-          'This will update the scheduled time for this stop.';
-    }
-
     return showConfirmationDialog(
       context: context,
       title: 'Confirm Time Change?',
-      message: message,
+      message: 'Change this stop from\n$from\n\nto\n$to?\n\n'
+          'This will update the scheduled time for this stop.',
       confirmLabel: 'Confirm',
       icon: Icons.schedule_rounded,
-      iconBgColor: AppColors.surface2,
-      iconColor: AppColors.accent,
-      confirmColor: AppColors.accent,
-    );
-  }
-
-  Future<bool?> _confirmDurationChange(BuildContext context) {
-    final timeFormat = DateFormat('hh:mm a');
-    final from = _durationLabel(_viewModel.stop.durationMinutes);
-    final to = _durationLabel(_viewModel.editedDurationMinutes);
-    final start = timeFormat.format(_viewModel.editedStartTime);
-    final end = timeFormat.format(_viewModel.editedEndTime);
-
-    return showConfirmationDialog(
-      context: context,
-      title: 'Confirm Duration Change?',
-      message: 'Change visit duration from\n$from\n\nto\n$to?\n\n'
-          'New schedule: $start → $end',
-      confirmLabel: 'Confirm',
-      icon: Icons.timelapse_rounded,
       iconBgColor: AppColors.surface2,
       iconColor: AppColors.accent,
       confirmColor: AppColors.accent,
@@ -1267,28 +1218,60 @@ class _EditStopScreenState extends State<EditStopScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  LOCATION SEARCH SHEET (reuses the existing GoogleMapsService search)
+//  CHANGE LOCATION SHEET
+//  (unchanged – full implementation below)
 // ═══════════════════════════════════════════════════════════════════════
 
-class _LocationSearchSheet extends StatefulWidget {
-  const _LocationSearchSheet();
+class _ChangeLocationSheet extends StatefulWidget {
+  final ItineraryStop stop;
+
+  const _ChangeLocationSheet({required this.stop});
 
   @override
-  State<_LocationSearchSheet> createState() => _LocationSearchSheetState();
+  State<_ChangeLocationSheet> createState() => _ChangeLocationSheetState();
 }
 
-class _LocationSearchSheetState extends State<_LocationSearchSheet> {
+class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
+  late final ChangeLocationViewModel _vm;
   final GoogleMapsService _mapsService = GoogleMapsService();
   final TextEditingController _queryController = TextEditingController();
 
   List<Place> _results = [];
   bool _isSearching = false;
-  String? _error;
+  String? _searchError;
+
+  @override
+  void initState() {
+    super.initState();
+    _vm = ChangeLocationViewModel(stop: widget.stop);
+    _vm.loadRecommendations();
+  }
 
   @override
   void dispose() {
+    _vm.dispose();
     _queryController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openPlaceDetail(Place place) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ViewPlaceDetailScreen(
+          placeId: place.placeId,
+          initialPlace: place,
+          isReplacement: true,
+          onUsePlace: (selected) async {
+            final result = await _vm.confirmReplacement(selected);
+            return result.isSuccessful ? null : result.message;
+          },
+        ),
+      ),
+    );
+    if (changed == true && mounted) {
+      Navigator.pop(context, true);
+    }
   }
 
   Future<void> _search(String query) async {
@@ -1296,14 +1279,14 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
     if (trimmed.isEmpty) {
       setState(() {
         _results = [];
-        _error = null;
+        _searchError = null;
       });
       return;
     }
 
     setState(() {
       _isSearching = true;
-      _error = null;
+      _searchError = null;
     });
 
     try {
@@ -1312,14 +1295,14 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
       setState(() {
         _results = results;
         if (results.isEmpty) {
-          _error = 'No places found. Try a different search.';
+          _searchError = 'No places found. Try a different search.';
         }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _results = [];
-        _error = 'Could not search places. Check your connection.';
+        _searchError = 'Could not search places. Check your connection.';
       });
     } finally {
       if (mounted) setState(() => _isSearching = false);
@@ -1360,7 +1343,72 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
                 color: AppColors.ink,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+
+            ListenableBuilder(
+              listenable: _vm,
+              builder: (context, _) {
+                if (_vm.isLoadingRecommendations) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Finding recommended places...',
+                          style: TextStyle(
+                              fontSize: 14, color: AppColors.inkFaint),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                if (_vm.problemMessage != null) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.info_outline,
+                            size: 20, color: AppColors.error),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _vm.problemMessage!,
+                            style: const TextStyle(
+                                fontSize: 14, color: AppColors.ink),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                if (_vm.recommendations.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+
+                return _buildRecommendations();
+              },
+            ),
+
+            const Text(
+              'SEARCH MANUALLY',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: AppColors.inkFaint,
+              ),
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _queryController,
               textInputAction: TextInputAction.search,
@@ -1371,12 +1419,12 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
                 prefixIcon: const Icon(Icons.search, color: AppColors.inkFaint),
                 suffixIcon: _queryController.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _queryController.clear();
-                          _search('');
-                        },
-                      )
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: () {
+                    _queryController.clear();
+                    _search('');
+                  },
+                )
                     : null,
                 filled: true,
                 fillColor: AppColors.bg,
@@ -1398,11 +1446,11 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),
               )
-            else if (_error != null)
+            else if (_searchError != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Text(
-                  _error!,
+                  _searchError!,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 14,
@@ -1411,32 +1459,200 @@ class _LocationSearchSheetState extends State<_LocationSearchSheet> {
                 ),
               )
             else if (_results.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text(
-                  'Search for a new location to replace this stop.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Or pick one of the recommendations above.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.4,
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _results.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final place = _results[index];
+                      return _LocationResultTile(
+                        place: place,
+                        onTap: () => _openPlaceDetail(place),
+                      );
+                    },
+                  ),
                 ),
-              )
-            else
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.5,
-                ),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _results.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final place = _results[index];
-                    return _LocationResultTile(
-                      place: place,
-                      onTap: () => Navigator.pop(context, place),
-                    );
-                  },
-                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecommendations() {
+    final recommendations = _vm.recommendations;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.auto_awesome, size: 14, color: AppColors.accent),
+            const SizedBox(width: 6),
+            Text(
+              'RECOMMENDED FOR YOU${_vm.usedFallback ? ' (NEARBY)' : ''}',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: AppColors.inkFaint,
               ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.38,
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: recommendations.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final rec = recommendations[index];
+              return _RecommendationCard(
+                recommendation: rec,
+                onTap: () => _openPlaceDetail(rec.place),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+}
+
+class _RecommendationCard extends StatelessWidget {
+  final ChangeLocationRecommendation recommendation;
+  final VoidCallback onTap;
+
+  const _RecommendationCard({required this.recommendation, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final place = recommendation.place;
+    final photoUrl = place.photoReference != null
+        ? 'https://maps.googleapis.com/maps/api/place/photo'
+        '?maxwidth=200&photoreference=${place.photoReference}'
+        '&key=${ApiKeys.googleMapsApiKey}'
+        : null;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.moduleBorder),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 52,
+                height: 52,
+                color: AppColors.surface2,
+                child: photoUrl != null
+                    ? Image.network(
+                  photoUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.place,
+                    color: AppColors.inkFaint,
+                  ),
+                )
+                    : const Icon(Icons.place, color: AppColors.inkFaint),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          place.placeName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                      ),
+                      if (place.placeRating > 0) ...[
+                        const SizedBox(width: 6),
+                        const Icon(Icons.star,
+                            size: 14, color: AppColors.gold),
+                        const SizedBox(width: 2),
+                        Text(
+                          place.placeRating.toStringAsFixed(1),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      if ((place.placeCategory ?? '').isNotEmpty) ...[
+                        Text(
+                          place.placeCategory!,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.inkFaint),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        recommendation.distanceText,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.inkFaint),
+                      ),
+                    ],
+                  ),
+                  if (recommendation.reason.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      recommendation.reason,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 20, color: AppColors.inkFaint),
           ],
         ),
       ),
@@ -1454,8 +1670,8 @@ class _LocationResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final photoUrl = place.photoReference != null
         ? 'https://maps.googleapis.com/maps/api/place/photo'
-            '?maxwidth=200&photoreference=${place.photoReference}'
-            '&key=${ApiKeys.googleMapsApiKey}'
+        '?maxwidth=200&photoreference=${place.photoReference}'
+        '&key=${ApiKeys.googleMapsApiKey}'
         : null;
 
     return InkWell(
@@ -1478,13 +1694,13 @@ class _LocationResultTile extends StatelessWidget {
                 color: AppColors.surface2,
                 child: photoUrl != null
                     ? Image.network(
-                        photoUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.place,
-                          color: AppColors.inkFaint,
-                        ),
-                      )
+                  photoUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.place,
+                    color: AppColors.inkFaint,
+                  ),
+                )
                     : const Icon(Icons.place, color: AppColors.inkFaint),
               ),
             ),

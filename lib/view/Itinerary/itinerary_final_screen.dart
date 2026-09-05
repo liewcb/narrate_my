@@ -1,5 +1,4 @@
-﻿// lib/screens/itinerary_final_screen.dart
-import 'dart:ui' as ui;
+﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -89,6 +88,8 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
     );
 
     if (shouldDiscard == true && mounted) {
+      await _vm.clearDraft();
+      // Pop the screen
       Navigator.pop(context);
     }
   }
@@ -99,6 +100,7 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
     debugPrint('[FINAL SAVE] Button pressed');
     debugPrint('[FINAL SAVE] canSave=${_vm.canSave}, '
         'isSaving=${_vm.isSaving}, itineraryId=${_vm.itineraryId}');
+
     if (!_vm.canSave) {
       debugPrint('[FINAL SAVE] Cannot save: itinerary is not valid or empty.');
       return;
@@ -108,9 +110,13 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
     final saved = await _vm.save();
     debugPrint('[FINAL SAVE] ViewModel.save() completed. saved=$saved, '
         'isSaved=${_vm.isSaved}');
+
     if (!mounted) return;
 
-    if (saved && _vm.isSaved) {
+    if (saved) {
+      debugPrint('[FINAL SAVE] Save succeeded. Clearing draft and navigating.');
+      await _vm.clearDraft();
+
       debugPrint('[FINAL SAVE] Navigation started');
       Navigator.pushReplacement(
         context,
@@ -120,8 +126,13 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
       );
       debugPrint('[FINAL SAVE] Navigation completed');
     } else {
+      // Show the saveMessage to the user if available
+      final msg = _vm.saveMessage ?? 'Failed to save itinerary. Please try again.';
       debugPrint('[FINAL SAVE] Save did not succeed; staying on final screen. '
-          'saveMessage=${_vm.saveMessage}');
+          'saveMessage=$msg');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
     }
   }
 
@@ -260,6 +271,11 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
                                   tripStartDate: _vm.tripStartDate,
                                   explorationTime: _vm.explorationTime,
                                   mustVisitPlaceIds: _vm.mustVisitPlaceIds,
+                                  transportMode: _vm.draft?.transportation ??
+                                      'walking',
+                                  interests:
+                                      _vm.draft?.interests.toList() ??
+                                          const [],
                                 ),
                               ),
                             ).then((updated) {

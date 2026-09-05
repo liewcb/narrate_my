@@ -4,10 +4,10 @@ import 'package:flutter/foundation.dart';
 import '../../core/services/database_manager.dart';
 import '../../core/utils/friendly_messages.dart';
 import '../../model/business_logic/itinerary_service/custom_place_service.dart';
+import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
 import '../../model/repositories/adapters/bookmark_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary_stop_repository_adapter.dart';
 import '../../model/repositories/adapters/place_repository_adapter.dart';
 import '../../model/repositories/interfaces/bookmark_repository.dart';
 
@@ -32,10 +32,15 @@ class AddCustomPlaceVM extends ChangeNotifier {
   final List<String> interests;
   final String userId;
 
-  final ItineraryStopRepositoryImpl _stopRepo;
   final PlaceRepositoryAdapter _placeRepo;
   final CustomPlaceService _service;
   final BookmarkRepository _bookmarkRepo;
+
+  /// Cached day contexts per 1-based day index (loaded once per day; the
+  /// selection is not re-planned for unchanged context — avoids repeated
+  /// database queries and repeated AI calls for the same place).
+  final Map<int, List<ExistingStopContext>> _dayContextCache = {};
+  final Map<String, CustomPlacePlanResult> _planCache = {};
 
   // ─── Existing day ────────────────────────────────────────────
   List<ItineraryStop> _dayStops = [];
@@ -61,11 +66,6 @@ class AddCustomPlaceVM extends ChangeNotifier {
   String? _planError;
   CustomPlacePlanResult? _planResult;
 
-  // ─── Confirmation / save ─────────────────────────────────────
-  bool _isSaving = false;
-  String? _saveError;
-  bool _saved = false;
-
   AddCustomPlaceVM({
     required this.itineraryId,
     required int dayIndex,
@@ -75,13 +75,11 @@ class AddCustomPlaceVM extends ChangeNotifier {
     this.transportMode = 'walking',
     this.interests = const [],
     this.userId = '',
-    ItineraryStopRepositoryImpl? stopRepo,
     PlaceRepositoryAdapter? placeRepo,
     CustomPlaceService? service,
     BookmarkRepository? bookmarkRepo,
   })  : _dayIndex = dayIndex,
         _dayDate = dayDate,
-        _stopRepo = stopRepo ?? DatabaseManager().itineraryStopRepository,
         _placeRepo = placeRepo ?? DatabaseManager().placeRepository,
         _service = service ?? CustomPlaceService(),
         _bookmarkRepo = bookmarkRepo ?? DatabaseManager().bookmarkRepository;
@@ -116,10 +114,6 @@ class AddCustomPlaceVM extends ChangeNotifier {
   CustomPlacePlanResult? get planResult => _planResult;
   bool get hasPlan => _planResult != null;
 
-  bool get isSaving => _isSaving;
-  String? get saveError => _saveError;
-  bool get saved => _saved;
-
   Place? get selectedPlace {
     for (final p in _searchResults) {
       if (p.placeId == _selectedPlaceId) return p;
@@ -139,21 +133,24 @@ class AddCustomPlaceVM extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final all = await _stopRepo.getStopsForItinerary(itineraryId);
-      final day = all.where((s) => s.dayIndex == dayIndex).toList()
-        ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
-
-      final joined = <ItineraryStop>[];
-      for (final stop in day) {
-        Place? place;
-        try {
-          place = await _placeRepo.getPlace(stop.placeId);
-        } catch (_) {
-          place = null;
-        }
-        joined.add(stop.copyWith(place: place));
-      }
-      _dayStops = joined;
+      final stops = await _loadDayContext(_dayIndex);
+      _dayStops = stops
+          .map((s) => ItineraryStop(
+                stopId: 0,
+                itineraryId: itineraryId,
+                placeId: s.place.placeId,
+                dayIndex: _dayIndex,
+                stopOrder: stops.indexOf(s) + 1,
+                startTime: s.startTime,
+                endTime: s.endTime,
+                durationMinutes: s.durationMinutes,
+                travelFromPrevMinutes: s.travelFromPrevMinutes,
+                stopStatus: 'PLANNED',
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+                place: s.place,
+              ))
+          .toList();
       debugPrint('[ADD_CUSTOM] Existing stops: ${_dayStops.length}');
     } catch (e) {
       _loadError = friendlyErrorMessage(
@@ -165,6 +162,50 @@ class AddCustomPlaceVM extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Loads ONE day's schedule context (place joins + times), cached per day
+  /// so switching days or re-selecting a place never repeats database
+  /// queries. The context comes from the itinerary's persisted schedule —
+  /// the traveler's confirmed edits are applied to this context by the
+  /// host screen through [seedDayContext].
+  Future<List<ExistingStopContext>> _loadDayContext(int dayIndex1Based) async {
+    final cached = _dayContextCache[dayIndex1Based];
+    if (cached != null) return cached;
+
+    final all = await _stopRepoAll(dayIndex1Based);
+    final contexts = <ExistingStopContext>[];
+    for (final stop in all) {
+      Place? place = stop.place;
+      place ??= await _placeRepo.getPlace(stop.placeId);
+      contexts.add(ExistingStopContext(
+        place: place ?? Place.empty(stop.placeId),
+        startTime: stop.startTime,
+        endTime: stop.endTime,
+        durationMinutes: stop.durationMinutes,
+        travelFromPrevMinutes: stop.travelFromPrevMinutes ?? 0,
+      ));
+    }
+    _dayContextCache[dayIndex1Based] = contexts;
+    return contexts;
+  }
+
+  /// Loads the raw stops for one day (repository read, cached indirectly via
+  /// [_loadDayContext] callers).
+  Future<List<ItineraryStop>> _stopRepoAll(int dayIndex1Based) async {
+    final stopRepo = DatabaseManager().itineraryStopRepository;
+    final all = await stopRepo.getStopsForItinerary(itineraryId);
+    return all
+        .where((s) => s.dayIndex == dayIndex1Based)
+        .toList()
+      ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+  }
+
+  /// Lets the host screen inject the CURRENT TEMPORARY day schedule
+  /// (from EditItineraryViewModel state) so planning runs against the
+  /// traveler's uncommitted edits rather than the database snapshot.
+  void seedDayContext(int dayIndex1Based, List<ExistingStopContext> stops) {
+    _dayContextCache[dayIndex1Based] = stops;
   }
 
   /// Switch the target day and reload its stops. Used when the traveler
@@ -285,9 +326,20 @@ class AddCustomPlaceVM extends ChangeNotifier {
   }
 
   /// Run AI planning + deterministic validation for the selected place.
+  /// Results are cached per (day, place) so re-selecting the same place
+  /// never repeats the AI request or the travel-time lookups.
   Future<void> planInsertion() async {
     final place = selectedPlace;
     if (place == null) return;
+
+    final cacheKey = '${_dayIndex}_${place.placeId}';
+    final cached = _planCache[cacheKey];
+    if (cached != null) {
+      _planResult = cached;
+      _planError = null;
+      notifyListeners();
+      return;
+    }
 
     debugPrint('[ADD_CUSTOM] Planning insertion');
     _isPlanning = true;
@@ -296,30 +348,31 @@ class AddCustomPlaceVM extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final context = _dayContextCache[_dayIndex] ?? const [];
       final result = await _service.planInsertion(
         dayIndex: dayIndex - 1, // 0-based for the pipeline
         date: dayDate,
-        existingDayPlaces: dayPlaces,
+        existingStops: context,
         newPlace: place,
         explorationTime: explorationTime,
         transportMode: transportMode,
         travelPace: travelPace,
         interests: interests,
-        tripLocation: dayPlaces.isNotEmpty ? dayPlaces.first.coordinates : null,
+        tripLocation: context.isNotEmpty ? context.first.place.coordinates : null,
       );
       _planResult = result;
-      debugPrint('[ADD_CUSTOM] Proposed schedule generated — '
-          'success=${result.success}');
-      if (!result.success) {
+      if (result.success) {
+        _planCache[cacheKey] = result;
+        debugPrint('[ADD_CUSTOM] Proposed schedule generated — '
+            'insertIndex=${result.insertIndex}, usedAi=${result.usedAi}');
+      } else {
         debugPrint('[ADD_CUSTOM] Validation: FAIL — '
             '${result.message ?? 'no reason'}');
-      } else {
-        debugPrint('[ADD_CUSTOM] Validation: PASS');
       }
     } catch (e) {
       _planError = friendlyErrorMessage(
         e,
-        fallback: 'Unable to plan this place. Please try again.',
+        fallback: "We couldn't plan this place right now. Please try again.",
       );
       debugPrint('[ADD_CUSTOM] Planning error: $e');
     } finally {
@@ -328,73 +381,17 @@ class AddCustomPlaceVM extends ChangeNotifier {
     }
   }
 
-  // ─── Confirmation / save ────────────────────────────────────
+  // ─── Confirmation (temporary state — no persistence) ────────
 
-  /// Replace the affected day with the validated schedule and persist.
-  Future<bool> confirmAndSave() async {
+  /// Returns the validated proposed day for the caller (EditItinerary VM)
+  /// to apply to its TEMPORARY state. No database write happens here — the
+  /// final itinerary is persisted later through the final Save process.
+  /// Returns null when there is no validated plan (the caller shows the
+  /// problem message from [planError] / `planResult.message`).
+  ScheduledDay? confirmedProposedDay() {
     final plan = _planResult;
-    final proposedDay = plan?.proposedDay;
-    if (plan == null || proposedDay == null || !plan.success) {
-      _saveError = 'No validated plan to save.';
-      return false;
-    }
-
-    debugPrint('[ADD_CUSTOM] Saving updated itinerary');
-    _isSaving = true;
-    _saveError = null;
-    notifyListeners();
-
-    try {
-      // 1. Persist the places so stop place_id references are valid.
-      final now = DateTime.now();
-      final newStops = <ItineraryStop>[];
-      for (var i = 0; i < proposedDay.stops.length; i++) {
-        final s = proposedDay.stops[i];
-        final place = s.attraction.place;
-        try {
-          await _placeRepo.savePlace(place);
-        } catch (e) {
-          debugPrint('[AddCustomPlace] place save failed: $e');
-        }
-        newStops.add(ItineraryStop(
-          stopId: 0,
-          itineraryId: itineraryId,
-          placeId: place.placeId,
-          dayIndex: dayIndex, // 1-based
-          stopOrder: i + 1, // recalculated sequentially
-          startTime: s.startTime,
-          endTime: s.endTime,
-          durationMinutes: s.durationMinutes,
-          travelFromPrevMinutes: s.travelFromPreviousMinutes,
-          stopStatus: 'PLANNED',
-          createdAt: now,
-          updatedAt: now,
-        ));
-      }
-
-      // 2. Atomically replace the day's stops (delete + batch insert).
-      await _stopRepo.replaceDayStops(
-        itineraryId: itineraryId,
-        dayIndex: dayIndex,
-        newStops: newStops,
-      );
-
-      _saved = true;
-      debugPrint('[ADD_CUSTOM] Supabase update successful');
-      notifyListeners();
-      return true;
-    } catch (e) {
-      _saveError = friendlyErrorMessage(
-        e,
-        fallback: 'Unable to save your itinerary. Please try again.',
-      );
-      debugPrint('[ADD_CUSTOM] Save failed: $e');
-      notifyListeners();
-      return false;
-    } finally {
-      _isSaving = false;
-      notifyListeners();
-    }
+    if (plan == null || !plan.success) return null;
+    return plan.proposedDay;
   }
 
   // ─── Helpers ────────────────────────────────────────────────
