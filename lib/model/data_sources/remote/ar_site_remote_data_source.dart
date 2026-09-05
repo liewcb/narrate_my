@@ -21,23 +21,9 @@ class ARSiteRemoteDataSource {
     required double radiusMeters,
   }) async {
     final box = _boundingBox(latitude, longitude, radiusMeters);
-    final rawSites = await _client
-        .from('ar_sites')
-        .select()
-        .eq('is_active', true)
-        .gte('latitude', box.minLat)
-        .lte('latitude', box.maxLat)
-        .gte('longitude', box.minLng)
-        .lte('longitude', box.maxLng)
-        .order('display_name');
-
-    final siteDtos = rawSites
-        .map((row) => ARSiteDto.fromJson(Map<String, dynamic>.from(row)))
-        .toList();
-
-    // Fetch Marker first so ungrouped experiences remain bounded by the same
-    // geographic radius as parent sites. A teammate can keep inserting the
-    // existing Marker + Attraction pair without creating an ar_sites row.
+    // Every Attraction row is now represented by its own map marker. The
+    // existing optional site_id remains untouched for other modules, but is
+    // deliberately not used to merge attractions on the Nearby map.
     final markerById = <String, Map<String, dynamic>>{};
     final rawNearbyMarkers = await _client
         .from('Marker')
@@ -51,85 +37,36 @@ class ARSiteRemoteDataSource {
       markerById[json['marker_id']?.toString() ?? ''] = json;
     }
 
-    final linkedAttractions = <ARSiteExperienceDto>[];
-    final siteIds = siteDtos.map((site) => site.siteId).toList();
-    if (siteIds.isNotEmpty) {
-      final rows = await _client
-          .from('Attraction')
-          .select('attraction_id, site_id, marker_id, name')
-          .inFilter('site_id', siteIds);
-      linkedAttractions.addAll(
-        rows.map(
-          (row) => ARSiteExperienceDto.fromJson(Map<String, dynamic>.from(row)),
-        ),
-      );
-    }
-
-    final unlinkedAttractions = <ARSiteExperienceDto>[];
     final nearbyMarkerIds = markerById.keys
         .where((markerId) => markerId.isNotEmpty)
         .toList();
-    if (nearbyMarkerIds.isNotEmpty) {
-      final rows = await _client
-          .from('Attraction')
-          .select('attraction_id, site_id, marker_id, name')
-          .inFilter('marker_id', nearbyMarkerIds)
-          .isFilter('site_id', null);
-      unlinkedAttractions.addAll(
-        rows.map(
-          (row) => ARSiteExperienceDto.fromJson(Map<String, dynamic>.from(row)),
+    if (nearbyMarkerIds.isEmpty) return const [];
+
+    final rows = await _client
+        .from('Attraction')
+        .select('attraction_id, site_id, marker_id, name')
+        .inFilter('marker_id', nearbyMarkerIds);
+
+    final sites = <ARSite>[];
+    for (final row in rows) {
+      final dto = ARSiteExperienceDto.fromJson(Map<String, dynamic>.from(row));
+      final experience = _toExperience(dto, markerById);
+      if (experience == null || experience.attractionId.isEmpty) continue;
+      sites.add(
+        ARSite(
+          siteId: 'ATTRACTION_${experience.attractionId}',
+          name: experience.name,
+          latitude: experience.latitude,
+          longitude: experience.longitude,
+          category: 'AR attraction',
+          matchAliases: [experience.name],
+          matchRadiusMeters: math.max(150, experience.activationRadiusMeters),
+          experiences: [experience],
         ),
       );
     }
-
-    // Normally every experience belonging to an in-range site is nearby too.
-    // Fetch any missing linked markers explicitly so a site sheet still lists
-    // every child even when one sits just outside the bounding-box edge.
-    final missingLinkedMarkerIds = linkedAttractions
-        .map((attraction) => attraction.markerId)
-        .where(
-          (markerId) =>
-              markerId.isNotEmpty && !markerById.containsKey(markerId),
-        )
-        .toSet()
-        .toList();
-    if (missingLinkedMarkerIds.isNotEmpty) {
-      final rows = await _client
-          .from('Marker')
-          .select('marker_id, latitude, longitude, activation_radius')
-          .inFilter('marker_id', missingLinkedMarkerIds);
-      for (final row in rows) {
-        final json = Map<String, dynamic>.from(row);
-        markerById[json['marker_id']?.toString() ?? ''] = json;
-      }
-    }
-
-    final experiencesBySite = <String, List<ARSiteExperience>>{};
-    for (final attraction in linkedAttractions) {
-      final experience = _toExperience(attraction, markerById);
-      if (experience == null) continue;
-      experiencesBySite
-          .putIfAbsent(attraction.siteId, () => [])
-          .add(experience);
-    }
-
-    final groupedSites = siteDtos
-        .map(
-          (site) => site.toEntity(
-            experiences: experiencesBySite[site.siteId] ?? const [],
-          ),
-        )
-        .toList();
-
-    // Several Attraction rows can share one Marker. Keep one fallback pin per
-    // marker and list every linked experience in that pin's details sheet.
-    final fallbackSites = groupUngroupedARExperiences(
-      unlinkedAttractions
-          .map((attraction) => _toExperience(attraction, markerById))
-          .whereType<ARSiteExperience>(),
-    );
-
-    return [...groupedSites, ...fallbackSites];
+    sites.sort((a, b) => a.name.compareTo(b.name));
+    return sites;
   }
 
   ARSiteExperience? _toExperience(

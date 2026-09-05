@@ -6,16 +6,18 @@ import 'openning_hours.dart';
 /// scoring, clustering and AI services expect.
 class Place {
   // ── Canonical fields ─────────────────────────────────────────
-  final String placeId;                 // Google Places API ID
+  final String placeId; // Google Places API ID
   final String placeName;
   final String placeAddress;
   final double placeLatitude;
   final double placeLongitude;
   final double placeRating;
   final int? placeTotalReviews;
-  final String? businessStatus;         // 'OPERATIONAL', ...
+  final String? businessStatus; // 'OPERATIONAL', ...
   final List<String> placeTypes;
   final String? placePhotoRef;
+  final String? placeImageUrl;
+  final String? placePhotoGoogleMapsUri;
   final String? placePhone;
   final String? placeWebsite;
   final OpeningHours? placeRegularOpeningHours;
@@ -27,8 +29,8 @@ class Place {
   final String? bestTimeSuggestion;
 
   // ── Source identity ──────────────────────────────────────────
-  final String? destinationId;          // e.g. "D001"
-  final String? hotspotId;              // e.g. "H_KL_01"
+  final String? destinationId; // e.g. "D001"
+  final String? hotspotId; // e.g. "H_KL_01"
 
   // ── Local DB id (optional) ───────────────────────────────────
   final String id;
@@ -45,6 +47,8 @@ class Place {
     this.businessStatus,
     required this.placeTypes,
     this.placePhotoRef,
+    this.placeImageUrl,
+    this.placePhotoGoogleMapsUri,
     this.placePhone,
     this.placeWebsite,
     this.placeRegularOpeningHours,
@@ -64,6 +68,8 @@ class Place {
   double get rating => placeRating;
   List<String> get types => placeTypes;
   String? get photoReference => placePhotoRef;
+  String? get imageUrl => placeImageUrl;
+  String? get photoGoogleMapsUri => placePhotoGoogleMapsUri;
   String? get phoneNumber => placePhone;
   String? get website => placeWebsite;
   int? get priceLevel => placePriceLevel;
@@ -76,14 +82,14 @@ class Place {
   /// Fallback placeholder used when a stop's place data is not yet
   /// joined (e.g. editing an itinerary before Places are loaded).
   factory Place.empty(String placeId) => Place(
-        placeId: placeId,
-        placeName: 'Place $placeId',
-        placeAddress: '',
-        placeLatitude: 0,
-        placeLongitude: 0,
-        placeRating: 0,
-        placeTypes: const [],
-      );
+    placeId: placeId,
+    placeName: 'Place $placeId',
+    placeAddress: '',
+    placeLatitude: 0,
+    placeLongitude: 0,
+    placeRating: 0,
+    placeTypes: const [],
+  );
 
   // ── Factory: Google Places JSON → Place ──────────────────────
   factory Place.fromGooglePlacesJson(Map<String, dynamic> json) {
@@ -95,7 +101,8 @@ class Place {
       id: json['place_id'] as String? ?? '',
       placeId: json['place_id'] as String? ?? '',
       placeName: json['name'] as String? ?? '',
-      placeAddress: json['vicinity'] as String? ??
+      placeAddress:
+          json['vicinity'] as String? ??
           json['formatted_address'] as String? ??
           '',
       placeLatitude: (location?['lat'] as num?)?.toDouble() ?? 0.0,
@@ -104,16 +111,17 @@ class Place {
       placeTotalReviews: json['user_ratings_total'] as int?,
       businessStatus: json['business_status'] as String?,
       placeTypes: typesList,
-      placePhotoRef: json['photos'] != null &&
-              (json['photos'] as List).isNotEmpty
+      placePhotoRef:
+          json['photos'] != null && (json['photos'] as List).isNotEmpty
           ? (json['photos'][0] as Map<String, dynamic>)['photo_reference']
-              as String?
+                as String?
           : null,
       placePhone: json['formatted_phone_number'] as String?,
       placeWebsite: json['website'] as String?,
       placeRegularOpeningHours: json['opening_hours'] != null
           ? OpeningHours.fromJson(
-              Map<String, dynamic>.from(json['opening_hours'] as Map))
+              Map<String, dynamic>.from(json['opening_hours'] as Map),
+            )
           : null,
       placePriceLevel: json['price_level'] as int?,
       visitDurationMinutes: _getDurationByCategory(typesList),
@@ -135,6 +143,8 @@ class Place {
     String? businessStatus,
     List<String>? placeTypes,
     String? placePhotoRef,
+    String? placeImageUrl,
+    String? placePhotoGoogleMapsUri,
     String? placePhone,
     String? placeWebsite,
     OpeningHours? placeRegularOpeningHours,
@@ -157,6 +167,9 @@ class Place {
       businessStatus: businessStatus ?? this.businessStatus,
       placeTypes: placeTypes ?? this.placeTypes,
       placePhotoRef: placePhotoRef ?? this.placePhotoRef,
+      placeImageUrl: placeImageUrl ?? this.placeImageUrl,
+      placePhotoGoogleMapsUri:
+          placePhotoGoogleMapsUri ?? this.placePhotoGoogleMapsUri,
       placePhone: placePhone ?? this.placePhone,
       placeWebsite: placeWebsite ?? this.placeWebsite,
       placeRegularOpeningHours:

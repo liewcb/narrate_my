@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as maps;
 import 'package:provider/provider.dart';
@@ -45,8 +47,31 @@ class _NearbyRecommendationMap extends StatefulWidget {
 }
 
 class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
+  static const _recommendationBlue = Color(0xFF4285F4);
+  static const _arAvailableRed = Color(0xFFEA4335);
+
   maps.GoogleMapController? _mapController;
   String? _lastCameraSignature;
+  maps.BitmapDescriptor? _recommendationMarker;
+  maps.BitmapDescriptor? _arAvailableMarker;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMarkerIcons();
+  }
+
+  Future<void> _loadMarkerIcons() async {
+    final icons = await Future.wait([
+      _createMapPin(_recommendationBlue),
+      _createMapPin(_arAvailableRed),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _recommendationMarker = icons[0];
+      _arAvailableMarker = icons[1];
+    });
+  }
 
   @override
   void dispose() {
@@ -172,11 +197,12 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
             recommendation.latitude,
             recommendation.longitude,
           ),
-          icon: maps.BitmapDescriptor.defaultMarkerWithHue(
-            arSite == null
-                ? maps.BitmapDescriptor.hueCyan
-                : maps.BitmapDescriptor.hueViolet,
-          ),
+          icon: arSite == null
+              ? (_recommendationMarker ??
+                    maps.BitmapDescriptor.defaultMarkerWithHue(
+                      maps.BitmapDescriptor.hueAzure,
+                    ))
+              : (_arAvailableMarker ?? maps.BitmapDescriptor.defaultMarker),
           infoWindow: maps.InfoWindow(
             title: recommendation.name,
             snippet: arSite == null
@@ -200,9 +226,7 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
         maps.Marker(
           markerId: maps.MarkerId('ar-site-${site.siteId}'),
           position: maps.LatLng(site.latitude, site.longitude),
-          icon: maps.BitmapDescriptor.defaultMarkerWithHue(
-            maps.BitmapDescriptor.hueViolet,
-          ),
+          icon: _arAvailableMarker ?? maps.BitmapDescriptor.defaultMarker,
           infoWindow: maps.InfoWindow(
             title: site.name,
             snippet:
@@ -224,6 +248,38 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
     }
 
     return markers;
+  }
+
+  Future<maps.BitmapDescriptor> _createMapPin(Color color) async {
+    const width = 84.0;
+    const height = 108.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.25)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    final pin = Path()
+      ..moveTo(42, 103)
+      ..cubicTo(34, 86, 12, 64, 12, 42)
+      ..cubicTo(12, 21, 25, 8, 42, 8)
+      ..cubicTo(59, 8, 72, 21, 72, 42)
+      ..cubicTo(72, 64, 50, 86, 42, 103)
+      ..close();
+    canvas.drawPath(pin.shift(const Offset(0, 2)), shadowPaint);
+    canvas.drawPath(pin, Paint()..color = color);
+    canvas.drawCircle(const Offset(42, 40), 14, Paint()..color = Colors.white);
+
+    final image = await recorder.endRecording().toImage(
+      width.toInt(),
+      height.toInt(),
+    );
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    return maps.BitmapDescriptor.bytes(
+      data!.buffer.asUint8List(),
+      width: 36,
+      height: 46,
+    );
   }
 
   ARSite? _findMatchingARSite(
@@ -324,9 +380,9 @@ class _MapLegend extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _LegendItem(color: Color(0xFF00BCD4), label: 'Recommended'),
+            _LegendItem(color: Color(0xFF4285F4), label: 'Recommended'),
             SizedBox(width: 10),
-            _LegendItem(color: Color(0xFF7E57C2), label: 'AR available'),
+            _LegendItem(color: Color(0xFFEA4335), label: 'AR available'),
           ],
         ),
       ),

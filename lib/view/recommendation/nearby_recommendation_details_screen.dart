@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/place_image.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/place.dart';
@@ -357,25 +358,11 @@ class _AttractionImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final placeholder = Container(
-      color: const Color(0xFF8AA98C),
-      alignment: Alignment.center,
-      child: const Icon(Icons.landscape_rounded, color: Colors.white, size: 52),
-    );
-
     return AspectRatio(
       aspectRatio: 16 / 8.5,
-      child: ClipRRect(
+      child: PlaceImage(
+        imageUrl: recommendation.imageUrl,
         borderRadius: BorderRadius.circular(16),
-        child: recommendation.imageUrl == null
-            ? placeholder
-            : Image.network(
-                recommendation.imageUrl!,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) =>
-                    progress == null ? child : placeholder,
-                errorBuilder: (context, error, stackTrace) => placeholder,
-              ),
       ),
     );
   }
