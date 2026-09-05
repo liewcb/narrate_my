@@ -26,18 +26,18 @@ class ARNotificationBanner extends StatefulWidget {
 class _ARNotificationBannerState extends State<ARNotificationBanner> {
   bool _expanded = false;
 
-  // Distance bucket ceilings shown in the reference design (<80m, <150m).
-  // Extend this list if you expect markers farther out.
-  static const List<int> _bandCeilings = [80, 150, 300, 500];
+  // Distance bucket ceilings shown in the list — <80m and <150m only.
+  // Anything at or beyond the last ceiling is left out of the list
+  // entirely (not lumped into the last band).
+  static const List<int> _bandCeilings = [80, 150];
 
   Map<int, List<ARMarker>> _groupByBand() {
     final groups = <int, List<ARMarker>>{};
     for (final m in widget.markers) {
-      final dist = m.distanceMeters ?? 0;
-      final ceiling = _bandCeilings.firstWhere(
-            (c) => dist < c,
-        orElse: () => _bandCeilings.last,
-      );
+      final dist = m.distanceMeters ?? double.infinity;
+      final ceilingIndex = _bandCeilings.indexWhere((c) => dist < c);
+      if (ceilingIndex == -1) continue; // beyond 150m — not shown here
+      final ceiling = _bandCeilings[ceilingIndex];
       groups.putIfAbsent(ceiling, () => []).add(m);
     }
     return groups;
@@ -57,15 +57,14 @@ class _ARNotificationBannerState extends State<ARNotificationBanner> {
 
   @override
   Widget build(BuildContext context) {
-    final count = widget.markers.length;
+    final groups = _groupByBand();
+    final sortedCeilings = groups.keys.toList()..sort();
+    final count = groups.values.fold<int>(0, (sum, list) => sum + list.length);
     final label = count == 0
         ? 'No heritage markers detected nearby'
         : count == 1
         ? '1 heritage marker detected nearby'
         : '$count heritage markers detected nearby';
-
-    final groups = _groupByBand();
-    final sortedCeilings = groups.keys.toList()..sort();
 
     return SafeArea(
       bottom: false,

@@ -31,6 +31,7 @@ class ARExplorationViewModel extends ChangeNotifier {
   String? errorMessage;
 
   List<ARMarker> nearbyMarkers = [];
+  NearbyAttractionsSections nearbyAttractions = NearbyAttractionsSections.empty;
   ARMarker? primaryMarker;
   double deviceHeadingDegrees = 0;
   double devicePitchDegrees = 0;
@@ -108,6 +109,7 @@ class ARExplorationViewModel extends ChangeNotifier {
 
   void _onScene(ARSceneState scene) {
     nearbyMarkers = scene.nearbyMarkers;
+    nearbyAttractions = scene.nearbyAttractions;
     primaryMarker = scene.primaryMarker;
     deviceHeadingDegrees = scene.deviceHeadingDegrees;
     devicePitchDegrees = scene.devicePitchDegrees;
