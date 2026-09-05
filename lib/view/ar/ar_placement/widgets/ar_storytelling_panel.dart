@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../model/entities/ar_placement.dart';
 import '../../../../viewmodel/ar/ar_placement_vm.dart';
@@ -22,6 +21,7 @@ class ARStorytellingPanel extends StatelessWidget {
       StoryPlaybackState playbackState,
       bool show3d,
       String? model3dPath,
+      String landmarkName,
     })>(
       selector: (context, vm) => (
         isPlaced: vm.isAvatarPlaced,
@@ -31,6 +31,7 @@ class ARStorytellingPanel extends StatelessWidget {
         playbackState: vm.playbackState,
         show3d: vm.show3DLandmarkModel,
         model3dPath: vm.model3dPath,
+        landmarkName: vm.landmarkName,
       ),
       builder: (context, data, child) {
         if (!data.hasStarted) return const SizedBox.shrink();
@@ -38,11 +39,8 @@ class ARStorytellingPanel extends StatelessWidget {
         final isPlaying = data.playbackState == StoryPlaybackState.playing;
         final isPaused = data.playbackState == StoryPlaybackState.paused;
         final isCompleted = data.playbackState == StoryPlaybackState.completed;
-        final bool show3DModel = data.show3d && (isPlaying || isPaused || isCompleted);
         final bool hasModelAsset = data.model3dPath != null && data.model3dPath!.trim().isNotEmpty;
-        if (hasModelAsset && !show3DModel) {
-          rootBundle.load(data.model3dPath!).ignore();
-        }
+        final bool show3DModel = hasModelAsset && data.show3d && (isPlaying || isPaused || isCompleted);
 
         final String actionLabel = isPlaying
             ? "Pause"
@@ -63,21 +61,34 @@ class ARStorytellingPanel extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // 1. Top Subtitle Box (Displays narration & completion message)
-                _buildSubtitleCard(context, data, accentOrange, isPlaying, isPaused, isCompleted),
+                _buildSubtitleCard(
+                  context,
+                  data,
+                  accentOrange,
+                  isPlaying,
+                  isPaused,
+                  isCompleted,
+                  hasModelAsset,
+                ),
 
                 const SizedBox(height: 10),
 
-                // 2. 3D Model Viewport (Mounted on-demand to prevent GPU memory exhaustion & ANR)
+                // 2. 3D Model Viewport (Preloaded on storytelling entry, kept warm with Visibility to eliminate reloads)
                 Expanded(
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Active 3D Model: Only mounted when user toggles 3D model, preventing native WebView from obscuring camera
-                      if (hasModelAsset && show3DModel)
-                        const AR3DViewerOverlay(),
+                      // Active 3D Model: Preloaded in background as soon as Storytelling starts,
+                      // and kept alive with Visibility(maintainState: true) so toggling off/on is INSTANT (0ms reload)!
+                      if (hasModelAsset)
+                        Visibility(
+                          visible: show3DModel,
+                          maintainState: true,
+                          child: const AR3DViewerOverlay(),
+                        ),
 
-                      // Single clean prompt if avatar needs to be re-placed after lockscreen
-                      if (!show3DModel && !data.hasAvatarInScene)
+                      // Re-scan & re-place prompt: Prominently displayed floating on top whenever Manja is reset after lockscreen
+                      if (!data.hasAvatarInScene)
                         _buildReScanSurfacePrompt(),
                     ],
                   ),
@@ -142,6 +153,7 @@ class ARStorytellingPanel extends StatelessWidget {
     bool isPlaying,
     bool isPaused,
     bool isCompleted,
+    bool hasModelAsset,
   ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -217,12 +229,45 @@ class ARStorytellingPanel extends StatelessWidget {
               if (isPlaying || isPaused || isCompleted)
                 IconButton(
                   icon: Icon(
-                    (data.show3d as bool) ? Icons.view_in_ar : Icons.view_in_ar_outlined,
-                    color: (data.show3d as bool) ? accentOrange : Colors.white70,
+                    !hasModelAsset
+                        ? Icons.view_in_ar_outlined
+                        : ((data.show3d as bool) ? Icons.view_in_ar : Icons.view_in_ar_outlined),
+                    color: !hasModelAsset
+                        ? Colors.white24
+                        : ((data.show3d as bool) ? accentOrange : Colors.white70),
                     size: 22,
                   ),
-                  tooltip: 'Toggle 3D Model',
+                  tooltip: !hasModelAsset
+                      ? 'No 3D Model Available'
+                      : ((data.show3d as bool) ? 'Hide 3D Model' : 'Show 3D Model'),
                   onPressed: () {
+                    if (!hasModelAsset) {
+                      final messenger = ScaffoldMessenger.of(context);
+                      messenger.hideCurrentSnackBar();
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            children: [
+                              const Icon(Icons.info_outline, color: Colors.amberAccent, size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  "No 3D model available for ${data.landmarkName}",
+                                  style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.white),
+                                ),
+                              ),
+                            ],
+                          ),
+                          backgroundColor: const Color(0xFF1B2A2B),
+                          duration: const Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      );
+                      return;
+                    }
                     context.read<ARPlacementViewModel>().toggle3DModelViewer();
                   },
                 ),

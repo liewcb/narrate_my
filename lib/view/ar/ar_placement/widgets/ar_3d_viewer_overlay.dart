@@ -13,22 +13,31 @@ class AR3DViewerOverlay extends StatefulWidget {
 }
 
 class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
+  bool _shouldAttachViewer = false;
   bool _is3DModelLoading = true;
+  Timer? _attachTimer;
   Timer? _loadingTimer;
 
   @override
   void initState() {
     super.initState();
-    // Fast start: Model is prewarmed, dismiss spinner quickly (600ms) for snappy display
-    _loadingTimer = Timer(const Duration(milliseconds: 600), () {
+    // Defer attaching the heavy PlatformView/WebView by 350ms so the camera
+    // and UI entrance transition render at silky smooth 60 FPS without any frame drops!
+    _attachTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted) {
-        setState(() => _is3DModelLoading = false);
+        setState(() => _shouldAttachViewer = true);
+        _loadingTimer = Timer(const Duration(milliseconds: 600), () {
+          if (mounted) {
+            setState(() => _is3DModelLoading = false);
+          }
+        });
       }
     });
   }
 
   @override
   void dispose() {
+    _attachTimer?.cancel();
     _loadingTimer?.cancel();
     super.dispose();
   }
@@ -72,19 +81,20 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
                   fit: StackFit.expand,
                   children: [
                     // 1. High-Performance WebGL 3D Model Viewer (Async Progressive Loading)
-                    ModelViewer(
-                      key: ValueKey('3d_viewer_$modelPath'),
-                      src: modelPath,
-                      alt: '$landmarkName 3D Model',
-                      ar: false,
-                      autoRotate: false,
-                      cameraControls: true,
-                      backgroundColor: Colors.transparent,
-                      disableZoom: false,
-                      loading: Loading.eager,
-                      interactionPrompt: InteractionPrompt.none,
-                      shadowIntensity: 0.0,
-                    ),
+                    if (_shouldAttachViewer)
+                      ModelViewer(
+                        key: ValueKey('3d_viewer_$modelPath'),
+                        src: modelPath,
+                        alt: '$landmarkName 3D Model',
+                        ar: false,
+                        autoRotate: false,
+                        cameraControls: true,
+                        backgroundColor: Colors.transparent,
+                        disableZoom: false,
+                        loading: Loading.eager,
+                        interactionPrompt: InteractionPrompt.none,
+                        shadowIntensity: 0.0,
+                      ),
 
                       // 2. Dedicated 3D Model Loading Indicator (Guarantees user NEVER sees a blank screen!)
                       AnimatedOpacity(

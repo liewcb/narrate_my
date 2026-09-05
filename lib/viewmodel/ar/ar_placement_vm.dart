@@ -62,6 +62,8 @@ class ARPlacementViewModel extends ChangeNotifier {
       "Landmark";
   String? get model3dPath =>
       _placementService.narrationService.currentScript?.model3dPath;
+  bool get has3dModel =>
+      model3dPath != null && model3dPath!.trim().isNotEmpty;
   String? get videoUrl =>
       _placementService.narrationService.currentScript?.videoUrl;
   String? get videoUrlBackup =>
@@ -357,7 +359,7 @@ class ARPlacementViewModel extends ChangeNotifier {
       _hasStartedStorytelling = true;
       onStorytellingActivityChanged?.call(true);
       _show3DLandmarkModel =
-          true; // 3D model only appears after user taps Play / Resume
+          has3dModel; // 3D model only appears after user taps Play / Resume if landmark has a model asset
       _placementService.narrationService.play();
     }
   }
@@ -406,6 +408,7 @@ class ARPlacementViewModel extends ChangeNotifier {
 
   /// Toggles the 3D Landmark Model viewer
   void toggle3DModelViewer() {
+    if (!has3dModel) return;
     _show3DLandmarkModel = !_show3DLandmarkModel;
     notifyListeners();
   }

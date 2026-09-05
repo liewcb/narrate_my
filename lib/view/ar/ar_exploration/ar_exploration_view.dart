@@ -178,6 +178,11 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
     );
 
     if (context.mounted) {
+      // Allow ARCore's native session and Camera2 teardown 400ms to completely
+      // release hardware camera device 0 before re-initializing the Exploration camera.
+      // This prevents the native CAMERA_ERROR / SIGSEGV crash when returning to the marker page.
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (!context.mounted) return;
       setState(() => _cameraActive = true);
       vm.resume();
     }
