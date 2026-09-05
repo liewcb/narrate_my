@@ -19,15 +19,15 @@ class BookmarkRemoteSource {
   final SupabaseClient _client;
 
   BookmarkRemoteSource({SupabaseClient? client})
-      : _client = client ?? DatabaseManager().remote.client;
+    : _client = client ?? DatabaseManager().remote.client;
 
   /// Current authenticated user ID.
   String? get currentUserId => _client.auth.currentUser?.id;
 
   /// Fetch bookmarks together with their associated Place records.
   Future<List<BookmarkWithPlaceDTO>> fetchBookmarksWithPlaces(
-      String userId,
-      ) async {
+    String userId,
+  ) async {
     try {
       final data = await _client
           .from('bookmarks')
@@ -36,25 +36,19 @@ class BookmarkRemoteSource {
           .order('created_at', ascending: false);
 
       return data.map((json) {
-        final bookmark =
-        BookmarkDTO.fromSupabase(json).toEntity();
+        final bookmark = BookmarkDTO.fromSupabase(json).toEntity();
 
         final placeJson = json['places'];
 
         if (placeJson is! Map) {
-          throw const FormatException(
-            'Bookmark is missing its joined place.',
-          );
+          throw const FormatException('Bookmark is missing its joined place.');
         }
 
         final place = PlaceDto.fromJson(
           Map<String, dynamic>.from(placeJson),
         ).toEntity();
 
-        return BookmarkWithPlaceDTO(
-          bookmark: bookmark,
-          place: place,
-        );
+        return BookmarkWithPlaceDTO(bookmark: bookmark, place: place);
       }).toList();
     } catch (e) {
       debugPrint('Remote bookmark fetch failed: $e');
@@ -79,7 +73,7 @@ class BookmarkRemoteSource {
 
     final existing = await _client
         .from('places')
-        .select('id')
+        .select('id, photo_reference')
         .eq('place_id', googlePlaceId)
         .maybeSingle();
 
@@ -88,21 +82,52 @@ class BookmarkRemoteSource {
     final placeWithId = place.copyWith(
       id: internalId?.isNotEmpty == true
           ? internalId
-          : (place.id.trim().isNotEmpty
-          ? place.id.trim()
-          : googlePlaceId),
+          : (place.id.trim().isNotEmpty ? place.id.trim() : googlePlaceId),
+      placePhotoRef:
+          place.placePhotoRef ?? existing?['photo_reference']?.toString(),
     );
 
     final row = await _client
         .from('places')
         .upsert(
-      PlaceDto.fromEntity(placeWithId).toJsonForRemote(),
-      onConflict: 'place_id',
-    )
+          PlaceDto.fromEntity(placeWithId).toJsonForRemote(),
+          onConflict: 'place_id',
+        )
         .select()
         .single();
 
     return PlaceDto.fromJson(row).toEntity();
+  }
+
+  /// Resolves a fresh, short-lived Google photo URL for a bookmarked place.
+  /// Google photo bytes and expiring resource names are never persisted.
+  Future<BookmarkPlacePhoto?> fetchBookmarkedPlacePhoto(Place place) async {
+    final token = _client.auth.currentSession?.accessToken;
+    if (token == null) {
+      throw const BookmarkPersistenceException('Login is required.');
+    }
+    final response = await _client.functions.invoke(
+      'bookmark-place-photo',
+      body: {'place_id': place.placeId},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      throw BookmarkPersistenceException(
+        response.data is Map && response.data['error'] != null
+            ? response.data['error'].toString()
+            : 'Unable to load the bookmark photo.',
+      );
+    }
+    if (response.data is! Map) return null;
+    final imageUrl = response.data['image_url']?.toString().trim();
+    if (imageUrl == null || imageUrl.isEmpty) return null;
+    final googleMapsUri = response.data['google_maps_uri']?.toString().trim();
+    return BookmarkPlacePhoto(
+      imageUrl: imageUrl,
+      googleMapsUri: googleMapsUri == null || googleMapsUri.isEmpty
+          ? null
+          : googleMapsUri,
+    );
   }
 
   /// Find a bookmark using the internal Supabase Place ID.
@@ -117,9 +142,7 @@ class BookmarkRemoteSource {
         .eq('place_id', internalPlaceId)
         .maybeSingle();
 
-    return row == null
-        ? null
-        : BookmarkDTO.fromSupabase(row).toEntity();
+    return row == null ? null : BookmarkDTO.fromSupabase(row).toEntity();
   }
 
   /// Find a bookmark using Google's stable place_id.
@@ -147,9 +170,7 @@ class BookmarkRemoteSource {
   Future<Bookmark> insertBookmark(Bookmark bookmark) async {
     final row = await _client
         .from('bookmarks')
-        .insert(
-      BookmarkDTO.fromEntity(bookmark).toRemoteMap(),
-    )
+        .insert(BookmarkDTO.fromEntity(bookmark).toRemoteMap())
         .select()
         .single();
 
@@ -168,9 +189,7 @@ class BookmarkRemoteSource {
     final userId = currentUserId;
 
     if (userId == null) {
-      throw const BookmarkPersistenceException(
-        'Login is required.',
-      );
+      throw const BookmarkPersistenceException('Login is required.');
     }
 
     final deletedRows = await _client
@@ -186,6 +205,13 @@ class BookmarkRemoteSource {
       );
     }
   }
+}
+
+class BookmarkPlacePhoto {
+  final String imageUrl;
+  final String? googleMapsUri;
+
+  const BookmarkPlacePhoto({required this.imageUrl, this.googleMapsUri});
 }
 
 /// Exception used for controlled bookmark persistence failures.

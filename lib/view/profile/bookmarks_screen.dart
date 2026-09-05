@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/localization/app_localizations.dart';
 import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/place_image.dart';
 import '../../viewmodel/profile_viewmodel/bookmarks_vm.dart';
 
 /// UC402 A22 (View and Delete Bookmarks, REQ_503_21/22). Viewing the
@@ -59,11 +61,25 @@ class _BookmarksView extends StatelessWidget {
                         side: const BorderSide(color: AppColors.border),
                       ),
                       child: ListTile(
-                        leading: Icon(
-                          bookmark.itemType == 'restaurant'
-                              ? Icons.restaurant
-                              : Icons.place_outlined,
-                          color: AppColors.accent,
+                        leading: Tooltip(
+                          message: place.photoGoogleMapsUri == null
+                              ? 'Place photo'
+                              : 'View photo on Google Maps',
+                          child: InkWell(
+                            onTap: place.photoGoogleMapsUri == null
+                                ? null
+                                : () => launchUrl(
+                                    Uri.parse(place.photoGoogleMapsUri!),
+                                    mode: LaunchMode.externalApplication,
+                                  ),
+                            borderRadius: BorderRadius.circular(10),
+                            child: PlaceImage(
+                              imageUrl: place.imageUrl,
+                              width: 58,
+                              height: 58,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
                         ),
                         title: Text(
                           place.placeName,
@@ -76,6 +92,8 @@ class _BookmarksView extends StatelessWidget {
                               place.category!.trim(),
                             if (place.placeAddress.trim().isNotEmpty)
                               place.placeAddress.trim(),
+                            if (place.imageUrl?.trim().isNotEmpty == true)
+                              'Photo · Google Maps',
                           ].join('\n'),
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,

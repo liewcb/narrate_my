@@ -51,3 +51,13 @@ app.*.map.json
 linux/flutter/ephemeral/
 macos/Flutter/ephemeral/
 windows/flutter/ephemeral/
+
+# Machine-specific/generated files from the vendored AR plugin example.
+/plugins/ar_flutter_plugin_plus/example/pubspec.lock
+/plugins/ar_flutter_plugin_plus/example/android/local.properties
+/plugins/ar_flutter_plugin_plus/example/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+/plugins/ar_flutter_plugin_plus/example/ios/Flutter/Generated.xcconfig
+/plugins/ar_flutter_plugin_plus/example/ios/Flutter/flutter_export_environment.sh
+/plugins/ar_flutter_plugin_plus/example/ios/Flutter/ephemeral/
+/plugins/ar_flutter_plugin_plus/example/ios/Runner/GeneratedPluginRegistrant.h
+/plugins/ar_flutter_plugin_plus/example/ios/Runner/GeneratedPluginRegistrant.m

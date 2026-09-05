@@ -1,10 +1,9 @@
 import 'dart:math' as math;
 
-/// A visitor-facing map destination that contains one or more AR experiences.
+/// A visitor-facing AR attraction marker on the Nearby map.
 ///
-/// Existing `Attraction` rows remain the individual AR experiences used by
-/// the camera module. This parent keeps nearby-map markers free of duplicate
-/// pins such as Tower 1, Tower 2, and the KLCC Skybridge.
+/// The current map data source creates one of these for every `Attraction`
+/// row. The optional parent-site metadata remains available to other modules.
 class ARSite {
   final String siteId;
   final String name;

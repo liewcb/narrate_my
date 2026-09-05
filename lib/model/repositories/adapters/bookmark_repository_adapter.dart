@@ -15,10 +15,8 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
   BookmarkRepositoryImpl({
     BookmarkLocalSource? localSource,
     BookmarkRemoteSource? remoteSource,
-  })  : _localSource =
-      localSource ?? BookmarkLocalSource(),
-        _remoteSource =
-            remoteSource ?? BookmarkRemoteSource();
+  }) : _localSource = localSource ?? BookmarkLocalSource(),
+       _remoteSource = remoteSource ?? BookmarkRemoteSource();
 
   // ─────────────────────────────────────────────────────────────
   // Current authenticated user
@@ -36,19 +34,39 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
 
   @override
   Future<List<BookmarkWithPlaceDTO>> getBookmarksWithPlaces(
-      String userId,
-      ) async {
+    String userId,
+  ) async {
     try {
-      debugPrint(
-        '[BookmarkRepo] Fetching bookmarks from REMOTE...',
-      );
+      debugPrint('[BookmarkRepo] Fetching bookmarks from REMOTE...');
 
-      final remoteResult =
-      await _remoteSource.fetchBookmarksWithPlaces(userId);
+      var remoteResult = await _remoteSource.fetchBookmarksWithPlaces(userId);
+
+      // Resolve short-lived photo URLs for display without storing Google
+      // photo bytes or expiring photo resource names in Supabase Storage.
+      remoteResult = await Future.wait(
+        remoteResult.map((item) async {
+          if (item.place.placeImageUrl?.trim().isNotEmpty == true) return item;
+          try {
+            final photo = await _remoteSource.fetchBookmarkedPlacePhoto(
+              item.place,
+            );
+            if (photo == null) return item;
+            return BookmarkWithPlaceDTO(
+              bookmark: item.bookmark,
+              place: item.place.copyWith(
+                placeImageUrl: photo.imageUrl,
+                placePhotoGoogleMapsUri: photo.googleMapsUri,
+              ),
+            );
+          } catch (_) {
+            return item;
+          }
+        }),
+      );
 
       debugPrint(
         '[BookmarkRepo] Remote returned '
-            '${remoteResult.length} bookmark(s)',
+        '${remoteResult.length} bookmark(s)',
       );
 
       // Remote returned data.
@@ -59,13 +77,9 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
             await _localSource.cacheBookmarkWithPlace(item);
           }
 
-          debugPrint(
-            '[BookmarkRepo] Local cache updated successfully.',
-          );
+          debugPrint('[BookmarkRepo] Local cache updated successfully.');
         } catch (e) {
-          debugPrint(
-            '[BookmarkRepo] Local cache update failed: $e',
-          );
+          debugPrint('[BookmarkRepo] Local cache update failed: $e');
         }
 
         return remoteResult;
@@ -74,45 +88,37 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
       // Remote returned no bookmarks.
       debugPrint(
         '[BookmarkRepo] Remote returned no bookmarks. '
-            'Checking local cache...',
+        'Checking local cache...',
       );
 
       try {
-        final localResult =
-        await _localSource.fetchBookmarksWithPlaces(userId);
+        final localResult = await _localSource.fetchBookmarksWithPlaces(userId);
 
         debugPrint(
           '[BookmarkRepo] Local cache returned '
-              '${localResult.length} bookmark(s)',
+          '${localResult.length} bookmark(s)',
         );
 
         return localResult;
       } catch (e) {
-        debugPrint(
-          '[BookmarkRepo] Local cache fallback failed: $e',
-        );
+        debugPrint('[BookmarkRepo] Local cache fallback failed: $e');
 
         return [];
       }
     } catch (e) {
-      debugPrint(
-        '[BookmarkRepo] Remote fetch failed: $e',
-      );
+      debugPrint('[BookmarkRepo] Remote fetch failed: $e');
 
       try {
-        final localResult =
-        await _localSource.fetchBookmarksWithPlaces(userId);
+        final localResult = await _localSource.fetchBookmarksWithPlaces(userId);
 
         debugPrint(
           '[BookmarkRepo] Local fallback returned '
-              '${localResult.length} bookmark(s)',
+          '${localResult.length} bookmark(s)',
         );
 
         return localResult;
       } catch (localError) {
-        debugPrint(
-          '[BookmarkRepo] Local fallback failed: $localError',
-        );
+        debugPrint('[BookmarkRepo] Local fallback failed: $localError');
 
         return [];
       }
@@ -126,23 +132,15 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
   // ─────────────────────────────────────────────────────────────
 
   @override
-  Future<void> addBookmark(
-      Bookmark bookmark,
-      ) async {
-    debugPrint(
-      '[BookmarkRepo] Adding bookmark REMOTE first...',
-    );
+  Future<void> addBookmark(Bookmark bookmark) async {
+    debugPrint('[BookmarkRepo] Adding bookmark REMOTE first...');
 
     try {
       await _remoteSource.addBookmark(bookmark);
 
-      debugPrint(
-        '[BookmarkRepo] Remote bookmark insert SUCCESS',
-      );
+      debugPrint('[BookmarkRepo] Remote bookmark insert SUCCESS');
     } catch (e) {
-      debugPrint(
-        '[BookmarkRepo] Remote bookmark insert FAILED: $e',
-      );
+      debugPrint('[BookmarkRepo] Remote bookmark insert FAILED: $e');
 
       // VERY IMPORTANT:
       // Do NOT write to SQLite when remote fails.
@@ -154,15 +152,11 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
     try {
       await _localSource.insertBookmark(bookmark);
 
-      debugPrint(
-        '[BookmarkRepo] Local bookmark cache updated.',
-      );
+      debugPrint('[BookmarkRepo] Local bookmark cache updated.');
     } catch (e) {
       // Remote operation already succeeded.
       // Local cache failure must NOT turn remote success into failure.
-      debugPrint(
-        '[BookmarkRepo] Remote SUCCESS but local cache FAILED: $e',
-      );
+      debugPrint('[BookmarkRepo] Remote SUCCESS but local cache FAILED: $e');
     }
   }
 
@@ -174,23 +168,15 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
   // ─────────────────────────────────────────────────────────────
 
   @override
-  Future<void> removeBookmark(
-      String bookmarkId,
-      ) async {
-    debugPrint(
-      '[BookmarkRepo] Removing bookmark REMOTE first...',
-    );
+  Future<void> removeBookmark(String bookmarkId) async {
+    debugPrint('[BookmarkRepo] Removing bookmark REMOTE first...');
 
     try {
       await _remoteSource.deleteBookmark(bookmarkId);
 
-      debugPrint(
-        '[BookmarkRepo] Remote bookmark delete SUCCESS',
-      );
+      debugPrint('[BookmarkRepo] Remote bookmark delete SUCCESS');
     } catch (e) {
-      debugPrint(
-        '[BookmarkRepo] Remote bookmark delete FAILED: $e',
-      );
+      debugPrint('[BookmarkRepo] Remote bookmark delete FAILED: $e');
 
       // Do NOT modify SQLite if remote deletion failed.
       rethrow;
@@ -199,13 +185,9 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
     try {
       await _localSource.deleteBookmark(bookmarkId);
 
-      debugPrint(
-        '[BookmarkRepo] Local bookmark cache deleted.',
-      );
+      debugPrint('[BookmarkRepo] Local bookmark cache deleted.');
     } catch (e) {
-      debugPrint(
-        '[BookmarkRepo] Remote SUCCESS but local delete FAILED: $e',
-      );
+      debugPrint('[BookmarkRepo] Remote SUCCESS but local delete FAILED: $e');
     }
   }
 
@@ -220,39 +202,28 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
   // ─────────────────────────────────────────────────────────────
 
   @override
-  Future<bool> addPlaceBookmark(
-      Place place, {
-        required String itemType,
-      }) async {
+  Future<bool> addPlaceBookmark(Place place, {required String itemType}) async {
     final userId = currentUserId;
 
     if (userId == null) {
-      throw const BookmarkPersistenceException(
-        'Login is required.',
-      );
+      throw const BookmarkPersistenceException('Login is required.');
     }
 
-    debugPrint(
-      '[BookmarkRepo] Bookmarking place: ${place.placeId}',
-    );
+    debugPrint('[BookmarkRepo] Bookmarking place: ${place.placeId}');
 
     // ─────────────────────────────────────────────────────────
     // Step 1: Upsert Place remotely
     // ─────────────────────────────────────────────────────────
 
-    final remotePlace =
-    await _remoteSource.upsertPlaceByGoogleId(place);
+    final remotePlace = await _remoteSource.upsertPlaceByGoogleId(place);
 
-    debugPrint(
-      '[BookmarkRepo] Remote place ID: ${remotePlace.id}',
-    );
+    debugPrint('[BookmarkRepo] Remote place ID: ${remotePlace.id}');
 
     // ─────────────────────────────────────────────────────────
     // Step 2: Check existing bookmark remotely
     // ─────────────────────────────────────────────────────────
 
-    var bookmark =
-    await _remoteSource.findPlaceBookmark(
+    var bookmark = await _remoteSource.findPlaceBookmark(
       userId: userId,
       internalPlaceId: remotePlace.id,
     );
@@ -265,8 +236,7 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
 
     if (bookmark == null) {
       try {
-        bookmark =
-        await _remoteSource.insertBookmark(
+        bookmark = await _remoteSource.insertBookmark(
           Bookmark(
             id: '',
             userId: userId,
@@ -277,9 +247,7 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
 
         created = true;
 
-        debugPrint(
-          '[BookmarkRepo] Remote bookmark CREATED',
-        );
+        debugPrint('[BookmarkRepo] Remote bookmark CREATED');
       } on PostgrestException catch (error) {
         // Another request/device may have created it.
         if (error.code != '23505') {
@@ -288,11 +256,10 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
 
         debugPrint(
           '[BookmarkRepo] Bookmark race detected. '
-              'Fetching existing bookmark...',
+          'Fetching existing bookmark...',
         );
 
-        bookmark =
-        await _remoteSource.findPlaceBookmark(
+        bookmark = await _remoteSource.findPlaceBookmark(
           userId: userId,
           internalPlaceId: remotePlace.id,
         );
@@ -302,9 +269,7 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
         }
       }
     } else {
-      debugPrint(
-        '[BookmarkRepo] Bookmark already exists remotely.',
-      );
+      debugPrint('[BookmarkRepo] Bookmark already exists remotely.');
     }
 
     // ─────────────────────────────────────────────────────────
@@ -313,21 +278,16 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
 
     try {
       await _localSource.cacheBookmarkWithPlace(
-        BookmarkWithPlaceDTO(
-          bookmark: bookmark,
-          place: remotePlace,
-        ),
+        BookmarkWithPlaceDTO(bookmark: bookmark, place: remotePlace),
       );
 
-      debugPrint(
-        '[BookmarkRepo] Local bookmark cache updated.',
-      );
+      debugPrint('[BookmarkRepo] Local bookmark cache updated.');
     } catch (error) {
       // Remote is already successful.
       // Do NOT report the bookmark operation as failed.
       debugPrint(
         '[BookmarkRepo] Remote bookmark saved but '
-            'local cache failed: $error',
+        'local cache failed: $error',
       );
     }
 
@@ -339,10 +299,7 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
   // ─────────────────────────────────────────────────────────────
 
   @override
-  Future<Bookmark?> getPlaceBookmark(
-      String userId,
-      String googlePlaceId,
-      ) {
+  Future<Bookmark?> getPlaceBookmark(String userId, String googlePlaceId) {
     return _remoteSource.findPlaceBookmarkByGoogleId(
       userId: userId,
       googlePlaceId: googlePlaceId,
@@ -354,15 +311,11 @@ class BookmarkRepositoryImpl implements BookmarkRepository {
   // ─────────────────────────────────────────────────────────────
 
   @override
-  Future<bool> isBookmarked(
-      String userId,
-      String placeId,
-      ) async {
+  Future<bool> isBookmarked(String userId, String placeId) async {
     // Remote is the source of truth.
     //
     // Check remote first.
-    final remoteBookmark =
-    await _remoteSource.findPlaceBookmarkByGoogleId(
+    final remoteBookmark = await _remoteSource.findPlaceBookmarkByGoogleId(
       userId: userId,
       googlePlaceId: placeId,
     );

@@ -95,6 +95,7 @@ flutter:
     - assets/images/attractions/
     - assets/images/branding/
     - assets/images/3dmodel/
+    - assets/images/placeholders/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

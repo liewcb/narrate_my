@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../core/widgets/place_image.dart';
 import '../../../../model/entities/ar_recommendation.dart';
 import '../../../../viewmodel/ar/ar_recommendation_vm.dart';
 import '../../../../viewmodel/bookmark_vm.dart';
@@ -387,22 +388,13 @@ class _ExpandedRecommendation extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (recommendation.imageUrl != null) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.network(
-                recommendation.imageUrl!,
-                width: double.infinity,
-                height: 150,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const _ImageFallback(),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ] else ...[
-            const _ImageFallback(),
-            const SizedBox(height: 12),
-          ],
+          PlaceImage(
+            imageUrl: recommendation.imageUrl,
+            width: double.infinity,
+            height: 150,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
@@ -518,23 +510,6 @@ class _ExpandedRecommendation extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ImageFallback extends StatelessWidget {
-  const _ImageFallback();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 140,
-      decoration: BoxDecoration(
-        color: const Color(0xFFD7B38E),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: const Icon(Icons.place_outlined, color: Colors.white, size: 42),
     );
   }
 }
