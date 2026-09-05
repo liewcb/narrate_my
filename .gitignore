@@ -46,3 +46,8 @@ app.*.map.json
 
 # Generated from android/local.properties for Flutter REST API calls.
 /android/dart_defines.local.env
+
+# Flutter ephemeral build folders
+linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
