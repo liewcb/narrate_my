@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/ai_assistant/global_ai_assistant.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/google_maps_directions_button.dart';
 import '../../core/widgets/place_image.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
@@ -254,6 +255,13 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
                 color: AppColors.inkSoft,
                 height: 1.55,
               ),
+            ),
+            const SizedBox(height: 20),
+            GoogleMapsDirectionsButton(
+              destinationName: recommendation.name,
+              latitude: recommendation.latitude,
+              longitude: recommendation.longitude,
+              googlePlaceId: recommendation.placeId,
             ),
             if (arSite != null && userLocation != null) ...[
               const SizedBox(height: 22),
