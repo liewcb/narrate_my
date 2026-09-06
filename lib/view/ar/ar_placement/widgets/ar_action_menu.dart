@@ -12,14 +12,17 @@ class ARActionMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     const primaryTeal = Color(0xFF2E656A);
 
-    return Selector<ARPlacementViewModel, ({
-      bool isPlaced,
-      bool hasAvatarInScene,
-      bool hasStarted,
-      String? videoUrl,
-      String? videoUrlBackup,
-      String landmarkName,
-    })>(
+    return Selector<
+      ARPlacementViewModel,
+      ({
+        bool isPlaced,
+        bool hasAvatarInScene,
+        bool hasStarted,
+        String? videoUrl,
+        String? videoUrlBackup,
+        String landmarkName,
+      })
+    >(
       selector: (context, vm) => (
         isPlaced: vm.isAvatarPlaced,
         hasAvatarInScene: vm.hasAvatarInScene,
@@ -118,6 +121,10 @@ class ARActionMenu extends StatelessWidget {
                   // Secondary action buttons (Watch Video, Recommend)
                   Row(
                     children: [
+                      // The global AI button occupies the lower-left corner.
+                      // Keep its footprint outside the Watch Video hit area.
+                      const SizedBox(width: 64),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: SizedBox(
                           height: 44,

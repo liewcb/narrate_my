@@ -1,36 +1,75 @@
 import '../../../core/services/google_maps_service.dart';
+import '../../data_sources/remote/ai_nearby_place_remote_data_source.dart';
 import '../../data_sources/remote/ai_bookmark_place_remote_data_source.dart';
+import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
+import 'ai_chat_action_policy.dart';
 
 /// Resolves a general AI-chat question to canonical bookmark candidates.
 ///
 /// Gemini remains responsible only for the conversational answer. Places
 /// already stored in Supabase are preferred, with Google Places as an optional
 /// fallback when its Dart API key is available.
-class AiBookmarkPlaceResolver {
+abstract interface class AiBookmarkPlaceQuestionResolver {
+  Future<List<Place>> resolveQuestion(
+    String question, {
+    Coordinates? nearbyOrigin,
+  });
+}
+
+typedef AiNearbyPlaceLoader =
+    Future<List<Place>> Function({
+      required Coordinates origin,
+      required List<String> includedTypes,
+      required double radiusKm,
+    });
+
+class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
   AiBookmarkPlaceResolver({
     GoogleMapsService? mapsService,
     AiBookmarkPlaceRemoteDataSource? knownPlacesSource,
+    AiNearbyPlaceRemoteDataSource? nearbyPlaceSource,
+    Future<List<Place>> Function()? knownPlacesLoader,
+    AiNearbyPlaceLoader? nearbyPlaceLoader,
   }) : _mapsService = mapsService ?? GoogleMapsService(),
-       _knownPlacesSource =
-           knownPlacesSource ?? AiBookmarkPlaceRemoteDataSource();
+       _loadNearbyPlaces =
+           nearbyPlaceLoader ??
+           (nearbyPlaceSource ?? AiNearbyPlaceRemoteDataSource())
+               .searchNearbyPlaces,
+       _loadKnownPlaces =
+           knownPlacesLoader ??
+           (knownPlacesSource ?? AiBookmarkPlaceRemoteDataSource())
+               .fetchBookmarkablePlaces;
 
   final GoogleMapsService _mapsService;
-  final AiBookmarkPlaceRemoteDataSource _knownPlacesSource;
+  final AiNearbyPlaceLoader _loadNearbyPlaces;
+  final Future<List<Place>> Function() _loadKnownPlaces;
   List<Place>? _cachedKnownPlaces;
 
   static const _maximumCandidates = 3;
+  static const _nearbyRadiusKm = 10.0;
 
-  Future<List<Place>> resolveQuestion(String question) async {
+  @override
+  Future<List<Place>> resolveQuestion(
+    String question, {
+    Coordinates? nearbyOrigin,
+  }) async {
     final trimmedQuestion = question.trim();
     if (trimmedQuestion.isEmpty) return const [];
+    final nearbyScope = AiChatActionPolicy.nearbyScope(trimmedQuestion);
+    if (nearbyScope != AiNearbyScope.none && nearbyOrigin == null) {
+      return const [];
+    }
+
+    if (nearbyOrigin != null && nearbyScope != AiNearbyScope.none) {
+      return _resolveNearbyQuestion(trimmedQuestion, nearbyOrigin);
+    }
 
     // Prefer canonical rows that the rest of the app already uses. Besides
     // avoiding an unnecessary API request, this path works without requiring
     // Android Studio to pass a Dart API key at launch.
     try {
-      final knownPlaces = _cachedKnownPlaces ??= await _knownPlacesSource
-          .fetchBookmarkablePlaces();
+      final knownPlaces = _cachedKnownPlaces ??= await _loadKnownPlaces();
       final knownMatches = _rankKnownPlaces(trimmedQuestion, knownPlaces);
       if (knownMatches.isNotEmpty) return List.unmodifiable(knownMatches);
     } catch (_) {
@@ -92,6 +131,131 @@ class AiBookmarkPlaceResolver {
     }
 
     return List.unmodifiable(candidates);
+  }
+
+  Future<List<Place>> _resolveNearbyQuestion(
+    String question,
+    Coordinates origin,
+  ) async {
+    // Nearby Search (New) is authoritative for location-scoped discovery.
+    // It runs server-side so the Places Web Service key is never shipped in
+    // the Flutter application.
+    try {
+      final googlePlaces = await _loadNearbyPlaces(
+        origin: origin,
+        includedTypes: _nearbyIncludedTypes(question),
+        radiusKm: _nearbyRadiusKm,
+      );
+      return List.unmodifiable(
+        _rankNearbyPlaces(question, googlePlaces, origin),
+      );
+    } catch (error) {
+      // The strict coordinate/type filters below remain in force for every
+      // fallback, so a transient Edge Function problem cannot produce random
+      // places from another state.
+    }
+
+    if (_mapsService.googleMapsApiKey.trim().isNotEmpty) {
+      try {
+        final results = await _mapsService.searchTextPlaces(
+          query: _nearbySearchQuery(question),
+          latitude: origin.latitude,
+          longitude: origin.longitude,
+          radius: _nearbyRadiusKm * 1000,
+        );
+        final matches = _rankNearbyPlaces(question, results, origin);
+        if (matches.isNotEmpty) return List.unmodifiable(matches);
+      } catch (_) {
+        // Continue to the strictly filtered Supabase fallback.
+      }
+    }
+
+    try {
+      final knownPlaces = _cachedKnownPlaces ??= await _loadKnownPlaces();
+      return List.unmodifiable(
+        _rankNearbyPlaces(question, knownPlaces, origin),
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  List<Place> _rankNearbyPlaces(
+    String question,
+    List<Place> places,
+    Coordinates origin,
+  ) {
+    final normalizedQuestion = question.toLowerCase();
+    final ranked = <({Place place, double distanceKm})>[];
+
+    for (final place in places) {
+      if (!_isBookmarkable(place) ||
+          !_matchesRequestedKind(normalizedQuestion, place) ||
+          !_hasValidCoordinates(place)) {
+        continue;
+      }
+      final distanceKm = origin.distanceTo(place.coordinates);
+      if (distanceKm > _nearbyRadiusKm) continue;
+      ranked.add((place: place, distanceKm: distanceKm));
+    }
+
+    ranked.sort((left, right) {
+      final distanceComparison = left.distanceKm.compareTo(right.distanceKm);
+      if (distanceComparison != 0) return distanceComparison;
+      return right.place.placeRating.compareTo(left.place.placeRating);
+    });
+
+    final seenPlaceIds = <String>{};
+    return ranked
+        .map((item) => item.place)
+        .where((place) => seenPlaceIds.add(place.placeId.trim()))
+        .take(_maximumCandidates)
+        .toList(growable: false);
+  }
+
+  bool _hasValidCoordinates(Place place) =>
+      place.placeLatitude >= -90 &&
+      place.placeLatitude <= 90 &&
+      place.placeLongitude >= -180 &&
+      place.placeLongitude <= 180 &&
+      !(place.placeLatitude == 0 && place.placeLongitude == 0);
+
+  String _nearbySearchQuery(String question) {
+    final normalized = question.toLowerCase();
+    if (normalized.contains('restaurant') || normalized.contains('food')) {
+      return 'restaurant';
+    }
+    if (normalized.contains('cafe') || normalized.contains('coffee')) {
+      return 'cafe';
+    }
+    if (normalized.contains('drink') || normalized.contains('bar')) {
+      return 'cafe or bar';
+    }
+    if (normalized.contains('museum')) return 'museum';
+    if (normalized.contains('park')) return 'park';
+    if (normalized.contains('shopping') || normalized.contains('mall')) {
+      return 'shopping mall';
+    }
+    return 'tourist attraction';
+  }
+
+  List<String> _nearbyIncludedTypes(String question) {
+    final normalized = question.toLowerCase();
+    if (normalized.contains('restaurant') || normalized.contains('food')) {
+      return const ['restaurant'];
+    }
+    if (normalized.contains('cafe') || normalized.contains('coffee')) {
+      return const ['cafe'];
+    }
+    if (normalized.contains('drink') || normalized.contains('bar')) {
+      return const ['cafe', 'bar'];
+    }
+    if (normalized.contains('museum')) return const ['museum'];
+    if (normalized.contains('park')) return const ['park'];
+    if (normalized.contains('shopping') || normalized.contains('mall')) {
+      return const ['shopping_mall'];
+    }
+    return const ['tourist_attraction'];
   }
 
   List<Place> _rankKnownPlaces(String question, List<Place> places) {
@@ -173,7 +337,8 @@ class AiBookmarkPlaceResolver {
     final normalizedName = _normalize(placeName);
     final requestedNameWords = questionWords
         .difference(_genericPlaceQueryWords)
-        .difference(requestedLocationWords);
+        .difference(requestedLocationWords)
+        .difference(_placeQuestionQualifierWords);
     final nameWords = _meaningfulWords(placeName);
     final fullNameInQuestion =
         normalizedName.isNotEmpty &&
@@ -186,7 +351,7 @@ class AiBookmarkPlaceResolver {
 
   Set<String> _requestedLocationWords(String question) {
     final match = RegExp(
-      r'\b(?:at|near|around|in)\s+([^?!.;,]+)',
+      r'\b(?:at|near\s*by|nearby|near|around|in)\s+([^?!.;,]+)',
       caseSensitive: false,
     ).firstMatch(question);
     if (match == null) return const {};
@@ -221,8 +386,14 @@ class AiBookmarkPlaceResolver {
       if (place.category != null) place.category!.toLowerCase(),
     }.join(' ');
 
-    if (question.contains('restaurant') || question.contains('food')) {
+    if (question.contains('restaurant')) {
+      return searchable.contains('restaurant');
+    }
+    if (question.contains('food')) {
       return searchable.contains('restaurant') || searchable.contains('food');
+    }
+    if (question.contains('drink') || question.contains('bar')) {
+      return searchable.contains('cafe') || searchable.contains('bar');
     }
     if (question.contains('cafe')) return searchable.contains('cafe');
     if (question.contains('museum')) return searchable.contains('museum');
@@ -410,4 +581,18 @@ const _genericPlaceQueryWords = <String>{
   'restaurant',
   'restaurants',
   'things',
+};
+
+const _placeQuestionQualifierWords = <String>{
+  'beautiful',
+  'famous',
+  'good',
+  'history',
+  'information',
+  'introduce',
+  'interesting',
+  'nice',
+  'open',
+  'popular',
+  'worth',
 };

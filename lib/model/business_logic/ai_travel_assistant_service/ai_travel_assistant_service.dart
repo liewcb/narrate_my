@@ -6,8 +6,12 @@ import '../../repositories/interfaces/ai_travel_assistant_repository.dart';
 class AiTravelAssistantService {
   const AiTravelAssistantService(this._repository);
 
-  static const englishOnlyMessage =
-      'Please resubmit your question in English.';
+  static const _maximumRepositoryQuestionLength = 200;
+
+  static const supportedLanguagesMessage =
+      'Please use English, Mandarin, Malay, Spanish, or Hindi.';
+
+  // Kept for compatibility with the currently deployed Edge Function.
   static const englishOnlyToken = '__ENGLISH_ONLY__';
 
   final AiTravelAssistantRepository _repository;
@@ -29,7 +33,7 @@ class AiTravelAssistantService {
     }
 
     if (_containsUnsupportedScript(normalizedQuestion)) {
-      throw const AiAssistantValidationException(englishOnlyMessage);
+      throw const AiAssistantValidationException(supportedLanguagesMessage);
     }
 
     return normalizedQuestion;
@@ -39,42 +43,71 @@ class AiTravelAssistantService {
     required String question,
     required List<AiChatMessage> conversationHistory,
     AiAttractionContext? attractionContext,
+    String? requestInstruction,
   }) async {
     final normalizedQuestion = validateQuestion(question);
+    final cleanInstruction = requestInstruction?.trim();
+    final repositoryQuestion = _buildRepositoryQuestion(
+      normalizedQuestion,
+      cleanInstruction,
+    );
 
     final answer = await _repository.askQuestion(
-      question: normalizedQuestion,
+      question: repositoryQuestion,
       conversationHistory: conversationHistory,
       attractionContext: attractionContext,
     );
 
-    // The Edge Function uses this private token when it detects a language
-    // that cannot be identified locally (for example, a Latin-script language).
+    // The deployed Edge Function still uses this legacy token when it detects
+    // an unsupported language that cannot be identified locally.
     if (answer.trim() == englishOnlyToken) {
-      throw const AiAssistantValidationException(englishOnlyMessage);
+      throw const AiAssistantValidationException(supportedLanguagesMessage);
     }
 
     return answer;
+  }
+
+  String _buildRepositoryQuestion(String question, String? instruction) {
+    if (instruction == null || instruction.isEmpty) return question;
+
+    final suffix = '\nUser question: $question';
+    final instructionBudget = _maximumRepositoryQuestionLength - suffix.length;
+    if (instructionBudget <= 0) return question;
+
+    final boundedInstruction = instruction.length <= instructionBudget
+        ? instruction
+        : _truncateAtWordBoundary(instruction, instructionBudget);
+    if (boundedInstruction.isEmpty) return question;
+
+    return '$boundedInstruction$suffix';
+  }
+
+  String _truncateAtWordBoundary(String value, int maximumLength) {
+    if (maximumLength <= 0) return '';
+    if (value.length <= maximumLength) return value;
+
+    final shortened = value.substring(0, maximumLength).trimRight();
+    final finalSpace = shortened.lastIndexOf(' ');
+    return (finalSpace > 0 ? shortened.substring(0, finalSpace) : shortened)
+        .trimRight();
   }
 
   bool _containsUnsupportedScript(String text) {
     for (final rune in text.runes) {
       final isUnsupported =
           (rune >= 0x0370 && rune <= 0x03FF) || // Greek
-              (rune >= 0x0400 && rune <= 0x052F) || // Cyrillic
-              (rune >= 0x0590 && rune <= 0x05FF) || // Hebrew
-              (rune >= 0x0600 && rune <= 0x06FF) || // Arabic
-              (rune >= 0x0750 && rune <= 0x077F) ||
-              (rune >= 0x08A0 && rune <= 0x08FF) ||
-              (rune >= 0x0900 && rune <= 0x0D7F) || // Indic scripts
-              (rune >= 0x0E00 && rune <= 0x0E7F) || // Thai/Lao
-              (rune >= 0x1100 && rune <= 0x11FF) || // Hangul Jamo
-              (rune >= 0x3040 && rune <= 0x30FF) || // Japanese Kana
-              (rune >= 0x3400 && rune <= 0x4DBF) || // CJK Extension A
-              (rune >= 0x4E00 && rune <= 0x9FFF) || // CJK Unified
-              (rune >= 0xAC00 && rune <= 0xD7AF) || // Hangul syllables
-              (rune >= 0xF900 && rune <= 0xFAFF) || // CJK compatibility
-              (rune >= 0x20000 && rune <= 0x2FA1F); // CJK extensions
+          (rune >= 0x0400 && rune <= 0x052F) || // Cyrillic
+          (rune >= 0x0590 && rune <= 0x05FF) || // Hebrew
+          (rune >= 0x0600 && rune <= 0x06FF) || // Arabic
+          (rune >= 0x0750 && rune <= 0x077F) ||
+          (rune >= 0x08A0 && rune <= 0x08FF) ||
+          // Devanagari (0900-097F) is allowed for Hindi. Other Indic
+          // scripts remain outside the assistant's supported set.
+          (rune >= 0x0980 && rune <= 0x0D7F) ||
+          (rune >= 0x0E00 && rune <= 0x0E7F) || // Thai/Lao
+          (rune >= 0x1100 && rune <= 0x11FF) || // Hangul Jamo
+          (rune >= 0x3040 && rune <= 0x30FF) || // Japanese Kana
+          (rune >= 0xAC00 && rune <= 0xD7AF); // Hangul syllables
 
       if (isUnsupported) return true;
     }

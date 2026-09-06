@@ -15,12 +15,18 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 class GlobalAiAssistantController extends ChangeNotifier {
   bool _assistantOpen = false;
   bool _storytellingActive = false;
+  bool _profileActive = false;
   AiAttractionContext? _attractionContext;
   Place? _bookmarkPlace;
+  String? _conversationSummary;
+  final Map<int, _AiAttractionSelection> _attractionPreviews = {};
+  int _nextPreviewToken = 0;
 
-  bool get shouldShowButton => !_assistantOpen && !_storytellingActive;
+  bool get shouldShowButton =>
+      !_assistantOpen && !_storytellingActive && !_profileActive;
   AiAttractionContext? get attractionContext => _attractionContext;
   Place? get bookmarkPlace => _bookmarkPlace;
+  String? get conversationSummary => _conversationSummary;
 
   /// Replaces the previous selection. Only the latest attraction is carried
   /// into a newly opened chat.
@@ -51,16 +57,42 @@ class GlobalAiAssistantController extends ChangeNotifier {
   /// Itinerary and Google recommendation rows are not guaranteed to have a
   /// curated Attraction FK, so their stable Google Place ID is used instead.
   void selectPlace(Place place, {required String source}) {
-    if (_isRestaurant(place)) {
-      clearAttractionContext();
-      return;
-    }
     selectAttraction(
       attractionName: place.placeName,
       placeId: place.placeId,
       source: source,
       bookmarkPlace: place,
     );
+  }
+
+  /// Makes a place available to the AI button only while its detail surface
+  /// is open. Merely viewing a recommendation must not replace the last
+  /// context that was actually used to enter AI chat.
+  int previewPlace(Place place, {required String source}) {
+    final token = ++_nextPreviewToken;
+    _attractionPreviews[token] = _AiAttractionSelection(
+      context: AiAttractionContext(
+        attractionName: place.placeName.trim(),
+        placeId: _clean(place.placeId),
+        source: source,
+      ),
+      bookmarkPlace: place,
+    );
+    return token;
+  }
+
+  void endAttractionPreview(int token) {
+    _attractionPreviews.remove(token);
+  }
+
+  /// Called only by the AI button. This is the point where the attraction
+  /// visible on the current page becomes the persistent chat context.
+  void commitActiveAttractionPreview() {
+    if (_attractionPreviews.isEmpty) return;
+    final selection = _attractionPreviews.values.last;
+    _attractionContext = selection.context;
+    _bookmarkPlace = selection.bookmarkPlace;
+    notifyListeners();
   }
 
   void selectArMarker(ARMarker marker) {
@@ -74,10 +106,6 @@ class GlobalAiAssistantController extends ChangeNotifier {
 
   void selectArRecommendation(ARRecommendation recommendation) {
     final place = recommendation.toBookmarkPlace();
-    if (_isRestaurant(place)) {
-      clearAttractionContext();
-      return;
-    }
     selectAttraction(
       attractionId: recommendation.attractionId,
       attractionName: recommendation.name,
@@ -113,25 +141,20 @@ class GlobalAiAssistantController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Keeps the most recent recap available while the user navigates away from
+  /// and back to chat. This is session state, not permanent account storage.
+  void saveConversationSummary(String? summary) {
+    final cleaned = _clean(summary);
+    if (_conversationSummary == cleaned) return;
+    _conversationSummary = cleaned;
+    notifyListeners();
+  }
+
+  void clearConversationSummary() => saveConversationSummary(null);
+
   static String? _clean(String? value) {
     final cleaned = value?.trim();
     return cleaned == null || cleaned.isEmpty ? null : cleaned;
-  }
-
-  static bool _isRestaurant(Place place) {
-    final tokens = <String>[
-      ...place.placeTypes,
-      if (place.category != null) place.category!,
-    ].map((value) => value.toLowerCase().replaceAll(' ', '_'));
-    return tokens.any(
-      (value) =>
-          value.contains('restaurant') ||
-          value == 'cafe' ||
-          value == 'food' ||
-          value == 'bar' ||
-          value == 'night_club' ||
-          value.startsWith('meal_'),
-    );
   }
 
   void setAssistantOpen(bool value) {
@@ -143,6 +166,12 @@ class GlobalAiAssistantController extends ChangeNotifier {
   void setStorytellingActive(bool value) {
     if (_storytellingActive == value) return;
     _storytellingActive = value;
+    notifyListeners();
+  }
+
+  void setProfileActive(bool value) {
+    if (_profileActive == value) return;
+    _profileActive = value;
     notifyListeners();
   }
 }
@@ -159,8 +188,10 @@ class GlobalAiAssistantHost extends StatelessWidget {
     if (navigator == null) return;
 
     final controller = context.read<GlobalAiAssistantController>();
+    controller.commitActiveAttractionPreview();
     final attractionContext = controller.attractionContext;
     final bookmarkPlace = controller.bookmarkPlace;
+    final conversationSummary = controller.conversationSummary;
     controller.setAssistantOpen(true);
     try {
       await navigator.push<void>(
@@ -173,6 +204,7 @@ class GlobalAiAssistantHost extends StatelessWidget {
             placeId: attractionContext?.placeId,
             contextSource: attractionContext?.source ?? 'none',
             bookmarkPlace: bookmarkPlace,
+            initialConversationSummary: conversationSummary,
           ),
         ),
       );
@@ -216,4 +248,14 @@ class GlobalAiAssistantHost extends StatelessWidget {
       ],
     );
   }
+}
+
+class _AiAttractionSelection {
+  const _AiAttractionSelection({
+    required this.context,
+    required this.bookmarkPlace,
+  });
+
+  final AiAttractionContext context;
+  final Place? bookmarkPlace;
 }

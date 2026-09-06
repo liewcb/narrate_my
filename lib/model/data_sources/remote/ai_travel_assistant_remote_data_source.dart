@@ -3,9 +3,8 @@ import '../../entities/ai_attraction_context.dart';
 import '../../entities/ai_chat_message.dart';
 
 class AiTravelAssistantRemoteDataSource {
-  AiTravelAssistantRemoteDataSource({
-    DatabaseManager? databaseManager,
-  }) : _databaseManager = databaseManager ?? DatabaseManager();
+  AiTravelAssistantRemoteDataSource({DatabaseManager? databaseManager})
+    : _databaseManager = databaseManager ?? DatabaseManager();
 
   final DatabaseManager _databaseManager;
 
@@ -20,6 +19,13 @@ class AiTravelAssistantRemoteDataSource {
         'question': question,
         'context': attractionContext?.toJson(),
         'history': conversationHistory.map(_historyJson).toList(),
+        'supportedLanguages': const [
+          'English',
+          'Mandarin',
+          'Malay',
+          'Spanish',
+          'Hindi',
+        ],
       },
     );
 

@@ -18,29 +18,34 @@ Future<void> showNearbyRecommendationDetails(
   ARSite? arSite,
   Coordinates? userLocation,
   VoidCallback? onOpenAr,
-}) {
-  context.read<GlobalAiAssistantController>().selectPlace(
+}) async {
+  final assistantController = context.read<GlobalAiAssistantController>();
+  final previewToken = assistantController.previewPlace(
     _placeFromRecommendation(recommendation),
     source: 'recommendation',
   );
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => FractionallySizedBox(
-      heightFactor: 0.78,
-      child: ChangeNotifierProvider(
-        create: (_) => BookmarkVm()..load(recommendation.placeId),
-        child: NearbyRecommendationDetailsScreen(
-          recommendation: recommendation,
-          arSite: arSite,
-          userLocation: userLocation,
-          onOpenAr: onOpenAr,
+  try {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: 0.78,
+        child: ChangeNotifierProvider(
+          create: (_) => BookmarkVm()..load(recommendation.placeId),
+          child: NearbyRecommendationDetailsScreen(
+            recommendation: recommendation,
+            arSite: arSite,
+            userLocation: userLocation,
+            onOpenAr: onOpenAr,
+          ),
         ),
       ),
-    ),
-  );
+    );
+  } finally {
+    assistantController.endAttractionPreview(previewToken);
+  }
 }
 
 Place _placeFromRecommendation(Recommendation recommendation) => Place(

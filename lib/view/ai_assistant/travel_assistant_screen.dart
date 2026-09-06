@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/ai_assistant/global_ai_assistant.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
+import '../../model/business_logic/ai_travel_assistant_service/ai_chat_action_policy.dart';
 import '../../model/entities/ai_attraction_context.dart';
 import '../../model/entities/ai_chat_message.dart';
 import '../../model/entities/place.dart';
@@ -22,6 +24,7 @@ class TravelAssistantScreen extends StatelessWidget {
     this.placeId,
     this.contextSource = 'none',
     this.bookmarkPlace,
+    this.initialConversationSummary,
   });
 
   final String? attractionId;
@@ -33,6 +36,7 @@ class TravelAssistantScreen extends StatelessWidget {
   /// A verified place supplied by Recommendation or Itinerary. Gemini text is
   /// never used to invent a bookmark target.
   final Place? bookmarkPlace;
+  final String? initialConversationSummary;
 
   @override
   Widget build(BuildContext context) {
@@ -64,17 +68,16 @@ class TravelAssistantScreen extends StatelessWidget {
                 source: contextSource,
               )
             : null,
-        resolveBookmarkPlacesFromQuestions: bookmarkPlace == null,
+        initialBookmarkPlace: bookmarkPlace,
+        initialConversationSummary: initialConversationSummary,
       ),
-      child: _TravelAssistantView(bookmarkPlace: bookmarkPlace),
+      child: const _TravelAssistantView(),
     );
   }
 }
 
 class _TravelAssistantView extends StatefulWidget {
-  const _TravelAssistantView({this.bookmarkPlace});
-
-  final Place? bookmarkPlace;
+  const _TravelAssistantView();
 
   @override
   State<_TravelAssistantView> createState() => _TravelAssistantViewState();
@@ -97,8 +100,27 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
     final question = _inputController.text.trim();
     if (question.isNotEmpty) _inputController.clear();
 
-    await context.read<AiTravelAssistantViewModel>().sendQuestion(question);
+    final vm = context.read<AiTravelAssistantViewModel>();
+    final shouldRefreshSavedSummary = vm.conversationSummary != null;
+    final previousContextPlaceId = vm.contextBookmarkPlace?.placeId;
+    await vm.sendQuestion(question);
     if (!mounted) return;
+    final resolvedPlace = vm.contextBookmarkPlace;
+    if (resolvedPlace != null &&
+        resolvedPlace.placeId != previousContextPlaceId &&
+        vm.attractionContext?.source == 'chat_question') {
+      context.read<GlobalAiAssistantController>().selectAttraction(
+        attractionName: resolvedPlace.placeName,
+        placeId: resolvedPlace.placeId,
+        source: 'chat_question',
+        bookmarkPlace: resolvedPlace,
+      );
+    }
+    if (shouldRefreshSavedSummary) {
+      await vm.generateSummary();
+      if (!mounted) return;
+      _persistSummary(vm);
+    }
     _scrollToBottom();
   }
 
@@ -108,7 +130,8 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Reset conversation?'),
         content: const Text(
-          'Your current chat messages and attraction context will be cleared.',
+          'Your current chat messages will be cleared. '
+          'The selected attraction will stay available.',
         ),
         actions: [
           TextButton(
@@ -125,6 +148,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
 
     if (shouldReset == true && mounted) {
       context.read<AiTravelAssistantViewModel>().resetConversation();
+      context.read<GlobalAiAssistantController>().clearConversationSummary();
     }
   }
 
@@ -135,7 +159,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
       context: context,
       title: 'Leave AI chat?',
       message:
-          'Your current conversation will be cleared when you leave. '
+          'Your latest conversation summary will be saved when you leave. '
           'Are you sure you want to continue?',
       confirmLabel: 'Leave',
       cancelLabel: 'Stay',
@@ -144,12 +168,15 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
       iconBgColor: AppColors.accentSoft,
       iconColor: AppColors.primary,
     );
-    _leaveDialogOpen = false;
-
     if (shouldLeave == true && mounted) {
+      final vm = context.read<AiTravelAssistantViewModel>();
+      await vm.generateSummary();
+      if (!mounted) return;
+      _persistSummary(vm);
       setState(() => _allowPop = true);
       Navigator.of(context).pop();
     }
+    _leaveDialogOpen = false;
   }
 
   void _searchConversation(List<AiChatMessage> messages) {
@@ -170,7 +197,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
     });
   }
 
-  void _openSummary(AiTravelAssistantViewModel vm) {
+  Future<void> _openSummary(AiTravelAssistantViewModel vm) async {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -180,7 +207,15 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
         child: const _ConversationSummarySheet(),
       ),
     );
-    vm.generateSummary();
+    await vm.generateSummary();
+    if (!mounted) return;
+    _persistSummary(vm);
+  }
+
+  void _persistSummary(AiTravelAssistantViewModel vm) {
+    context.read<GlobalAiAssistantController>().saveConversationSummary(
+      vm.conversationSummary,
+    );
   }
 
   @override
@@ -201,7 +236,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
               _buildHeader(vm),
               if (attractionName != null && attractionName.isNotEmpty)
                 _buildAttractionContext(attractionName),
-              Expanded(child: _buildMessageList(vm, widget.bookmarkPlace)),
+              Expanded(child: _buildMessageList(vm)),
               _buildInputBar(vm.isSending || vm.isSummarizing),
             ],
           ),
@@ -317,27 +352,43 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
     );
   }
 
-  Widget _buildMessageList(
-    AiTravelAssistantViewModel vm,
-    Place? bookmarkPlace,
-  ) {
-    final latestAssistantIndex = vm.messages.lastIndexWhere(
-      (message) => message.sender == AiChatMessageSender.assistant,
+  Widget _buildMessageList(AiTravelAssistantViewModel vm) {
+    final actionMessageIndex = vm.actionMessageIndex;
+    final actionQuestion = vm.actionQuestion;
+    final canUseContextActions = AiChatActionPolicy.questionRefersToContext(
+      actionQuestion,
+      vm.attractionContext,
     );
+    final nearbyScope = actionQuestion == null
+        ? AiNearbyScope.none
+        : AiChatActionPolicy.nearbyScope(actionQuestion);
+    final bookmarkPlace = vm.contextBookmarkPlace;
     final suppliedBookmarkTarget =
-        bookmarkPlace != null && bookmarkPlace.placeId.trim().isNotEmpty
+        vm.attractionContext != null &&
+            nearbyScope == AiNearbyScope.none &&
+            canUseContextActions &&
+            bookmarkPlace != null &&
+            bookmarkPlace.placeId.trim().isNotEmpty
         ? <Place>[bookmarkPlace]
         : const <Place>[];
-    final bookmarkTargets = suppliedBookmarkTarget.isNotEmpty
-        ? suppliedBookmarkTarget
-        : vm.bookmarkCandidates;
-    final latestTouristIndex = vm.messages.lastIndexWhere(
-      (message) => message.sender == AiChatMessageSender.tourist,
+    final bookmarkTargets = vm.bookmarkCandidates.isNotEmpty
+        ? vm.bookmarkCandidates
+        : suppliedBookmarkTarget;
+    final requestedMapDestination =
+        AiChatActionPolicy.mapDestinationFromQuestion(actionQuestion);
+    final isContextMapRequest = AiChatActionPolicy.isContextReference(
+      requestedMapDestination,
     );
-    final latestTouristQuestion = latestTouristIndex < 0
+    final mapDestination = requestedMapDestination == null
         ? null
-        : vm.messages[latestTouristIndex].text;
-    final mapDestination = _mapDestinationFromQuestion(latestTouristQuestion);
+        : isContextMapRequest
+        ? vm.attractionContext?.attractionName
+        : requestedMapDestination;
+    final mapPlace = vm.bookmarkCandidates.length == 1
+        ? vm.bookmarkCandidates.single
+        : suppliedBookmarkTarget.length == 1
+        ? suppliedBookmarkTarget.single
+        : null;
 
     return ListView.builder(
       controller: _scrollController,
@@ -351,7 +402,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
             bookmarkTargets.isNotEmpty &&
             !vm.isSending &&
             message.sender == AiChatMessageSender.assistant &&
-            index == latestAssistantIndex &&
+            index == actionMessageIndex &&
             vm.messages.any(
               (item) => item.sender == AiChatMessageSender.tourist,
             );
@@ -359,7 +410,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
             mapDestination != null &&
             !vm.isSending &&
             message.sender == AiChatMessageSender.assistant &&
-            index == latestAssistantIndex;
+            index == actionMessageIndex;
 
         return _ChatBubble(
           message: message,
@@ -368,41 +419,13 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
               : const <Place>[],
           isResolvingPlaces:
               message.sender == AiChatMessageSender.assistant &&
-              index == latestAssistantIndex &&
+              index == actionMessageIndex &&
               vm.isResolvingBookmarkPlaces,
           mapDestination: showMapAction ? mapDestination : null,
-          mapPlace: showMapAction && bookmarkTargets.length == 1
-              ? bookmarkTargets.single
-              : null,
+          mapPlace: showMapAction ? mapPlace : null,
         );
       },
     );
-  }
-
-  String? _mapDestinationFromQuestion(String? question) {
-    if (question == null) return null;
-    final normalized = question.trim().toLowerCase();
-    final isMapRequest = RegExp(
-      r"\bwhere(?:'s|\s+is)\b|\bdirections?\b|\bnavigate\b|"
-      r'\broute\s+to\b|\bhow\s+(?:do|can)\s+i\s+get\s+to\b',
-    ).hasMatch(normalized);
-    if (!isMapRequest) return null;
-
-    var destination = question.trim();
-    final prefixes = <RegExp>[
-      RegExp(r"^where(?:'s|\s+is)\s+(?:the\s+)?", caseSensitive: false),
-      RegExp(r'^how\s+(?:do|can)\s+i\s+get\s+to\s+', caseSensitive: false),
-      RegExp(
-        r'^(?:can\s+you\s+)?(?:show|give)\s+(?:me\s+)?directions?\s+to\s+',
-        caseSensitive: false,
-      ),
-      RegExp(r'^(?:navigate|route)\s+(?:me\s+)?to\s+', caseSensitive: false),
-    ];
-    for (final prefix in prefixes) {
-      destination = destination.replaceFirst(prefix, '');
-    }
-    destination = destination.replaceAll(RegExp(r'[?!.]+$'), '').trim();
-    return destination.isEmpty ? question.trim() : destination;
   }
 
   Widget _buildInputBar(bool isSending) {
@@ -531,11 +554,14 @@ class _ConversationSummarySheet extends StatelessWidget {
     BuildContext context,
     AiTravelAssistantViewModel vm,
   ) {
-    if (vm.isSummarizing) {
+    final summary = vm.conversationSummary;
+
+    if (vm.isSummarizing && (summary == null || summary.isEmpty)) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (vm.summaryErrorMessage != null) {
+    if (vm.summaryErrorMessage != null &&
+        (summary == null || summary.isEmpty)) {
       return Center(
         child: Text(
           vm.summaryErrorMessage!,
@@ -545,7 +571,6 @@ class _ConversationSummarySheet extends StatelessWidget {
       );
     }
 
-    final summary = vm.conversationSummary;
     if (summary == null || summary.isEmpty) {
       return const Center(
         child: Text(
@@ -555,23 +580,33 @@ class _ConversationSummarySheet extends StatelessWidget {
       );
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: AppColors.surface2,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: SingleChildScrollView(
-        child: _SimpleMarkdownText(
-          text: summary,
-          style: const TextStyle(
-            color: AppColors.inkSoft,
-            fontSize: 17,
-            height: 1.5,
+    return Column(
+      children: [
+        if (vm.isSummarizing) ...[
+          const LinearProgressIndicator(),
+          const SizedBox(height: 12),
+        ],
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: SingleChildScrollView(
+              child: _SimpleMarkdownText(
+                text: summary,
+                style: const TextStyle(
+                  color: AppColors.inkSoft,
+                  fontSize: 17,
+                  height: 1.5,
+                ),
+              ),
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }

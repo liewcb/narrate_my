@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../view/Itinerary/my_itineraries_screen.dart';
 import '../../view/ar/ar_exploration/ar_exploration_view.dart';
 import '../../view/recommendation/nearby_recommendation_screen.dart';
 import '../../view/profile_screen.dart';
+import '../ai_assistant/global_ai_assistant.dart';
 import '../widgets/app_bottom_navigation.dart';
 
 /// The main routing shell for the four persistent application tabs.
@@ -28,9 +30,7 @@ class _AppRoutesState extends State<AppRoutes> {
     return switch (tabIndex) {
       0 => ARExplorationView(isActive: _index == 0),
       1 => const MyItinerariesScreen(),
-      2 => NearbyRecommendationScreen(
-        onOpenAr: () => setState(() => _index = 0),
-      ),
+      2 => NearbyRecommendationScreen(onOpenAr: () => _selectTab(0)),
       3 => const ProfileScreen(),
       _ => const SizedBox.shrink(),
     };
@@ -66,6 +66,14 @@ class _AppRoutesState extends State<AppRoutes> {
     ),
   ];
 
+  void _selectTab(int index) {
+    context.read<GlobalAiAssistantController>().setProfileActive(index == 3);
+    setState(() {
+      _visitedTabs.add(index);
+      _index = index;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -73,10 +81,7 @@ class _AppRoutesState extends State<AppRoutes> {
       bottomNavigationBar: AppBottomNavBar(
         items: _items,
         currentIndex: _index,
-        onTap: (index) => setState(() {
-          _visitedTabs.add(index);
-          _index = index;
-        }),
+        onTap: _selectTab,
       ),
     );
   }
