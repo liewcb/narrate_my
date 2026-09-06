@@ -21,9 +21,9 @@ class ARSiteRemoteDataSource {
     required double radiusMeters,
   }) async {
     final box = _boundingBox(latitude, longitude, radiusMeters);
-    // Every Attraction row is now represented by its own map marker. The
-    // existing optional site_id remains untouched for other modules, but is
-    // deliberately not used to merge attractions on the Nearby map.
+    // The optional site_id remains untouched for other modules, but is not
+    // used to merge attractions on the Nearby map. Only attractions whose
+    // Marker rows have exactly equal coordinates share a map pin.
     final markerById = <String, Map<String, dynamic>>{};
     final rawNearbyMarkers = await _client
         .from('Marker')
@@ -47,26 +47,14 @@ class ARSiteRemoteDataSource {
         .select('attraction_id, site_id, marker_id, name')
         .inFilter('marker_id', nearbyMarkerIds);
 
-    final sites = <ARSite>[];
+    final experiences = <ARSiteExperience>[];
     for (final row in rows) {
       final dto = ARSiteExperienceDto.fromJson(Map<String, dynamic>.from(row));
       final experience = _toExperience(dto, markerById);
       if (experience == null || experience.attractionId.isEmpty) continue;
-      sites.add(
-        ARSite(
-          siteId: 'ATTRACTION_${experience.attractionId}',
-          name: experience.name,
-          latitude: experience.latitude,
-          longitude: experience.longitude,
-          category: 'AR attraction',
-          matchAliases: [experience.name],
-          matchRadiusMeters: math.max(150, experience.activationRadiusMeters),
-          experiences: [experience],
-        ),
-      );
+      experiences.add(experience);
     }
-    sites.sort((a, b) => a.name.compareTo(b.name));
-    return sites;
+    return groupNearbyARExperiencesByExactCoordinates(experiences);
   }
 
   ARSiteExperience? _toExperience(

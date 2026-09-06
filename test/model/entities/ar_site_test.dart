@@ -90,4 +90,62 @@ void main() {
     expect(sites.single.experiences, hasLength(2));
     expect(sites.single.matchRadiusMeters, 150);
   });
+
+  group('Nearby exact-coordinate grouping', () {
+    test('combines different attractions at exactly equal coordinates', () {
+      final sites = groupNearbyARExperiencesByExactCoordinates(const [
+        ARSiteExperience(
+          attractionId: 'AD002',
+          markerId: 'MK002',
+          name: 'Tower 2 — Visitor Tower',
+          latitude: 3.1578,
+          longitude: 101.7114,
+          activationRadiusMeters: 100,
+        ),
+        ARSiteExperience(
+          attractionId: 'AD007',
+          markerId: 'MK007',
+          name: 'Observation Deck (Level 86)',
+          latitude: 3.1578,
+          longitude: 101.7114,
+          activationRadiusMeters: 120,
+        ),
+      ]);
+
+      expect(sites, hasLength(1));
+      expect(sites.single.experiences, hasLength(2));
+      expect(
+        sites.single.name,
+        'Tower 2 — Visitor Tower / Observation Deck (Level 86)',
+      );
+      expect(
+        sites.single.experiences.map((experience) => experience.name),
+        containsAll(['Tower 2 — Visitor Tower', 'Observation Deck (Level 86)']),
+      );
+    });
+
+    test('keeps attractions separate when coordinates are only nearby', () {
+      final sites = groupNearbyARExperiencesByExactCoordinates(const [
+        ARSiteExperience(
+          attractionId: 'AD100',
+          markerId: 'MK100',
+          name: 'First attraction',
+          latitude: 3.1578,
+          longitude: 101.7114,
+          activationRadiusMeters: 100,
+        ),
+        ARSiteExperience(
+          attractionId: 'AD101',
+          markerId: 'MK101',
+          name: 'Second attraction',
+          latitude: 3.15781,
+          longitude: 101.7114,
+          activationRadiusMeters: 100,
+        ),
+      ]);
+
+      expect(sites, hasLength(2));
+      expect(sites.every((site) => site.experiences.length == 1), isTrue);
+    });
+  });
 }

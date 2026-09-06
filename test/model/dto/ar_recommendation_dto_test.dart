@@ -29,6 +29,7 @@ void main() {
     expect(result.relationship, 'Deepen the experience');
     expect(result.estimatedWalkMinutes, 10);
     expect(result.travelSummary, '10 min walk');
+    expect(result.googleMapsPlaceId, 'google-place-10');
     expect(result.toBookmarkPlace().placeId, 'google-place-10');
   });
 
@@ -47,5 +48,20 @@ void main() {
     expect(result.relationship, 'Complementary experience');
     expect(result.estimatedWalkMinutes, 1);
     expect(result.travelSummary, '1 min walk');
+  });
+
+  test('does not pass a NarrateMy fallback ID to Google Maps', () {
+    final result = ARRecommendationDto.fromJson({
+      'attraction_id': 'AD030',
+      'marker_id': 'MK030',
+      'place_id': 'narratemy-ar-AD030',
+      'name': 'Museum exhibit',
+      'latitude': 3.1,
+      'longitude': 101.7,
+      'distance_km': 0.2,
+    }).toEntity();
+
+    expect(result.googleMapsPlaceId, isNull);
+    expect(result.toBookmarkPlace().placeId, 'narratemy-ar-AD030');
   });
 }

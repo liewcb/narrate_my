@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as maps;
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/services/map_marker_layout.dart';
 import '../../model/data_sources/remote/recommendation_data_source.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
@@ -186,16 +187,26 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
   ) {
     final markers = <maps.Marker>{};
     final matchedSiteIds = <String>{};
+    final displayedARPositions = spreadOverlappingMapCoordinates({
+      for (final site in arSites)
+        site.siteId: Coordinates(
+          latitude: site.latitude,
+          longitude: site.longitude,
+        ),
+    });
 
     for (final recommendation in recommendations) {
       final arSite = _findMatchingARSite(recommendation, arSites);
       if (arSite != null) matchedSiteIds.add(arSite.siteId);
+      final displayedARPosition = arSite == null
+          ? null
+          : displayedARPositions[arSite.siteId];
       markers.add(
         maps.Marker(
           markerId: maps.MarkerId(recommendation.placeId),
           position: maps.LatLng(
-            recommendation.latitude,
-            recommendation.longitude,
+            displayedARPosition?.latitude ?? recommendation.latitude,
+            displayedARPosition?.longitude ?? recommendation.longitude,
           ),
           icon: arSite == null
               ? (_recommendationMarker ??
@@ -222,10 +233,14 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
 
     for (final site in arSites) {
       if (matchedSiteIds.contains(site.siteId)) continue;
+      final displayedPosition = displayedARPositions[site.siteId];
       markers.add(
         maps.Marker(
           markerId: maps.MarkerId('ar-site-${site.siteId}'),
-          position: maps.LatLng(site.latitude, site.longitude),
+          position: maps.LatLng(
+            displayedPosition?.latitude ?? site.latitude,
+            displayedPosition?.longitude ?? site.longitude,
+          ),
           icon: _arAvailableMarker ?? maps.BitmapDescriptor.defaultMarker,
           infoWindow: maps.InfoWindow(
             title: site.name,

@@ -2,8 +2,9 @@ import 'dart:math' as math;
 
 /// A visitor-facing AR attraction marker on the Nearby map.
 ///
-/// The current map data source creates one of these for every `Attraction`
-/// row. The optional parent-site metadata remains available to other modules.
+/// The current map data source creates one of these for every exact Marker
+/// coordinate. Most contain one attraction; exact coordinate duplicates share
+/// one pin and expose all their attractions in the details sheet.
 class ARSite {
   final String siteId;
   final String name;
@@ -127,6 +128,60 @@ class ARSiteExperience {
     return distanceMetersFrom(userLatitude, userLongitude) <=
         activationRadiusMeters;
   }
+}
+
+/// Creates the visitor-facing pins used by the Nearby map.
+///
+/// Equality is deliberately exact: attractions are combined only when both
+/// coordinate values from their Marker rows are identical. Nearby attractions
+/// with merely similar coordinates remain separate, regardless of `site_id`.
+List<ARSite> groupNearbyARExperiencesByExactCoordinates(
+  Iterable<ARSiteExperience> experiences,
+) {
+  final byCoordinates = <(double, double), List<ARSiteExperience>>{};
+  for (final experience in experiences) {
+    final key = (experience.latitude, experience.longitude);
+    byCoordinates.putIfAbsent(key, () => []).add(experience);
+  }
+
+  final sites = <ARSite>[];
+  for (final entry in byCoordinates.entries) {
+    final coordinateExperiences = entry.value
+      ..sort((a, b) => a.attractionId.compareTo(b.attractionId));
+    if (coordinateExperiences.isEmpty) continue;
+
+    final first = coordinateExperiences.first;
+    final isCombined = coordinateExperiences.length > 1;
+    final largestActivationRadius = coordinateExperiences
+        .map((experience) => experience.activationRadiusMeters)
+        .fold<double>(0, math.max);
+    final stableIds = coordinateExperiences
+        .map((experience) => experience.attractionId)
+        .join('_');
+
+    sites.add(
+      ARSite(
+        siteId: isCombined
+            ? 'EXACT_COORDINATE_$stableIds'
+            : 'ATTRACTION_${first.attractionId}',
+        name: isCombined
+            ? coordinateExperiences
+                  .map((experience) => experience.name)
+                  .join(' / ')
+            : first.name,
+        latitude: first.latitude,
+        longitude: first.longitude,
+        category: isCombined ? 'AR location' : 'AR attraction',
+        matchAliases: coordinateExperiences
+            .map((experience) => experience.name)
+            .toList(growable: false),
+        matchRadiusMeters: math.max(150, largestActivationRadius),
+        experiences: List.unmodifiable(coordinateExperiences),
+      ),
+    );
+  }
+  sites.sort((a, b) => a.name.compareTo(b.name));
+  return sites;
 }
 
 /// Converts experiences that have not yet been assigned a parent site into
