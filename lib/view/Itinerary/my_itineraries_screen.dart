@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/app_theme.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import '../../viewmodel/Itinerary/my_itineraries_vm.dart';
 import 'manage_itinerary/manage_display_plan_screen.dart';
 import 'destination_choice_screen.dart';
@@ -76,6 +77,7 @@ class _ItinerariesView extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
+          context.read<TripDraftNotifier>().reset();
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -250,6 +252,9 @@ class _ItinerariesView extends StatelessWidget {
                               MaterialPageRoute(
                                 builder: (_) => ManageDisplayPlanScreen(
                                   itineraryId: trip.itineraryId,
+                                  // Opening an itinerary is the "Track" action:
+                                  // auto-focus today's travel plan.
+                                  openTrackedDay: true,
                                 ),
                               ),
                             );

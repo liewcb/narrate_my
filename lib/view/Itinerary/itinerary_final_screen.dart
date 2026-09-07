@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_final_vm.dart';
 import 'add_place_screen.dart';
@@ -345,14 +346,16 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
           // ✅ UPDATE THIS: Route directly using the Final Screen's active context
           onRegenerate: widget.draft != null
               ? () {
+
+            context.read<TripDraftNotifier>().updateDraft(widget.draft!);
+
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (_) => GenerationScreen(draft: widget.draft!),
+                builder: (_) => const GenerationScreen(),
               ),
             );
-          }
-              : null,
+          } : null,
           isRegenerating: false,
           onSave: _vm.canSave ? () => _handleSave() : null,
           isSaving: _vm.isSaveInProgress,

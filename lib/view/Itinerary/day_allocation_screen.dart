@@ -38,7 +38,6 @@ class AddAllocationScreen extends StatelessWidget {
     }
 
     return SplitDaysScreen(
-      draft: draft,
       destinations: destinationsWithDays,
       totalPlannedDays: totalDays,
     );

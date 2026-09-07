@@ -18,8 +18,16 @@ import '../widgets/view_place_detail_screen.dart';
 class ManageDisplayPlanScreen extends StatefulWidget {
   final String itineraryId;
 
-  const ManageDisplayPlanScreen({Key? key, required this.itineraryId})
-    : super(key: key);
+  /// When true (opened via "Track"), the screen automatically selects and
+  /// scrolls to today's itinerary day once the day cards are rendered.
+  /// Normal opens leave this false and behave exactly as before.
+  final bool openTrackedDay;
+
+  const ManageDisplayPlanScreen({
+    Key? key,
+    required this.itineraryId,
+    this.openTrackedDay = false,
+  }) : super(key: key);
 
   @override
   State<ManageDisplayPlanScreen> createState() =>
@@ -37,6 +45,10 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
   int _selectedMapDayIndex = 1; // will be updated from available days
   List<int> _availableDays = [];
 
+  // Ensures "Track today" is applied only once, so later manual day taps are
+  // never overridden.
+  bool _trackApplied = false;
+
   @override
   void initState() {
     super.initState();
@@ -50,6 +62,37 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     super.dispose();
   }
 
+  // ─── Track today's travel plan ─────────────────────────────────
+  /// Selects today's itinerary day (via the ViewModel's calendar-day
+  /// calculation) and scrolls to it. Runs once; manual selection still works
+  /// afterwards. Pure view/navigation — no itinerary/stop data is modified.
+  void _trackToday() {
+    if (_trackApplied) return;
+    _trackApplied = true;
+
+    final today = _viewModel.calculateCurrentDayIndex();
+    if (today == null) return;
+
+    if (_selectedMapDayIndex != today) {
+      setState(() => _selectedMapDayIndex = today);
+    }
+    _scrollToDayWhenReady(today);
+  }
+
+  /// Scrolls to [dayIndex] once its day card has actually been rendered
+  /// (its GlobalKey has a live context), retrying across a few frames.
+  void _scrollToDayWhenReady(int dayIndex, [int attempt = 0]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final key = _dayKeys[dayIndex];
+      if (key?.currentContext != null) {
+        _scrollToDay(dayIndex);
+      } else if (attempt < 8) {
+        _scrollToDayWhenReady(dayIndex, attempt + 1);
+      }
+    });
+  }
+
   // ─── Scroll to a specific day card ─────────────────────────────
   void _scrollToDay(int dayIndex) {
     final key = _dayKeys[dayIndex];
@@ -61,6 +104,15 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
         alignment: 0.05,
       );
     }
+  }
+
+  // ─── Tap day card handler ──────────────────────────────────────
+  void _onDayCardTap(int dayIndex) {
+    // Update the selected map day and scroll to the card
+    setState(() {
+      _selectedMapDayIndex = dayIndex;
+    });
+    _scrollToDay(dayIndex);
   }
 
   // ─── Open stop detail ──────────────────────────────────────────
@@ -121,7 +173,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     if (itinerary == null) return;
 
     final availableDays =
-        _viewModel.stops.map((s) => s.dayIndex).toSet().toList()..sort();
+    _viewModel.stops.map((s) => s.dayIndex).toSet().toList()..sort();
 
     final changed = await Navigator.push<bool>(
       context,
@@ -193,7 +245,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     final place = stop.place ?? Place.empty(stop.placeId);
     final type =
         place.placeCategory ??
-        (place.placeTypes.isNotEmpty ? place.placeTypes.first : 'Attraction');
+            (place.placeTypes.isNotEmpty ? place.placeTypes.first : 'Attraction');
     final travelMinutes = stop.travelFromPrevMinutes;
 
     return WizardPlace(
@@ -262,6 +314,17 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
         if (_availableDays.isNotEmpty &&
             !_availableDays.contains(_selectedMapDayIndex)) {
           _selectedMapDayIndex = _availableDays.first;
+        }
+
+        // Track: focus today's day once, after the itinerary has loaded and
+        // the day cards are in the tree (post-frame). No-op for normal opens.
+        if (widget.openTrackedDay &&
+            !_trackApplied &&
+            !_viewModel.isLoading &&
+            _viewModel.itinerary != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _trackToday();
+          });
         }
 
         final canEdit = _viewModel.canCustomize;
@@ -374,11 +437,13 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
             stops: stops,
             dayDate: date ?? DateTime.now(),
             canEdit: canEdit,
+            isSelected: _selectedMapDayIndex == dayIndex,
             onEditDay: () => _openEditDay(dayIndex),
             onEditStop: _openEditStop,
             onAddPlace: (day, date) => _openAddPlace(day, date),
             onAddBookmarks: _openAddBookmarks,
             onStopTap: _openStopDetail,
+            onTapDay: _onDayCardTap,
           ),
         ),
       );
@@ -390,7 +455,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  REUSABLE WIDGETS (unchanged)
+//  REUSABLE WIDGETS
 // ════════════════════════════════════════════════════════════════
 
 /// Hero section with title, dates, and status badge.
@@ -569,17 +634,14 @@ class _MapCard extends StatelessWidget {
 
     final validStops = _MappableStop.fromStops(stopsForDay);
 
-    // Grab the screen height to make the map responsive
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Container(
-      // ✅ INCREASED HEIGHT: Uses 35% of the screen height, with a minimum of 280 pixels
       height: (screenHeight * 0.35).clamp(280.0, 400.0),
       width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
-        // Added a subtle shadow to make the map stand out from the background
         boxShadow: const [
           BoxShadow(
             color: Color(0x0A000000),
@@ -593,10 +655,10 @@ class _MapCard extends StatelessWidget {
         child: validStops.isEmpty
             ? _EmptyMapState(dayIndex: dayIndex)
             : _DayMapWidget(
-                stops: validStops,
-                dayIndex: dayIndex,
-                onStopTap: onStopTap,
-              ),
+          stops: validStops,
+          dayIndex: dayIndex,
+          onStopTap: onStopTap,
+        ),
       ),
     );
   }
@@ -719,7 +781,7 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
         infoWindow: maps.InfoWindow(
           title: item.stop.place?.name ?? item.stop.placeId,
           snippet:
-              'Day ${widget.dayIndex} • Stop ${item.stop.stopOrder}\n${_formattedTime(item.stop)}',
+          'Day ${widget.dayIndex} • Stop ${item.stop.stopOrder}\n${_formattedTime(item.stop)}',
         ),
         onTap: () => widget.onStopTap(item.stop),
       );
@@ -782,7 +844,7 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
 
   String _formattedTime(ItineraryStop stop) =>
       '${DateFormat('HH:mm').format(stop.startTime)} – '
-      '${DateFormat('HH:mm').format(stop.endTime)}';
+          '${DateFormat('HH:mm').format(stop.endTime)}';
 }
 
 /// A stop with valid, mappable coordinates.
@@ -819,11 +881,13 @@ class _DayCard extends StatelessWidget {
   final List<ItineraryStop> stops;
   final DateTime dayDate;
   final bool canEdit;
+  final bool isSelected;
   final VoidCallback onEditDay;
   final Future<void> Function(ItineraryStop) onEditStop;
   final Future<void> Function(int, DateTime) onAddPlace;
   final Future<void> Function(int) onAddBookmarks;
   final void Function(ItineraryStop) onStopTap;
+  final void Function(int) onTapDay;
 
   const _DayCard({
     required this.dayIndex,
@@ -832,47 +896,57 @@ class _DayCard extends StatelessWidget {
     required this.stops,
     required this.dayDate,
     required this.canEdit,
+    required this.isSelected,
     required this.onEditDay,
     required this.onEditStop,
     required this.onAddPlace,
     required this.onAddBookmarks,
     required this.onStopTap,
+    required this.onTapDay,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x05000000),
-            offset: Offset(0, 2),
-            blurRadius: 8,
+    return GestureDetector(
+      onTap: () => onTapDay(dayIndex),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(
+            color: isSelected
+                ? AppColors.accent
+                : AppColors.moduleBorder.withOpacity(0.6),
+            width: isSelected ? 2 : 1,
           ),
-        ],
-      ),
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(),
-          const SizedBox(height: 20.0),
-          const Text(
-            'STOPS',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
-              color: AppColors.inkFaint,
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x05000000),
+              offset: Offset(0, 2),
+              blurRadius: 8,
             ),
-          ),
-          const SizedBox(height: 12.0),
-          _buildTimeline(),
-          if (canEdit) _buildAddActions(),
-        ],
+          ],
+        ),
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHeader(),
+            const SizedBox(height: 20.0),
+            const Text(
+              'STOPS',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: AppColors.inkFaint,
+              ),
+            ),
+            const SizedBox(height: 12.0),
+            _buildTimeline(),
+            if (canEdit) _buildAddActions(),
+          ],
+        ),
       ),
     );
   }
@@ -898,22 +972,6 @@ class _DayCard extends StatelessWidget {
             ],
           ),
         ),
-        // if (canEdit)
-        // OutlinedButton.icon(
-        //   onPressed: onEditDay,
-        //   icon: const Icon(Icons.edit_outlined, size: 16),
-        //   label: const Text('Edit Plan'),
-        //   style: OutlinedButton.styleFrom(
-        //     foregroundColor: AppColors.accent,
-        //     side: BorderSide(color: AppColors.accent.withOpacity(0.5)),
-        //     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        //     minimumSize: Size.zero,
-        //     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        //     shape: RoundedRectangleBorder(
-        //       borderRadius: BorderRadius.circular(AppRadius.pill),
-        //     ),
-        //   ),
-        // ),
       ],
     );
   }

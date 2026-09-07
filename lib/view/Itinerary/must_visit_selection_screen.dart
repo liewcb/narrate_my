@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:narrate_my/view/Itinerary/split_days_screen.dart';
+import 'package:narrate_my/view/Itinerary/widgets/view_place_detail_screen.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/must_visit_selection_vm.dart';
-import 'split_days_screen.dart';
 import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
-
 class MustVisitSelectionScreen extends StatefulWidget {
-  final TripDraft draft;
-  const MustVisitSelectionScreen({super.key, required this.draft});
+  const MustVisitSelectionScreen({super.key});
 
   @override
   State<MustVisitSelectionScreen> createState() => _MustVisitSelectionScreenState();
@@ -32,9 +31,11 @@ class _MustVisitSelectionScreenState extends State<MustVisitSelectionScreen> {
       );
     }
 
+    final sharedDraft = context.read<TripDraftNotifier>().draft;
+
     return ChangeNotifierProvider<Step3AddPlaceVM>(
       create: (_) => Step3AddPlaceVM(
-        widget.draft,
+        sharedDraft,
         userId: user.id,
       ),
       child: const _Step3AddPlaceBody(),
@@ -74,7 +75,6 @@ class _Step3AddPlaceBody extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (_) => SplitDaysScreen(
-          draft: draft,
           destinations: destinationsWithDays,
           totalPlannedDays: totalDays,
         ),
@@ -226,8 +226,6 @@ class _Step3AddPlaceBody extends StatelessWidget {
                               onToggle: (placeId, {confirmOutsideHotspot = false}) =>
                                   vm.togglePlace(
                                     placeId,
-                                    // REQ_MV_08 §8 — preserve the selection
-                                    // source through to generation.
                                     source: vm.selectedTab == 0
                                         ? 'BOOKMARK'
                                         : 'GOOGLE_SEARCH',
@@ -246,12 +244,14 @@ class _Step3AddPlaceBody extends StatelessWidget {
             _StickyFooter(
               selectedCount: vm.mustVisitPlaceIds.length,
               onContinue: () {
-                final draft = vm.buildDraft();
-                _navigateToSplitDays(context, draft);
+                final updatedDraft = vm.buildDraft();
+                context.read<TripDraftNotifier>().updateDraft(updatedDraft);
+                _navigateToSplitDays(context, updatedDraft);
               },
               onSkip: () {
-                final draft = vm.buildDraft();
-                _navigateToSplitDays(context, draft);
+                final updatedDraft = vm.buildDraft();
+                context.read<TripDraftNotifier>().updateDraft(updatedDraft);
+                _navigateToSplitDays(context, updatedDraft);
               },
             ),
           ],
@@ -523,9 +523,6 @@ class _PlaceList extends StatelessWidget {
       case MustVisitSelectionStatus.added:
         break;
       case MustVisitSelectionStatus.warning:
-      // OUTSIDE_HOTSPOT — traveler may confirm (§19). "Add Anyway" only
-      // means "outside the recommended hotspot"; it never bypasses the
-      // other validation rules.
         if (!context.mounted) break;
         final confirmed = await showDialog<bool>(
           context: context,
@@ -547,7 +544,6 @@ class _PlaceList extends StatelessWidget {
         }
         break;
       case MustVisitSelectionStatus.rejected:
-      // Validation failure — clear message, never a raw exception.
         messenger.hideCurrentSnackBar();
         messenger.showSnackBar(
           SnackBar(
@@ -573,6 +569,17 @@ class _PlaceList extends StatelessWidget {
                 place: place,
                 isAdded: added,
                 onToggle: () => _handleToggle(context, place),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ViewPlaceDetailScreen(
+                        placeId: place.placeId,
+                        showStatusToggle: false,
+                      ),
+                    ),
+                  );
+                },
               ),
             );
           }).toList(),
@@ -601,111 +608,119 @@ class _PlaceCard extends StatelessWidget {
   final WizardPlace place;
   final bool isAdded;
   final VoidCallback onToggle;
-  const _PlaceCard({required this.place, required this.isAdded, required this.onToggle});
+  final VoidCallback onTap;
+
+  const _PlaceCard({
+    required this.place,
+    required this.isAdded,
+    required this.onToggle,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: place.imageUrl != null
-                    ? Image.network(
-                  place.imageUrl!,
-                  width: 72,
-                  height: 72,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: place.imageUrl != null
+                      ? Image.network(
+                    place.imageUrl!,
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 72,
+                      height: 72,
+                      color: AppColors.outlineLight,
+                      child: const Icon(Icons.image_not_supported, color: AppColors.outline),
+                    ),
+                  )
+                      : Container(
                     width: 72,
                     height: 72,
                     color: AppColors.outlineLight,
-                    child: const Icon(Icons.image_not_supported, color: AppColors.outline),
+                    child: const Icon(Icons.landscape, color: AppColors.outline),
                   ),
-                )
-                    : Container(
-                  width: 72,
-                  height: 72,
-                  color: AppColors.outlineLight,
-                  child: const Icon(Icons.landscape, color: AppColors.outline),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      place.name,
-                      style: GoogleFonts.playfairDisplay(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.brandGreen, height: 1.2),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        place.name,
+                        style: GoogleFonts.playfairDisplay(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.brandGreen, height: 1.2),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        place.location.isNotEmpty ? '${place.type} · ${place.location}' : place.type,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: AppColors.outline),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: AppColors.brandGreenLight, borderRadius: BorderRadius.circular(6)),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.star, size: 14, color: AppColors.brandTerracotta),
+                      const SizedBox(width: 4),
+                      Text(place.rating.toStringAsFixed(1), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.brandCharcoal)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    alignment: WrapAlignment.start,
+                    children: [
+                      _infoChip(place.travelIcon, place.travelTime),
+                      if (place.duration != null) _infoChip(Icons.hourglass_bottom, place.duration!),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onToggle,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isAdded ? AppColors.brandGreen : AppColors.outlineLight,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      place.location.isNotEmpty ? '${place.type} · ${place.location}' : place.type,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: AppColors.outline),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Text(
+                      isAdded ? "Added ✓" : "+ Add",
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: isAdded ? Colors.white : AppColors.brandCharcoal),
                     ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: AppColors.brandGreenLight, borderRadius: BorderRadius.circular(6)),
-                child: Row(
-                  children: [
-                    const Icon(Icons.star, size: 14, color: AppColors.brandTerracotta),
-                    const SizedBox(width: 4),
-                    Text(place.rating.toStringAsFixed(1), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.brandCharcoal)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  alignment: WrapAlignment.start,
-                  children: [
-                    _infoChip(place.travelIcon, place.travelTime),
-                    if (place.duration != null) _infoChip(Icons.hourglass_bottom, place.duration!),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                // Selection decisions live in the ViewModel; the card only
-                // triggers the toggle and displays the resulting feedback.
-                onTap: onToggle,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isAdded ? AppColors.brandGreen : AppColors.outlineLight,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    isAdded ? "Added ✓" : "+ Add",
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: isAdded ? Colors.white : AppColors.brandCharcoal),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -769,7 +784,6 @@ class _StickyFooter extends StatelessWidget {
               ),
               const SizedBox(height: 16),
             ],
-            // Show skip button ONLY when no selection
             if (!hasSelection)
               GestureDetector(
                 onTap: onSkip,

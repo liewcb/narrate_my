@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import 'itinerary_final_screen.dart';
 import '../../core/theme/colors.dart';
 import '../../model/business_logic/itinerary_service/itinerary_generation_status.dart';
@@ -10,10 +11,7 @@ import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_generation_vm.dart';
 
 class GenerationScreen extends StatefulWidget {
-  final TripDraft draft;
-
-  const GenerationScreen({super.key, required this.draft});
-
+  const GenerationScreen({super.key});
   @override
   State<GenerationScreen> createState() => _GenerationScreenState();
 }
@@ -29,7 +27,10 @@ class _GenerationScreenState extends State<GenerationScreen> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<Step5GenerationVM>(
-      create: (_) => Step5GenerationVM(widget.draft)..startGeneration(),
+      create: (context) {
+        final completedTripDraft = context.read<TripDraftNotifier>().draft;
+        return Step5GenerationVM(completedTripDraft)..startGeneration();
+      },
       child: _GenerationBody(planePositions: planePositions),
     );
   }
@@ -203,6 +204,8 @@ class __MapHeroState extends State<_MapHero>
   @override
   void initState() {
     super.initState();
+
+    // Only handle UI animations here!
     _pulse = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,

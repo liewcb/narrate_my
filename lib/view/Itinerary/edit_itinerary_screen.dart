@@ -1,4 +1,5 @@
 ﻿import 'dart:ui' as ui;
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -1151,6 +1152,127 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _pickTimeRange(int index) async {
+    final stop = _vm.stops[index];
+    final currentStart = TimeOfDay(hour: stop.startTime.hour, minute: stop.startTime.minute);
+    final currentEnd = TimeOfDay(hour: stop.endTime.hour, minute: stop.endTime.minute);
+
+    TimeOfDay? newStart = currentStart;
+    TimeOfDay? newEnd = currentEnd;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Choose start and end time',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            children: [
+                              const Text('Start', style: TextStyle(fontWeight: FontWeight.w500)),
+                              CupertinoTimerPicker(
+                                initialTimerDuration: Duration(
+                                  hours: newStart!.hour,
+                                  minutes: newStart!.minute,
+                                ),
+                                onTimerDurationChanged: (duration) {
+                                  setSheetState(() {
+                                    newStart = TimeOfDay(
+                                      hour: duration.inHours % 24,
+                                      minute: duration.inMinutes % 60,
+                                    );
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              const Text('End', style: TextStyle(fontWeight: FontWeight.w500)),
+                              CupertinoTimerPicker(
+                                initialTimerDuration: Duration(
+                                  hours: newEnd!.hour,
+                                  minutes: newEnd!.minute,
+                                ),
+                                onTimerDurationChanged: (duration) {
+                                  setSheetState(() {
+                                    newEnd = TimeOfDay(
+                                      hour: duration.inHours % 24,
+                                      minute: duration.inMinutes % 60,
+                                    );
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(sheetContext, [newStart, newEnd]);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.terracottaDark,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Apply'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    ).then((result) {
+      if (result != null && result is List && result.length == 2) {
+        final start = result[0] as TimeOfDay;
+        final end = result[1] as TimeOfDay;
+        final ok = _vm.setTimeRange(index, start, end);
+        if (ok) {
+          _fitMapBounds();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Time range updated.')),
+          );
+        } else {
+          _showProblem(_vm.error ?? 'Invalid time range.');
+        }
+      }
+    });
   }
 
   // ─── All Days List ──────────────────────────────────────────
