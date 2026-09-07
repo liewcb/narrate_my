@@ -2,7 +2,7 @@
 import 'package:flutter/foundation.dart';
 import '../../core/services/database_manager.dart';
 import '../../model/entities/itinerary.dart';
-import '../../model/repositories/interfaces/itinerary_repository.dart';
+import '../../model/repositories/interfaces/itinerary/itinerary_repository.dart';
 import '../../view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 
 class MyItinerariesVM extends ChangeNotifier {

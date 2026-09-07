@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../model/entities/trip_draft.dart';
-import 'split_days_screen.dart';
+import './split_days_screen.dart';
 
 /// Step 4: Allocate days to each destination.
 /// Receives the current draft from the previous wizard step.

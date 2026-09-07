@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'core/ai_assistant/global_ai_assistant.dart';
-import 'core/accessibility/accessibility_vm.dart';
-import 'core/localization/locale_vm.dart';
-import 'core/routes/app_routes.dart';
-import 'core/services/database_manager.dart';
-import 'core/theme/app_theme.dart';
+import './core/ai_assistant/global_ai_assistant.dart';
+import './core/accessibility/accessibility_vm.dart';
+import './core/localization/locale_vm.dart';
+import './core/routes/app_routes.dart';
+import './core/services/database_manager.dart';
+import './core/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import '../../core/errors/failures.dart';
 import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../model/business_logic/profile/validators.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
 
 /// Backs UC402 A16–A18 (C6): change password for an account that already
 /// has one. Kept separate from [PersonalInfoVm] since it's a distinct

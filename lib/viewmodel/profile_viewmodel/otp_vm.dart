@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/errors/failures.dart';
 import '../../model/entities/profile.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
 
 /// Which of the four UC400/401/403 flows this OTP screen is verifying for.
 /// A single `OtpScreen`/`OtpVm` pair is shared across all of them — only

@@ -4,8 +4,8 @@ import '../../core/errors/failures.dart';
 import '../../model/business_logic/profile/messages/register_messages.dart';
 import '../../model/business_logic/profile/validators.dart';
 import '../../model/entities/profile.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
 
 /// Backs UC400 Register Account — both the phone-tab (A2) and the
 /// username-tab (A3) branches, plus the shared Google entry point (A1).

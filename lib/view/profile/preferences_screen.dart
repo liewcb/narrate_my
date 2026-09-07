@@ -9,9 +9,9 @@ import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../model/business_logic/profile/preference_options.dart';
 import '../../model/entities/preferences.dart';
 import '../../viewmodel/profile_viewmodel/preferences_vm.dart';
-import 'widgets/attraction_tile.dart';
-import 'widgets/primary_button.dart';
-import 'widgets/toggle_preference_tile.dart';
+import './widgets/attraction_tile.dart';
+import './widgets/primary_button.dart';
+import './widgets/toggle_preference_tile.dart';
 
 /// UC402 A3 (Manage Preferences). All categories are staged locally in
 /// this screen's own state and saved together, in one call, as the

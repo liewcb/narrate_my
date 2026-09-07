@@ -3,7 +3,6 @@
 /// (REQ_501–504), so they live in ONE place instead of being repeated as
 /// magic numbers across viewmodels.
 ///
-/// NOTE: this repo also has `lib/core/utils/app_constants.dart` (an older,
 /// unrelated file holding a generic `appName`/`defaultPadding`/`apiTimeout`
 /// trio used elsewhere). That file is left untouched — other modules may
 /// depend on it. This file is specifically Module 5's rulebook; the

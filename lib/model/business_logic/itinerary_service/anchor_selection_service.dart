@@ -1,5 +1,5 @@
-import 'clustering_service.dart';
-import 'scoring_service.dart';
+import './clustering_service.dart';
+import './scoring_service.dart';
 
 /// Represents a full day plan with an anchor and surrounding attractions.
 class DailyPlan {

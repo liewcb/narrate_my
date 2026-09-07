@@ -1,6 +1,6 @@
 import 'dart:math';
-import 'destination.dart';
-import 'coordinates.dart';
+import './destination.dart';
+import './coordinates.dart';
 
 /// Validated must-visit metadata preserved across the wizard.
 ///

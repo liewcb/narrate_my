@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/destination.dart';
 import '../../viewmodel/Itinerary/destination_choice_vm.dart';
-import 'trip_customization_screen.dart';
+import './trip_customization_screen.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 
 class DestinationChoiceScreen extends StatefulWidget {

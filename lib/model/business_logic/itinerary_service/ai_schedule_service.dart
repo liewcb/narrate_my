@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import '../../../core/config/itinerary_constants.dart';
 import '../../../core/services/ai_service.dart';
-import 'candidate_retrieval_service.dart';
-import 'clustering_service.dart';
+import './candidate_retrieval_service.dart';
+import './clustering_service.dart';
 import '../../entities/weather.dart';
-import 'scoring_service.dart';
+import './scoring_service.dart';
 
 class AiScheduleService {
   final AIService _aiService;

@@ -3,9 +3,9 @@
 
 import '../../../core/services/ai_service.dart';
 import '../../entities/coordinates.dart';
-import 'anchor_selection_service.dart';
-import 'place_registry.dart';
-import 'scoring_service.dart';
+import './anchor_selection_service.dart';
+import './place_registry.dart';
+import './scoring_service.dart';
 
 /// Pipeline Step 7: AI-Assisted Route Planning.
   ///

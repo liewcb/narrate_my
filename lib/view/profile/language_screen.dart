@@ -7,7 +7,7 @@ import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../viewmodel/profile_viewmodel/language_vm.dart';
-import 'widgets/primary_button.dart';
+import './widgets/primary_button.dart';
 
 /// UC402 A4 (Manage Preferred Language, C2). Selecting an option updates
 /// the on-screen radio state immediately (a "live preview" in the sense

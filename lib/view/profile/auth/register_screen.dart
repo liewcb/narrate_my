@@ -14,8 +14,8 @@ import '../widgets/password_rules_hint.dart';
 import '../widgets/phone_field.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/underline_field.dart';
-import 'login_screen.dart';
-import 'otp_screen.dart';
+import './login_screen.dart';
+import './otp_screen.dart';
 
 /// UC400 Register Account. Google (A1) up top, then a Phone/Username tab
 /// switch for A2 vs A3 — matches the design canvas's Register screens.

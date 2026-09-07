@@ -4,7 +4,7 @@ import '../../model/business_logic/itinerary_service/destination_service.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/destination.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../model/repositories/interfaces/destination_repository.dart';
+import '../../model/repositories/interfaces/itinerary/destination_repository.dart';
 
 class Step1WhereToViewModel extends ChangeNotifier {
   static const int maxDestinations = 2;

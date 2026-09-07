@@ -1,6 +1,6 @@
 import '../../entities/ai_attraction_context.dart';
 import '../../entities/ai_chat_message.dart';
-import '../../repositories/interfaces/ai_travel_assistant_repository.dart';
+import '../../repositories/interfaces/ai_assist/ai_travel_assistant_repository.dart';
 
 /// UC500 business rules that do not belong to the widget or transport layer.
 class AiTravelAssistantService {

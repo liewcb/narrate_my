@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'add_place_screen.dart';
+import './add_place_screen.dart';
 import '../../core/theme/colors.dart';
 
 class ItineraryStop {

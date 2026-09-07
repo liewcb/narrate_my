@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/services/database_manager.dart';
 import '../../model/entities/place.dart';
-import '../../model/repositories/adapters/place_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/place_repository_adapter.dart';
 
 /// Loads and exposes the [Place] shown by the View Place Detail screen.
 ///

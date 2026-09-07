@@ -1,7 +1,7 @@
 import '../../entities/place.dart';
 import '../../entities/bookmark.dart';
-import '../../repositories/adapters/bookmark_repository_adapter.dart';
-import '../../repositories/interfaces/bookmark_repository.dart';
+import '../../repositories/adapters/bookmark/bookmark_repository_adapter.dart';
+import '../../repositories/interfaces/bookmark/bookmark_repository.dart';
 
 /// One bookmark entry point shared by Nearby, AR, AI Chat, and Itinerary.
 ///

@@ -4,7 +4,7 @@ import 'package:narrate_my/model/entities/ai_attraction_context.dart';
 import 'package:narrate_my/model/entities/ai_chat_message.dart';
 import 'package:narrate_my/model/entities/coordinates.dart';
 import 'package:narrate_my/model/entities/place.dart';
-import 'package:narrate_my/model/repositories/interfaces/ai_travel_assistant_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/ai_assist/ai_travel_assistant_repository.dart';
 import 'package:narrate_my/viewmodel/ai_assistant/ai_travel_assistant_vm.dart';
 
 class _FakeRepository implements AiTravelAssistantRepository {

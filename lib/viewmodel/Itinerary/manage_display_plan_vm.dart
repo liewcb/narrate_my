@@ -5,9 +5,9 @@ import '../../core/services/database_manager.dart';
 import '../../model/entities/itinerary.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
-import '../../model/repositories/adapters/itinerary_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary_stop_repository_adapter.dart';
-import '../../model/repositories/adapters/place_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/itinerary_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/place_repository_adapter.dart';
 import '../../core/config/api_keys.dart';
 import 'package:narrate_my/view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 

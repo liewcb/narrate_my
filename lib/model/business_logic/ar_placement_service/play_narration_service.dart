@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../entities/ar_placement.dart';
-import '../../repositories/interfaces/ar_heritage_repository.dart';
+import '../../repositories/interfaces/ar_heritage/ar_heritage_repository.dart';
 import '../ar_heritage_interpretation_service/get_attraction_content_service.dart';
 import '../../data_sources/remote/auth_remote_data_source.dart';
 

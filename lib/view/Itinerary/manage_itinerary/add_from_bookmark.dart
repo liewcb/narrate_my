@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/database_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/dto/bookmark_with_place_dto.dart';
-import '../../../model/repositories/interfaces/bookmark_repository.dart';
+import '../../../model/repositories/interfaces/bookmark/bookmark_repository.dart';
 
 class AddFromBookmarksScreen extends StatefulWidget {
   final String userId;

@@ -1,6 +1,6 @@
 // lib/model/entities/place.dart
-import 'coordinates.dart';
-import 'openning_hours.dart';
+import './coordinates.dart';
+import './openning_hours.dart';
 
 /// Canonical Place entity — every field name matches what the pipeline,
 /// scoring, clustering and AI services expect.

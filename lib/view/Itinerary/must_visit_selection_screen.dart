@@ -6,7 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/must_visit_selection_vm.dart';
-import 'split_days_screen.dart';
+import './split_days_screen.dart';
 import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 
 class MustVisitSelectionScreen extends StatefulWidget {

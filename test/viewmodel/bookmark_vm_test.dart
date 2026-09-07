@@ -3,7 +3,7 @@ import 'package:narrate_my/model/business_logic/shared_services/place_bookmark_s
 import 'package:narrate_my/model/dto/bookmark_with_place_dto.dart';
 import 'package:narrate_my/model/entities/bookmark.dart';
 import 'package:narrate_my/model/entities/place.dart';
-import 'package:narrate_my/model/repositories/interfaces/bookmark_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/bookmark/bookmark_repository.dart';
 import 'package:narrate_my/viewmodel/bookmark_vm.dart';
 
 class _FakeBookmarkRepository implements BookmarkRepository {

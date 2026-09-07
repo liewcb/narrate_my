@@ -11,7 +11,7 @@ import '../../model/entities/place.dart';
 import '../../model/entities/recommendation.dart';
 import '../../viewmodel/bookmark_vm.dart';
 import '../profile/auth/login_screen.dart';
-import 'nearby_ar_site_details_screen.dart';
+import './nearby_ar_site_details_screen.dart';
 
 Future<void> showNearbyRecommendationDetails(
   BuildContext context,

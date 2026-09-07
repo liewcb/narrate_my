@@ -5,8 +5,8 @@ import '../../../core/services/ai_service.dart';
 import '../../../core/services/google_maps_service.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
-import 'anchor_selection_service.dart';
-import 'scoring_service.dart';
+import './anchor_selection_service.dart';
+import './scoring_service.dart';
 
 class ScheduledStop {
   final ScoredAttraction attraction;

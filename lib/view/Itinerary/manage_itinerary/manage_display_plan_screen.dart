@@ -7,10 +7,10 @@ import '../../../model/entities/itinerary_stop.dart';
 import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/manage_display_plan_vm.dart';
 import 'package:narrate_my/view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
-import 'add_from_bookmark.dart';
-import 'add_custom_screen.dart';
-import 'edit_stop_screen.dart';
-import 'manage_edit_itinerary_screen.dart';
+import './add_from_bookmark.dart';
+import './add_custom_screen.dart';
+import './edit_stop_screen.dart';
+import './manage_edit_itinerary_screen.dart';
 import '../widgets/view_place_detail_screen.dart';
 
 /// Screen that displays a single itinerary with a map, day selector, and day cards.

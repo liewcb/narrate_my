@@ -1,5 +1,5 @@
 import '../entities/ar_object.dart';
-export 'coordinate_dto.dart';
+export './coordinate_dto.dart';
 
 /// DTO representing raw 3D / AR Object metadata from remote sources
 class ARObjectDto {

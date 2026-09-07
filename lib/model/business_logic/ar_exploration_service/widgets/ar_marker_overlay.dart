@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../../model/entities/ar_object.dart';
+import '../../../entities/ar_object.dart';
 
 /// Positions markers over the camera feed using compass-based
 /// "POI browser" AR: each marker's horizontal screen position is derived

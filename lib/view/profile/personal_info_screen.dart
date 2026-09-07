@@ -7,11 +7,11 @@ import '../../core/theme/app_theme.dart';
 import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../viewmodel/profile_viewmodel/otp_vm.dart';
 import '../../viewmodel/profile_viewmodel/personal_info_vm.dart';
-import 'auth/otp_screen.dart';
-import 'change_password_screen.dart';
-import 'widgets/phone_field.dart';
-import 'widgets/primary_button.dart';
-import 'widgets/underline_field.dart';
+import './auth/otp_screen.dart';
+import './change_password_screen.dart';
+import './widgets/phone_field.dart';
+import './widgets/primary_button.dart';
+import './widgets/underline_field.dart';
 
 /// UC402 A2 (Manage Personal Information). Full Name is the section's own
 /// atomic Save/Cancel (REQ_503_11); phone number change (A9) and password

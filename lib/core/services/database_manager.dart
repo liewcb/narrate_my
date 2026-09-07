@@ -1,14 +1,14 @@
 import 'package:narrate_my/core/services/local_database_service.dart';
 import 'package:narrate_my/core/services/remote_database_service.dart';
-import 'package:narrate_my/model/repositories/adapters/bookmark_repository_adapter.dart';
-import 'package:narrate_my/model/repositories/adapters/destination_hotspot_repository_adapter.dart';
-import 'package:narrate_my/model/repositories/adapters/destination_repository_adapter.dart';
-import 'package:narrate_my/model/repositories/adapters/itinerary_destination_repository_adapter.dart';
-import 'package:narrate_my/model/repositories/adapters/itinerary_must_visit_repository_adapter.dart';
-import 'package:narrate_my/model/repositories/adapters/itinerary_repository_adapter.dart';
-import 'package:narrate_my/model/repositories/adapters/itinerary_selected_destination_repository_adapter.dart';
-import 'package:narrate_my/model/repositories/adapters/itinerary_stop_repository_adapter.dart';
-import 'package:narrate_my/model/repositories/adapters/place_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/adapters/bookmark/bookmark_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/adapters/itinerary/destination_hotspot_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/adapters/itinerary/destination_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/adapters/itinerary/itinerary_destination_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/adapters/itinerary/itinerary_must_visit_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/adapters/itinerary/itinerary_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/adapters/itinerary/itinerary_selected_destination_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/adapters/itinerary/place_repository_adapter.dart';
 
 class DatabaseManager {
   static final DatabaseManager _instance = DatabaseManager._internal();

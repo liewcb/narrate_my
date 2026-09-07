@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-import '../../core/constants/app_constants.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
-import 'app_localizations.dart';
+import '../constants/app_constants.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
+import './app_localizations.dart';
 
 /// App-wide language state (UC402 A4, REQ_201_2–5) — read once at the
 /// `MaterialApp` root (`main.dart`) and applied by setting

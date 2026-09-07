@@ -8,7 +8,7 @@ import '../../core/theme/colors.dart';
 import '../../model/business_logic/itinerary_service/itinerary_validation_service.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/trip_customization_vm.dart';
-import 'must_visit_selection_screen.dart';
+import './must_visit_selection_screen.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 
 class TripCustomizationScreen extends StatefulWidget {

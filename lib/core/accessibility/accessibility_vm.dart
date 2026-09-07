@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
 
 /// App-wide accessibility state, read once at the `MaterialApp` root
 /// (`main.dart`) and applied via a `MediaQuery` text-scale override — this

@@ -3,7 +3,7 @@ import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/entities/destination.dart';
 import '../../model/entities/trip_draft.dart';
-import 'generation_screen.dart';
+import './generation_screen.dart';
 
 class DestinationWithDays {
   final String id;

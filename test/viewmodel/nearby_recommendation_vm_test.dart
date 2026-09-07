@@ -7,8 +7,8 @@ import 'package:narrate_my/model/entities/ar_site.dart';
 import 'package:narrate_my/model/entities/recommendation.dart';
 import 'package:narrate_my/model/business_logic/shared_services/location_service.dart';
 import 'package:narrate_my/core/services/permission_service.dart';
-import 'package:narrate_my/model/repositories/interfaces/ar_site_repository.dart';
-import 'package:narrate_my/model/repositories/interfaces/recommendation_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/ar_exploration/ar_site_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/recommendation/recommendation_repository.dart';
 import 'package:narrate_my/viewmodel/recommendation/nearby_recommendation_vm.dart';
 import 'package:permission_handler/permission_handler.dart';
 

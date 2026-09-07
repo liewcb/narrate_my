@@ -1,5 +1,5 @@
 import 'package:permission_handler/permission_handler.dart';
-import 'app_service.dart';
+import './app_service.dart';
 
 /// Generic permission checking — camera, location, and anything else the
 /// app needs later. Not AR-specific: any module can ask for just the

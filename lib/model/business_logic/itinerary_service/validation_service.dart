@@ -1,5 +1,5 @@
 import '../../../core/config/itinerary_constants.dart';
-import 'schedule_construction_service.dart';
+import './schedule_construction_service.dart';
 
 /// Represents a validation issue.
 class ValidationIssue {

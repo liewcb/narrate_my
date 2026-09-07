@@ -7,13 +7,13 @@ import '../../core/localization/app_localizations.dart';
 import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/business_logic/profile/messages/profile_messages.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
 import '../../viewmodel/profile_viewmodel/profile_vm.dart';
-import 'bookmarks_screen.dart';
-import 'guest_profile_screen.dart';
-import 'language_screen.dart';
-import 'personal_info_screen.dart';
-import 'preferences_screen.dart';
+import './bookmarks_screen.dart';
+import './guest_profile_screen.dart';
+import './language_screen.dart';
+import './personal_info_screen.dart';
+import './preferences_screen.dart';
 
 /// The Profile tab's entry point in `AppRoutes`'s `IndexedStack`.
 ///

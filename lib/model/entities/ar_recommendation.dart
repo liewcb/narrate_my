@@ -1,4 +1,4 @@
-import 'place.dart';
+import './place.dart';
 
 /// One contextual recommendation shown over the AR camera.
 ///

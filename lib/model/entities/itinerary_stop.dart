@@ -1,5 +1,5 @@
 // lib/domain/entities/itinerary_stop.dart
-import 'place.dart';
+import './place.dart';
 
 class ItineraryStop {
   final int stopId;

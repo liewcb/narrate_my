@@ -4,9 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/app_theme.dart';
 import '../../viewmodel/Itinerary/my_itineraries_vm.dart';
-import 'manage_itinerary/manage_display_plan_screen.dart';
-import 'destination_choice_screen.dart';
-import 'widgets/itinerary_card.dart';
+import './manage_itinerary/manage_display_plan_screen.dart';
+import './destination_choice_screen.dart';
+import './widgets/itinerary_card.dart';
 
 class MyItinerariesScreen extends StatefulWidget {
   const MyItinerariesScreen({Key? key}) : super(key: key);

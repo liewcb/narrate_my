@@ -1,5 +1,5 @@
 import '../../entities/destination.dart';
-import '../../repositories/interfaces/destination_repository.dart';
+import '../../repositories/interfaces/itinerary/destination_repository.dart';
 
 /// Use case for getting all destinations.
 class GetAllDestinationsUseCase {

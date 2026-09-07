@@ -13,9 +13,9 @@ import '../onboarding/mandatory_details_screen.dart';
 import '../widgets/phone_field.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/underline_field.dart';
-import 'forgot_password_screen.dart';
-import 'otp_screen.dart';
-import 'register_screen.dart';
+import './forgot_password_screen.dart';
+import './otp_screen.dart';
+import './register_screen.dart';
 
 /// UC401 Login Account. Google (A1) up top, then a Phone-OTP / Username &
 /// Password tab switch for A2 vs A3.

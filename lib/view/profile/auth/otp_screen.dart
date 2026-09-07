@@ -14,7 +14,7 @@ import '../onboarding/mandatory_details_screen.dart';
 import '../widgets/hcaptcha_widget.dart';
 import '../widgets/otp_box_row.dart';
 import '../widgets/primary_button.dart';
-import 'reset_password_screen.dart';
+import './reset_password_screen.dart';
 
 /// Shared OTP-verification screen for UC400 A2/A3, UC401 A2, and the
 /// middle step of UC403 — which flow it's serving (and what happens after
