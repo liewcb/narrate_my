@@ -79,23 +79,22 @@ class ItineraryStopDTO {
     );
   }
 
-  /// Convert to Supabase/Postgres map.
   Map<String, dynamic> toMap() {
     return {
-      'stop_id': stopId,
+      'stop_id': stopId, // ✅ PUT THIS BACK
       'itinerary_id': itineraryId,
       'place_id': placeId,
       'destination_id': destinationId,
       'day_index': dayIndex,
       'stop_order': stopOrder,
-      'start_time': _formatTime(startTime),
+      'start_time': _formatTime(startTime), // (or .toIso8601String() in the entity)
       'end_time': _formatTime(endTime),
       'duration_minutes': durationMinutes,
       'travel_from_prev_minutes': travelFromPrevMinutes,
       'stop_status': stopStatus,
       'skip_reason': skipReason,
       'weather_note': weatherNote,
-      'created_at': createdAt.toIso8601String(),
+      'created_at': createdAt.toIso8601String(), // ✅ PUT THIS BACK
       'updated_at': updatedAt.toIso8601String(),
     };
   }

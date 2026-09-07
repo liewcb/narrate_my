@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../../core/services/local_database_service.dart';
+import '../../../../view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 import '../../../data_sources/remote/itinerary_remote_data_source.dart';
 import '../../../dto/itinerary_dto.dart';
 import '../../../entities/itinerary.dart';
@@ -214,6 +215,41 @@ class ItineraryRepositoryImpl implements ItineraryRepository {
   @override
   Future<void> refreshItineraries(String userId) async {
     await fetchUserItinerariesFromRemote(userId);
+  }
+
+  @override
+  Future<Itinerary> refreshItineraryStatus(Itinerary itinerary) async {
+    // Single source of truth for itinerary status: reuse the shared resolver
+    // (calendar-day comparison, never time-of-day).
+    final computedStatus = ItineraryStatusResolver
+        .resolve(
+          startDate: itinerary.startDate,
+          endDate: itinerary.endDate,
+        )
+        .name
+        .toUpperCase(); // UPCOMING / ONGOING / PAST
+
+    // Always reflect the freshly computed status locally so the UI never shows
+    // a stale stored value.
+    final corrected = itinerary.copyWith(status: computedStatus);
+
+    // Persist ONLY when the stored status is actually outdated — avoids a
+    // needless UPDATE on every access / rebuild.
+    if (itinerary.status.toUpperCase() == computedStatus) {
+      return corrected;
+    }
+
+    try {
+      // Reuses the existing remote-first update (RLS restricts the write to the
+      // authenticated owner via itineraries.id = auth.uid()).
+      return await updateItinerary(corrected);
+    } catch (e) {
+      debugPrint(
+          '[ItineraryRepo] Status sync failed for ${itinerary.itineraryId}: $e');
+      // Keep the correct status in memory for this session; the next access
+      // retries. Never crash and never report a false success.
+      return corrected;
+    }
   }
 
   // ─── Helper: Ensure itineraryId exists ──────────────────────

@@ -6,14 +6,13 @@ import 'package:provider/provider.dart';
 import '../../core/config/interest_mapping.dart';
 import '../../core/theme/colors.dart';
 import '../../model/business_logic/itinerary_service/itinerary_validation_service.dart';
-import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/trip_customization_vm.dart';
-import './must_visit_selection_screen.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
+import 'must_visit_selection_screen.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 
 class TripCustomizationScreen extends StatefulWidget {
-  final TripDraft draft;
-  const TripCustomizationScreen({super.key, required this.draft});
+  const TripCustomizationScreen({super.key});
 
   @override
   State<TripCustomizationScreen> createState() => _TripCustomizationScreenState();
@@ -22,8 +21,11 @@ class TripCustomizationScreen extends StatefulWidget {
 class _TripCustomizationScreenState extends State<TripCustomizationScreen> {
   @override
   Widget build(BuildContext context) {
+    // ✅ READ: Pull the initial draft from the global vault
+    final sharedDraft = context.read<TripDraftNotifier>().draft;
+
     return ChangeNotifierProvider<Step2TripStyleVM>(
-      create: (_) => Step2TripStyleVM(initialDraft: widget.draft),
+      create: (_) => Step2TripStyleVM(initialDraft: sharedDraft),
       child: const _Step2TripStyleBody(),
     );
   }
@@ -100,20 +102,21 @@ class _Step2TripStyleBody extends StatelessWidget {
             ),
             _FooterButton(
               onPressed: () {
-                // No need to validate again – errors are already real‑time.
                 final errors = vm.validate();
-                if (errors.isNotEmpty) {
-                  // All errors are already shown inline, so just return.
-                  return;
-                }
+                if (errors.isNotEmpty) return;
 
                 try {
+                  // ✅ 1. Build the updated draft from this screen
+                  final updatedDraft = vm.buildDraft();
+
+                  // ✅ 2. Save it to the global vault!
+                  context.read<TripDraftNotifier>().updateDraft(updatedDraft);
+
+                  // ✅ 3. Navigate forward (passing draft to Step 3 so it doesn't break)
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => MustVisitSelectionScreen(
-                        draft: vm.buildDraft(),
-                      ),
+                      builder: (_) => const MustVisitSelectionScreen(),
                     ),
                   );
                 } catch (e) {
@@ -523,52 +526,6 @@ class _TravelDates extends StatelessWidget {
     );
   }
 }
-
-  Widget _dateCard(String label, String date) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.brandGrayLight,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.outlineLight.withOpacity(0.3)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
-                color: AppColors.outline,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(Icons.calendar_today_rounded,
-                    size: 14, color: AppColors.brandGreen),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    date,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.brandCharcoal,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
 // ─── Date picker dialog ──────────────────────────────────────────
 
@@ -1123,14 +1080,6 @@ class _Interests extends StatelessWidget {
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppColors.brandCharcoal,
-              ),
-            ),
-            Text(
-              '${selected.length}/$max',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: remaining == 0 ? AppColors.brandTerracotta : AppColors.brandGreen,
               ),
             ),
           ],

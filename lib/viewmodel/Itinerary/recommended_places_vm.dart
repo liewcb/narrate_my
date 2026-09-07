@@ -1,50 +1,56 @@
 // lib/viewmodel/Itinerary/recommended_places_vm.dart
 //
-// ViewModel for the day-scoped "Recommended Places" flow.
+// DB-FIRST Recommended Places.
 //
-// Scope is STRICTLY the currently selected day:
-//   - Recommendations are retrieved once (deterministic retrieval + filter +
-//     rank via CustomPlaceService.recommendForDay) and cached, so switching
-//     between the Attractions / Restaurants tabs never re-hits the network.
-//   - Selecting a place runs ONE compact DeepSeek insertion request (3s hard
-//     timeout) with a deterministic fallback, then Dart constructs the exact
-//     schedule and hard-validates it (CustomPlaceService.planInsertion).
-//   - Nothing is written to the database and no other day is touched — the
-//     validated proposed day is returned to the host editor's working state.
+// Recommendation loading:
+//   Supabase `places`
+//      -> selected-day stops as spatial anchors
+//      -> exact distance filtering
+//      -> remove globally-used place IDs
+//      -> local preference/rating/distance ranking
+//      -> Attractions / Restaurants
+//
+// Selection:
+//   DB candidate
+//      -> ONE AI request
+//      -> AI ACCEPT/REJECT + insertion position + time
+//      -> temporary ScheduledDay
+//
+// No database writes happen in this ViewModel.
 
 import 'package:flutter/foundation.dart';
 
+import '../../model/business_logic/itinerary_service/ai_place_insertion_service.dart';
 import '../../model/business_logic/itinerary_service/custom_place_service.dart';
+import '../../model/business_logic/itinerary_service/database_recommended_places_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
+import '../../model/business_logic/itinerary_service/scoring_service.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/place.dart';
 
-/// Recommendation category tabs shown by the UI.
-enum RecommendationCategory { attractions, restaurants }
+enum RecommendationCategory {
+  attractions,
+  restaurants,
+}
 
-/// ViewModel driving "Recommended Places" for a single itinerary day.
 class RecommendedPlacesVM extends ChangeNotifier {
-  /// 1-based day number (UI labels only).
+  static const int minimumRecommendations = 3;
+  static const int maximumRecommendations = 8;
+
   final int dayNumber;
   final DateTime dayDate;
-
-  /// The selected day's CURRENT working stops (from the editor's temporary
-  /// state — never the database).
   final List<ExistingStopContext> existingStops;
-
-  /// Every place id already used across the whole itinerary (duplicate guard).
   final Set<String> usedPlaceIds;
-
   final List<String> interests;
   final String transportMode;
   final String explorationTime;
   final String travelPace;
   final Coordinates? destinationCenter;
 
-  final CustomPlaceService _service;
+  final DatabaseRecommendedPlacesService _databaseService;
+  final AiPlaceInsertionService _aiInsertionService;
 
-  /// Hard ceiling for the DeepSeek insertion request (spec: ~3 seconds).
-  static const Duration aiTimeout = Duration(seconds: 3);
+  static const Duration aiTimeout = Duration(seconds: 6);
 
   RecommendedPlacesVM({
     required this.dayNumber,
@@ -56,72 +62,111 @@ class RecommendedPlacesVM extends ChangeNotifier {
     required this.explorationTime,
     required this.travelPace,
     this.destinationCenter,
-    CustomPlaceService? service,
-  }) : _service = service ?? CustomPlaceService();
+    DatabaseRecommendedPlacesService? databaseService,
+    AiPlaceInsertionService? aiInsertionService,
+  })  : _databaseService =
+            databaseService ?? DatabaseRecommendedPlacesService(),
+        _aiInsertionService =
+            aiInsertionService ?? AiPlaceInsertionService();
 
-  // ─── Recommendation state ─────────────────────────────────────
   bool isLoadingRecommendations = false;
   String? recommendationsError;
   bool _recommendationsLoaded = false;
+
   List<NearbyPlaceResult> _attractions = const [];
   List<NearbyPlaceResult> _restaurants = const [];
 
-  List<NearbyPlaceResult> get attractions => _attractions;
-  List<NearbyPlaceResult> get restaurants => _restaurants;
-  bool get recommendationsLoaded => _recommendationsLoaded;
-
-  /// Returns the cached list for [category] — no network call on tab switch.
-  List<NearbyPlaceResult> forCategory(RecommendationCategory category) =>
-      category == RecommendationCategory.attractions ? _attractions : _restaurants;
-
-  // ─── Selection + planning state ───────────────────────────────
   Place? _selectedPlace;
   bool isPlanning = false;
   String? planError;
   CustomPlacePlanResult? _planResult;
 
+  List<NearbyPlaceResult> get attractions => _attractions;
+  List<NearbyPlaceResult> get restaurants => _restaurants;
+  bool get recommendationsLoaded => _recommendationsLoaded;
   Place? get selectedPlace => _selectedPlace;
   CustomPlacePlanResult? get planResult => _planResult;
-  bool get hasPlan => _planResult != null;
 
-  /// Loads recommendations once and caches them. Safe to call repeatedly.
+  // Keep this API for the existing screen.
+  // Bookmark state is intentionally not changed by this DB-first rewrite.
+  bool isBookmarked(String placeId) => false;
+
+  List<NearbyPlaceResult> forCategory(
+    RecommendationCategory category,
+  ) {
+    return category == RecommendationCategory.attractions
+        ? _attractions
+        : _restaurants;
+  }
+
   Future<void> loadRecommendations() async {
     if (_recommendationsLoaded || isLoadingRecommendations) return;
+
     isLoadingRecommendations = true;
     recommendationsError = null;
     notifyListeners();
 
     try {
-      final rec = await _service.recommendForDay(
+      final result = await _databaseService.recommendForDay(
         dayPlaces: existingStops.map((s) => s.place).toList(),
         interests: interests,
         destinationCenter: destinationCenter ?? _centroidOfStops(),
         usedPlaceIds: usedPlaceIds,
-        dayOfWeek: dayDate.weekday,
         transportMode: transportMode,
+        maxPerCategory: maximumRecommendations,
       );
-      _attractions = rec.attractions;
-      _restaurants = rec.restaurants;
+
+      _attractions = _cleanResults(result.attractions);
+      _restaurants = _cleanResults(result.restaurants);
       _recommendationsLoaded = true;
-      if (rec.isEmpty) {
+
+      if (_attractions.isEmpty && _restaurants.isEmpty) {
         recommendationsError =
-            'No recommended places were found for this day.';
+            'No recommended places are available in the database for this day.';
       }
-    } catch (e) {
-      debugPrint('[RecommendedPlaces] load failed: $e');
+    } catch (e, stack) {
+      debugPrint('[Recommended Places DB] load failed: $e');
+      debugPrintStack(stackTrace: stack);
+
       recommendationsError =
-          "We couldn't load recommendations right now. Please try again.";
+          'Unable to load recommended places from the database. '
+          'Please try again.';
     } finally {
       isLoadingRecommendations = false;
       notifyListeners();
     }
   }
 
-  /// Selects a place and runs the single compact AI insertion request (3s)
-  /// with deterministic fallback + hard validation. On success the validated
-  /// proposed day is available via [confirmedProposedDay].
   Future<void> selectAndPlan(Place place) async {
     if (isPlanning) return;
+
+    final id = place.placeId.trim();
+
+    if (id.isEmpty) {
+      planError = 'This place does not have a valid place ID.';
+      notifyListeners();
+      return;
+    }
+
+    if (usedPlaceIds.contains(id)) {
+      planError = 'This place is already used in your itinerary.';
+      notifyListeners();
+      return;
+    }
+
+    if (!_hasValidCoordinates(place)) {
+      planError = 'This place does not have valid location data.';
+      notifyListeners();
+      return;
+    }
+
+    final defaultDuration = place.visitDurationMinutes ?? 60;
+    if (defaultDuration <= 0) {
+      planError = 'This place does not have a valid visit duration.';
+      notifyListeners();
+      return;
+    }
+
     _selectedPlace = place;
     _planResult = null;
     planError = null;
@@ -129,62 +174,238 @@ class RecommendedPlacesVM extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await _service.planInsertion(
-        dayIndex: dayNumber - 1, // 0-based for the pipeline
+      final aiResult = await _aiInsertionService.validateAndPlan(
+        dayIndex: dayNumber,
         date: dayDate,
         existingStops: existingStops,
         newPlace: place,
+        defaultDurationMinutes: defaultDuration,
         explorationTime: explorationTime,
         transportMode: transportMode,
         travelPace: travelPace,
         interests: interests,
         tripLocation: destinationCenter ?? _centroidOfStops(),
-        aiTimeoutOverride: aiTimeout,
-        placeIdContract: true,
-        // Re-check whole-itinerary duplicates at commit time (placeId).
-        itineraryUsedPlaceIds: usedPlaceIds,
+        timeout: aiTimeout,
       );
-      _planResult = result;
-      if (!result.success) {
-        planError = result.message ??
-            'This place cannot fit into Day $dayNumber.';
+
+      if (aiResult == null) {
+        planError =
+            'The AI validation timed out or failed. Please try another place.';
+        _planResult = null;
+        return;
       }
-    } catch (e) {
-      debugPrint('[RecommendedPlaces] planning failed: $e');
+
+      if (!aiResult.accepted) {
+        planError = aiResult.reason.isEmpty
+            ? 'The AI determined that this place does not fit this day.'
+            : aiResult.reason;
+
+        _planResult = CustomPlacePlanResult.problem(planError!);
+        return;
+      }
+
+      final insertIndex = _resolveInsertIndex(aiResult);
+
+      if (insertIndex == null) {
+        planError =
+            'The AI returned an invalid insertion position. Please try again.';
+        _planResult = null;
+        return;
+      }
+
+      // The AI parser guarantees these are present for ACCEPT.
+      final startTime = aiResult.startTime;
+      final endTime = aiResult.endTime;
+
+      if (startTime == null || endTime == null) {
+        planError =
+            'The AI returned an incomplete schedule. Please try again.';
+        _planResult = null;
+        return;
+      }
+
+      final proposedDay = _buildAiScheduledDay(
+        insertIndex: insertIndex,
+        place: place,
+        durationMinutes: aiResult.durationMinutes,
+        startTime: startTime,
+        endTime: endTime,
+        travelFromPreviousMinutes:
+            aiResult.travelFromPreviousMinutes ?? 0,
+        reason: aiResult.reason,
+      );
+
+      _planResult = CustomPlacePlanResult(
+        success: true,
+        proposedDay: proposedDay,
+        validation: null,
+        insertIndex: insertIndex,
+        usedAi: true,
+      );
+    } catch (e, stack) {
+      debugPrint('[Recommended Places AI] planning failed: $e');
+      debugPrintStack(stackTrace: stack);
+
       _planResult = null;
-      planError = 'This place cannot fit into Day $dayNumber.';
+      planError = 'AI validation failed. Please try another place.';
     } finally {
       isPlanning = false;
       notifyListeners();
     }
   }
 
-  /// Clears the current selection so the traveler can pick another place.
+  ScheduledDay? confirmedProposedDay() {
+    if (_planResult?.success != true) return null;
+    return _planResult!.proposedDay;
+  }
+
   void clearSelection() {
     _selectedPlace = null;
     _planResult = null;
     planError = null;
+    isPlanning = false;
     notifyListeners();
   }
 
-  /// The validated proposed day, or null when planning failed / is running.
-  ScheduledDay? confirmedProposedDay() {
-    final plan = _planResult;
-    if (plan == null || !plan.success) return null;
-    return plan.proposedDay;
+  List<NearbyPlaceResult> _cleanResults(
+    List<NearbyPlaceResult> source,
+  ) {
+    final seen = <String>{};
+    final cleaned = <NearbyPlaceResult>[];
+
+    for (final result in source) {
+      final place = result.place;
+      final id = place.placeId.trim();
+      final duration = place.visitDurationMinutes ?? 60;
+
+      if (id.isEmpty) continue;
+      if (usedPlaceIds.contains(id)) continue;
+      if (!seen.add(id)) continue;
+      if (!_hasValidCoordinates(place)) continue;
+      if (place.placeName.trim().isEmpty) continue;
+      if (duration <= 0) continue;
+
+      cleaned.add(result);
+
+      if (cleaned.length >= maximumRecommendations) break;
+    }
+
+    return List.unmodifiable(cleaned);
+  }
+
+  int? _resolveInsertIndex(AiPlaceInsertionResult result) {
+    final afterId = result.insertAfterPlaceId;
+
+    // null = insert before the first stop.
+    if (afterId == null || afterId.isEmpty) {
+      return 0;
+    }
+
+    final index = existingStops.indexWhere(
+      (stop) => stop.place.placeId == afterId,
+    );
+
+    if (index < 0) return null;
+
+    return index + 1;
+  }
+
+  ScheduledDay _buildAiScheduledDay({
+    required int insertIndex,
+    required Place place,
+    required int durationMinutes,
+    required DateTime startTime,
+    required DateTime endTime,
+    required int travelFromPreviousMinutes,
+    required String reason,
+  }) {
+    final stops = <ScheduledStop>[];
+
+    for (var i = 0; i <= existingStops.length; i++) {
+      if (i == insertIndex) {
+        stops.add(
+          ScheduledStop(
+            attraction: ScoredAttraction(
+              place: place,
+              score: 0,
+              breakdown: const {},
+            ),
+            startTime: startTime,
+            endTime: endTime,
+            durationMinutes: durationMinutes,
+            travelFromPreviousMinutes: travelFromPreviousMinutes,
+            scheduleReason: reason,
+            weatherNote: '',
+          ),
+        );
+      }
+
+      if (i < existingStops.length) {
+        final existing = existingStops[i];
+
+        stops.add(
+          ScheduledStop(
+            attraction: ScoredAttraction(
+              place: existing.place,
+              score: 0,
+              breakdown: const {},
+            ),
+            startTime: existing.startTime,
+            endTime: existing.endTime,
+            durationMinutes: existing.durationMinutes,
+            travelFromPreviousMinutes: existing.travelFromPrevMinutes,
+            scheduleReason: '',
+            weatherNote: '',
+          ),
+        );
+      }
+    }
+
+    final totalDuration = stops.fold<int>(
+      0,
+      (sum, stop) => sum + stop.durationMinutes,
+    );
+
+    final totalTravelTime = stops.fold<double>(
+      0,
+      (sum, stop) => sum + stop.travelFromPreviousMinutes,
+    );
+
+    return ScheduledDay(
+      dayIndex: dayNumber,
+      date: dayDate,
+      stops: stops,
+      totalDuration: totalDuration,
+      totalTravelTime: totalTravelTime,
+    );
   }
 
   Coordinates? _centroidOfStops() {
-    double lat = 0, lng = 0;
-    var n = 0;
-    for (final s in existingStops) {
-      final p = s.place;
-      if (p.latitude == 0 && p.longitude == 0) continue;
-      lat += p.latitude;
-      lng += p.longitude;
-      n++;
+    var lat = 0.0;
+    var lng = 0.0;
+    var count = 0;
+
+    for (final stop in existingStops) {
+      final place = stop.place;
+
+      if (!_hasValidCoordinates(place)) continue;
+
+      lat += place.latitude;
+      lng += place.longitude;
+      count++;
     }
-    if (n == 0) return null;
-    return Coordinates(latitude: lat / n, longitude: lng / n);
+
+    if (count == 0) return null;
+
+    return Coordinates(
+      latitude: lat / count,
+      longitude: lng / count,
+    );
+  }
+
+  bool _hasValidCoordinates(Place place) {
+    return place.latitude.abs() <= 90 &&
+        place.longitude.abs() <= 180 &&
+        !(place.latitude == 0 && place.longitude == 0);
   }
 }

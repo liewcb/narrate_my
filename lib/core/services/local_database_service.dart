@@ -126,6 +126,7 @@ class LocalDatabaseService {
         stop_id INTEGER PRIMARY KEY AUTOINCREMENT,
         itinerary_id TEXT NOT NULL,
         place_id TEXT NOT NULL,
+        destination_id TEXT, -- ✅ ADDED THIS LINE
         day_index INTEGER NOT NULL,
         stop_order INTEGER NOT NULL,
         start_time TEXT NOT NULL,

@@ -106,7 +106,10 @@ class ManageEditItineraryViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _itinerary = await _repository.getItinerary(itineraryId);
+      final loaded = await _repository.getItinerary(itineraryId);
+      // Recalculate + persist status if outdated (single source of truth in
+      // the repository).
+      _itinerary = await _repository.refreshItineraryStatus(loaded);
       _temporalStatus = ItineraryStatusResolver.resolve(
         startDate: _itinerary!.startDate,
         endDate: _itinerary!.endDate,

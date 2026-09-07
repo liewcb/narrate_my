@@ -5,6 +5,7 @@ import '../../core/services/database_manager.dart';
 import '../../core/utils/friendly_messages.dart';
 import '../../model/business_logic/itinerary_service/custom_place_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
+import '../../model/entities/coordinates.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
 import '../../model/repositories/adapters/bookmark/bookmark_repository_adapter.dart';
@@ -16,10 +17,8 @@ import '../../model/repositories/interfaces/bookmark/bookmark_repository.dart';
 /// Responsibilities:
 ///   - Load the selected day's stops (with joined Place data).
 ///   - Load the traveler's bookmarks (for quick selection).
-///   - Search Google Places by free-text query (NOT the rejected
-///     central-point/radius approach).
-///   - Show search results; on selection compute distance + travel time
-///     (Near/Moderate/Far) relative to the itinerary.
+///   - Search Google Places by free-text query.
+///   - Show search results; on selection compute distance + travel time.
 ///   - Run AI planning + deterministic validation for the selected place.
 ///   - On confirmation, replace the affected day's stops through the repo.
 class AddCustomPlaceVM extends ChangeNotifier {
@@ -36,9 +35,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
   final CustomPlaceService _service;
   final BookmarkRepository _bookmarkRepo;
 
-  /// Cached day contexts per 1-based day index (loaded once per day; the
-  /// selection is not re-planned for unchanged context — avoids repeated
-  /// database queries and repeated AI calls for the same place).
+  /// Cached day contexts per 1-based day index.
   final Map<int, List<ExistingStopContext>> _dayContextCache = {};
   final Map<String, CustomPlacePlanResult> _planCache = {};
 
@@ -58,6 +55,11 @@ class AddCustomPlaceVM extends ChangeNotifier {
   bool _isSearching = false;
   String? _searchError;
   bool _hasSearched = false;
+
+  // ─── Recommendations ──────────────────────────────────────────
+  List<Place> _recommendations = [];
+  bool _isLoadingRecommendations = false;
+  String? _recommendationsError;
 
   // ─── Selection + proximity + planning ────────────────────────
   String? _selectedPlaceId;
@@ -107,6 +109,10 @@ class AddCustomPlaceVM extends ChangeNotifier {
   String? get searchError => _searchError;
   bool get hasSearched => _hasSearched;
 
+  List<Place> get recommendations => List.unmodifiable(_recommendations);
+  bool get isLoadingRecommendations => _isLoadingRecommendations;
+  String? get recommendationsError => _recommendationsError;
+
   String? get selectedPlaceId => _selectedPlaceId;
   PlaceProximityInfo? get proximity => _proximity;
   bool get isPlanning => _isPlanning;
@@ -119,6 +125,9 @@ class AddCustomPlaceVM extends ChangeNotifier {
       if (p.placeId == _selectedPlaceId) return p;
     }
     for (final p in _bookmarks) {
+      if (p.placeId == _selectedPlaceId) return p;
+    }
+    for (final p in _recommendations) {
       if (p.placeId == _selectedPlaceId) return p;
     }
     return null;
@@ -136,20 +145,20 @@ class AddCustomPlaceVM extends ChangeNotifier {
       final stops = await _loadDayContext(_dayIndex);
       _dayStops = stops
           .map((s) => ItineraryStop(
-                stopId: 0,
-                itineraryId: itineraryId,
-                placeId: s.place.placeId,
-                dayIndex: _dayIndex,
-                stopOrder: stops.indexOf(s) + 1,
-                startTime: s.startTime,
-                endTime: s.endTime,
-                durationMinutes: s.durationMinutes,
-                travelFromPrevMinutes: s.travelFromPrevMinutes,
-                stopStatus: 'PLANNED',
-                createdAt: DateTime.now(),
-                updatedAt: DateTime.now(),
-                place: s.place,
-              ))
+        stopId: 0,
+        itineraryId: itineraryId,
+        placeId: s.place.placeId,
+        dayIndex: _dayIndex,
+        stopOrder: stops.indexOf(s) + 1,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        durationMinutes: s.durationMinutes,
+        travelFromPrevMinutes: s.travelFromPrevMinutes,
+        stopStatus: 'PLANNED',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        place: s.place,
+      ))
           .toList();
       debugPrint('[ADD_CUSTOM] Existing stops: ${_dayStops.length}');
     } catch (e) {
@@ -164,11 +173,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
     }
   }
 
-  /// Loads ONE day's schedule context (place joins + times), cached per day
-  /// so switching days or re-selecting a place never repeats database
-  /// queries. The context comes from the itinerary's persisted schedule —
-  /// the traveler's confirmed edits are applied to this context by the
-  /// host screen through [seedDayContext].
+  /// Loads ONE day's schedule context (place joins + times), cached per day.
   Future<List<ExistingStopContext>> _loadDayContext(int dayIndex1Based) async {
     final cached = _dayContextCache[dayIndex1Based];
     if (cached != null) return cached;
@@ -190,8 +195,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
     return contexts;
   }
 
-  /// Loads the raw stops for one day (repository read, cached indirectly via
-  /// [_loadDayContext] callers).
+  /// Loads the raw stops for one day.
   Future<List<ItineraryStop>> _stopRepoAll(int dayIndex1Based) async {
     final stopRepo = DatabaseManager().itineraryStopRepository;
     final all = await stopRepo.getStopsForItinerary(itineraryId);
@@ -201,15 +205,12 @@ class AddCustomPlaceVM extends ChangeNotifier {
       ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
   }
 
-  /// Lets the host screen inject the CURRENT TEMPORARY day schedule
-  /// (from EditItineraryViewModel state) so planning runs against the
-  /// traveler's uncommitted edits rather than the database snapshot.
+  /// Lets the host screen inject the CURRENT TEMPORARY day schedule.
   void seedDayContext(int dayIndex1Based, List<ExistingStopContext> stops) {
     _dayContextCache[dayIndex1Based] = stops;
   }
 
-  /// Switch the target day and reload its stops. Used when the traveler
-  /// changes the day selector on the screen.
+  /// Switch the target day and reload its stops.
   Future<void> selectDay(int newDayIndex, DateTime newDayDate) async {
     if (newDayIndex == _dayIndex) return;
     debugPrint('[ADD_CUSTOM] Selected day: $newDayIndex');
@@ -219,8 +220,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
     await load();
   }
 
-  /// Load the traveler's bookmarked places (only those not already in the
-  /// selected day, so they are valid insertion candidates).
+  /// Load the traveler's bookmarked places.
   Future<void> loadBookmarks() async {
     if (userId.isEmpty) {
       _bookmarks = [];
@@ -270,7 +270,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
 
     try {
       final locationBias =
-          dayPlaces.isNotEmpty ? dayPlaces.first.coordinates : null;
+      dayPlaces.isNotEmpty ? dayPlaces.first.coordinates : null;
       final results = await _service.searchPlaces(
         query: _query,
         locationBias: locationBias,
@@ -294,10 +294,72 @@ class AddCustomPlaceVM extends ChangeNotifier {
     }
   }
 
+  // ─── Recommendations ──────────────────────────────────────────
+
+  /// Get AI/algorithmic recommendations for places to add to this day.
+  /// Uses the existing stops' geographic centroid and the traveler's interests.
+  Future<void> loadRecommendations({int maxResults = 10}) async {
+    final contexts = _dayContextCache[_dayIndex] ?? [];
+    if (contexts.isEmpty) {
+      _recommendationsError = 'No stops to base recommendations on.';
+      _recommendations = [];
+      notifyListeners();
+      return;
+    }
+
+    _isLoadingRecommendations = true;
+    _recommendationsError = null;
+    notifyListeners();
+
+    try {
+      // Compute centroid of existing stops
+      double lat = 0, lng = 0;
+      int count = 0;
+      for (final ctx in contexts) {
+        final p = ctx.place;
+        if (p.latitude == 0 && p.longitude == 0) continue;
+        lat += p.latitude;
+        lng += p.longitude;
+        count++;
+      }
+      if (count == 0) {
+        _recommendationsError = 'Invalid location data.';
+        _recommendations = [];
+        return;
+      }
+      final center = Coordinates(latitude: lat / count, longitude: lng / count);
+
+      // Call the service to get recommended places
+      final results = await _service.recommendPlaces(
+        location: center,
+        interests: interests,
+        explorationTime: explorationTime,
+        maxResults: maxResults,
+      );
+
+      // Filter out places already in the day
+      final usedIds = _dayStops.map((s) => s.placeId).toSet();
+      _recommendations = results
+          .where((p) => !usedIds.contains(p.placeId))
+          .toList();
+
+      debugPrint('[ADD_CUSTOM] Recommendations: ${_recommendations.length}');
+    } catch (e) {
+      _recommendationsError = friendlyErrorMessage(
+        e,
+        fallback: "We couldn't get recommendations right now. Please try again.",
+      );
+      debugPrint('[ADD_CUSTOM] Recommendations error: $e');
+      _recommendations = [];
+    } finally {
+      _isLoadingRecommendations = false;
+      notifyListeners();
+    }
+  }
+
   // ─── Selection + proximity + planning ───────────────────────
 
-  /// Select a search result; compute distance/travel info and run AI
-  /// planning + deterministic validation.
+  /// Select a search result; compute distance/travel info and run AI planning.
   Future<void> selectPlace(String placeId) async {
     _selectedPlaceId = placeId;
     _proximity = null;
@@ -326,8 +388,6 @@ class AddCustomPlaceVM extends ChangeNotifier {
   }
 
   /// Run AI planning + deterministic validation for the selected place.
-  /// Results are cached per (day, place) so re-selecting the same place
-  /// never repeats the AI request or the travel-time lookups.
   Future<void> planInsertion() async {
     final place = selectedPlace;
     if (place == null) return;
@@ -383,11 +443,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
 
   // ─── Confirmation (temporary state — no persistence) ────────
 
-  /// Returns the validated proposed day for the caller (EditItinerary VM)
-  /// to apply to its TEMPORARY state. No database write happens here — the
-  /// final itinerary is persisted later through the final Save process.
-  /// Returns null when there is no validated plan (the caller shows the
-  /// problem message from [planError] / `planResult.message`).
+  /// Returns the validated proposed day for the caller.
   ScheduledDay? confirmedProposedDay() {
     final plan = _planResult;
     if (plan == null || !plan.success) return null;
@@ -404,5 +460,6 @@ class AddCustomPlaceVM extends ChangeNotifier {
     _planResult = null;
     _planError = null;
     _hasSearched = false;
+    // Keep recommendations; they are independent.
   }
 }

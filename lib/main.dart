@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import './core/ai_assistant/global_ai_assistant.dart';
-import './core/accessibility/accessibility_vm.dart';
-import './core/localization/locale_vm.dart';
-import './core/routes/app_routes.dart';
-import './core/services/database_manager.dart';
-import './core/theme/app_theme.dart';
+import 'core/ai_assistant/global_ai_assistant.dart';
+import 'core/accessibility/accessibility_vm.dart';
+import 'core/localization/locale_vm.dart';
+import 'core/routes/app_routes.dart';
+import 'core/services/database_manager.dart';
+import 'core/theme/app_theme.dart';
+import 'model/business_logic/shared_services/trip_draft_notifier.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +34,7 @@ class MyApp extends StatelessWidget {
       // one directly and rebuild on change, without every ancestor between
       // here and that screen needing to rebuild too.
       providers: [
+        ChangeNotifierProvider(create: (_) => TripDraftNotifier()),
         ChangeNotifierProvider(create: (_) => AccessibilityVm()),
         ChangeNotifierProvider(create: (_) => LocaleVm()),
         ChangeNotifierProvider(create: (_) => GlobalAiAssistantController()),
@@ -74,7 +76,7 @@ class MyApp extends StatelessWidget {
             },
             // No app-wide login gate: guests can browse AR/Itinerary/Nearby
             // freely. Only the Profile tab gates on auth state — see
-            // `lib/view/profile/profile_home_screen.dart`.
+            // `lib/view/profile_screen.dart`.
             home: const AppRoutes(),
           );
         },

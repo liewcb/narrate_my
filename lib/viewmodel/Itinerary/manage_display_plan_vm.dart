@@ -66,14 +66,66 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
   /// Whether progress recording (Completed/Skipped) is allowed (Ongoing only).
   bool get canRecordProgress => _temporalStatus.allowsProgressRecording;
 
-  /// Whether the itinerary can be customized (Ongoing or Upcoming – now editable).
   bool get canCustomize => _temporalStatus.isEditable;
+
+  bool isDayEditable(int dayIndex) {
+    if (_itinerary == null) return false;
+    final dayDate = _itinerary!.startDate.add(Duration(days: dayIndex - 1));
+    final today = DateTime.now();
+    final dayStart = DateTime(dayDate.year, dayDate.month, dayDate.day);
+    final todayStart = DateTime(today.year, today.month, today.day);
+    return dayStart.isAfter(todayStart) || dayStart.isAtSameMomentAs(todayStart);
+  }
 
   /// Sorted list of available day indices (1‑based).
   List<int> get availableDayIndices {
     final set = _stops.map((s) => s.dayIndex).toSet();
     final list = set.toList()..sort();
     return list;
+  }
+
+  /// The 1‑based itinerary day that corresponds to the CURRENT calendar date,
+  /// used by "Track Today's Travel Plan".
+  ///
+  /// Compares calendar days only (never time-of-day), mirroring
+  /// [ItineraryStatusResolver]'s normalisation, and always returns a day that
+  /// actually exists in [availableDayIndices] (never a negative, zero or
+  /// out-of-range day). Returns null only when it cannot be determined
+  /// (missing itinerary / dates / stops).
+  ///
+  ///  * before the trip  → the first available day (Day 1);
+  ///  * during the trip  → the day matching today;
+  ///  * after the trip   → the last available day.
+  int? calculateCurrentDayIndex({DateTime? now}) {
+    final itinerary = _itinerary;
+    if (itinerary == null) return null;
+
+    final days = availableDayIndices;
+    if (days.isEmpty) return null;
+
+    final current = now ?? DateTime.now();
+    final today = DateTime(current.year, current.month, current.day);
+    final startDay = DateTime(
+        itinerary.startDate.year, itinerary.startDate.month, itinerary.startDate.day);
+    final endDay = DateTime(
+        itinerary.endDate.year, itinerary.endDate.month, itinerary.endDate.day);
+
+    // Trip has not started → focus the first real day (no negative/zero day).
+    if (today.isBefore(startDay)) return days.first;
+
+    // Trip has ended → focus the last real day (never beyond totalDays).
+    if (today.isAfter(endDay)) return days.last;
+
+    // During the trip → 1-based day index from the start date (0 on start day).
+    final dayIndex = today.difference(startDay).inDays + 1;
+
+    // Snap to an existing day so gaps / empty days never yield an invalid pick.
+    if (days.contains(dayIndex)) return dayIndex;
+    final atOrBefore = days.where((d) => d <= dayIndex);
+    if (atOrBefore.isNotEmpty) {
+      return atOrBefore.reduce((a, b) => a > b ? a : b);
+    }
+    return days.first;
   }
 
   /// Set the stop-status filter (Planned/Completed/Skipped, or null for all).
@@ -134,12 +186,16 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _itinerary = await _repository.getItinerary(itineraryId);
+      final loaded = await _repository.getItinerary(itineraryId);
+      // Recalculate + persist status if outdated (single source of truth in
+      // the repository). Returns the itinerary with the correct status.
+      _itinerary = await _repository.refreshItineraryStatus(loaded);
 
       _temporalStatus = ItineraryStatusResolver.resolve(
         startDate: _itinerary!.startDate,
         endDate: _itinerary!.endDate,
       );
+      debugPrint('[ManagePlanVM] Temporal status: $_temporalStatus, canCustomize: $canCustomize');
 
       final rawStops = await _stopRepo.getStopsForItinerary(itineraryId);
 

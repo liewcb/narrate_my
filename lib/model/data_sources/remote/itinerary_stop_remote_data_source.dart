@@ -33,14 +33,23 @@ class ItineraryStopRemoteSource {
   }
 
   Future<ItineraryStop> update(ItineraryStop stop) async {
-    final dto = ItineraryStopDTO.fromEntity(stop);
+    // 1. Get the full map (which keeps SQLite happy)
+    final data = stop.toMap();
+
+    // 2. Remove the locked fields so Supabase doesn't crash!
+    data.remove('stop_id');
+    data.remove('created_at');
+
+    // 3. Send the safe data to Supabase
     final response = await _client
         .from('itinerary_stops')
-        .update(dto.toMap())
+        .update(data)
         .eq('stop_id', stop.stopId)
         .select()
         .single();
-    return ItineraryStopDTO.fromMap(response as Map<String, dynamic>).toEntity();
+
+    // ✅ FIXED: Route the response through the DTO so times are parsed correctly
+    return ItineraryStopDTO.fromMap(response).toEntity();
   }
 
   Future<void> delete(int stopId) async {
