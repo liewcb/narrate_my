@@ -52,6 +52,7 @@ class ARPlacementViewModel extends ChangeNotifier {
 
   StreamSubscription<String>? _subtitleSub;
   StreamSubscription<StoryPlaybackState>? _playbackSub;
+  StreamSubscription<String>? _errorSub;
 
   // --- Getters ---
   PlacementState get placementState => _placementState;
@@ -88,6 +89,7 @@ class ARPlacementViewModel extends ChangeNotifier {
   Future<void> init(ARMarker? marker) async {
     _selectedMarker = marker;
     _placementState = PlacementState.initializing;
+    _errorMessage = null;
     _isAvatarPlaced = false;
     _show3DLandmarkModel = false;
     _showVideoPlayer = false;
@@ -96,66 +98,87 @@ class ARPlacementViewModel extends ChangeNotifier {
     _playbackState = StoryPlaybackState.stopped;
     notifyListeners();
 
-    // 1. Prepare/cache avatar GLB config in parallel
-    _avatarConfig = await _placementService.modelService.prepareAvatarConfig();
+    try {
+      // 1. Prepare/cache avatar GLB config in parallel
+      _avatarConfig = await _placementService.modelService.prepareAvatarConfig();
 
-    if (_disposed) return;
+      if (_disposed) return;
 
-    // 2. Load narration script into PlayNarrationService from Supabase / Marker
-    final markerId = marker?.markerId ?? 'default_marker';
-    final name = marker?.name ?? 'Landmark';
-    await _placementService.narrationService.loadScriptForMarker(
-      markerId,
-      name,
-    );
+      // 2. Load narration script into PlayNarrationService from Supabase / Marker
+      final markerId = marker?.markerId ?? 'default_marker';
+      final name = marker?.name ?? 'Landmark';
+      await _placementService.narrationService.loadScriptForMarker(
+        markerId,
+        name,
+      );
 
-    // Pre-warm the landmark 3D model asset in memory in the background for fast loading
-    final landmarkGlb =
-        _placementService.narrationService.currentScript?.model3dPath;
-    if (landmarkGlb != null && landmarkGlb.startsWith('assets/')) {
-      unawaited(rootBundle.load(landmarkGlb));
-    }
+      final script = _placementService.narrationService.currentScript;
+      if (script == null || script.id.startsWith('error_')) {
+        throw Exception(
+          script?.initialGreeting.replaceFirst('Error: ', '') ??
+              "Unable to retrieve attraction narration content for $name.",
+        );
+      }
 
-    if (_disposed) return;
+      // Pre-warm the landmark 3D model asset in memory in the background for fast loading
+      final landmarkGlb = script.model3dPath;
+      if (landmarkGlb != null && landmarkGlb.startsWith('assets/')) {
+        unawaited(rootBundle.load(landmarkGlb));
+      }
 
-    // 3. Subscribe to narration streams
-    _subtitleSub?.cancel();
-    _subtitleSub = _placementService.narrationService.subtitleStream.listen((
-      sub,
-    ) {
-      _currentSubtitle = sub;
-      notifyListeners();
-    });
+      if (_disposed) return;
 
-    _playbackSub?.cancel();
-    _playbackSub = _placementService.narrationService.stateStream.listen((
-      state,
-    ) {
-      _playbackState = state;
-      if (state == StoryPlaybackState.completed) {
-        onStorytellingActivityChanged?.call(false);
+      // 3. Subscribe to narration streams
+      _subtitleSub?.cancel();
+      _subtitleSub = _placementService.narrationService.subtitleStream.listen((
+        sub,
+      ) {
+        _currentSubtitle = sub;
+        notifyListeners();
+      });
+
+      _playbackSub?.cancel();
+      _playbackSub = _placementService.narrationService.stateStream.listen((
+        state,
+      ) {
+        _playbackState = state;
+        if (state == StoryPlaybackState.completed) {
+          onStorytellingActivityChanged?.call(false);
+        }
+        notifyListeners();
+      });
+
+      _errorSub?.cancel();
+      _errorSub = _placementService.narrationService.errorStream.listen((
+        err,
+      ) {
+        if (_disposed) return;
+        _placementState = PlacementState.error;
+        _errorMessage = err;
+        notifyListeners();
+      });
+
+      _currentSubtitle = script.initialGreeting;
+      if (!_isAvatarPlaced && !_isModelLoading) {
+        _placementState = PlacementState.scanning;
       }
       notifyListeners();
-    });
-
-    _currentSubtitle =
-        _placementService.narrationService.currentScript?.initialGreeting ?? "";
-    if (!_isAvatarPlaced && !_isModelLoading) {
-      _placementState = PlacementState.scanning;
+    } catch (e) {
+      debugPrint("Attraction content retrieval failed: $e");
+      if (_disposed) return;
+      _placementState = PlacementState.error;
+      _errorMessage =
+          "Attraction content retrieval or narration generation failed for ${marker?.name ?? 'this landmark'}. Please check your network connection and try again.";
+      notifyListeners();
     }
-    notifyListeners();
+  }
 
-    // NOTE: no longer eagerly preloading the landmark 3D model here.
-    // ModelViewer (model_viewer_plus) doesn't read through Flutter's
-    // asset bundle at all — it copies the asset out and serves it to its
-    // own WebView via a local server, so `rootBundle.load()` gave zero
-    // benefit to that path. Meanwhile, for a model the size of klcc.glb
-    // (~25MB vs. manja.glb's ~7MB), reading the whole thing into memory
-    // on the same isolate that's driving ARKit's live camera/plane
-    // detection was a real cost with no payoff — the likely cause of the
-    // "freeze a couple seconds, resume, repeat" stutter seen while
-    // scanning for a placement surface on iOS. The model now only loads
-    // when the tourist actually taps Play, via ModelViewer itself.
+  /// Retries content retrieval and narration generation (REQ_201_6)
+  Future<void> retryContentRetrieval() async {
+    _placementState = PlacementState.initializing;
+    _errorMessage = null;
+    notifyListeners();
+    await init(_selectedMarker);
   }
 
   /// Called when ARView native surface is created
@@ -451,6 +474,7 @@ class ARPlacementViewModel extends ChangeNotifier {
     onStorytellingActivityChanged?.call(false);
     _subtitleSub?.cancel();
     _playbackSub?.cancel();
+    _errorSub?.cancel();
 
     // Release native AR resources safely to prevent memory leaks and Camera2 hardware conflicts
     try {
