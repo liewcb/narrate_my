@@ -74,7 +74,7 @@ class MyApp extends StatelessWidget {
             },
             // No app-wide login gate: guests can browse AR/Itinerary/Nearby
             // freely. Only the Profile tab gates on auth state — see
-            // `lib/view/profile_screen.dart`.
+            // `lib/view/profile/profile_home_screen.dart`.
             home: const AppRoutes(),
           );
         },

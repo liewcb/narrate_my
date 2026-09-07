@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/errors/failures.dart';
@@ -55,6 +56,16 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   })  : _authDataSource = authDataSource ?? AuthRemoteDataSource(),
         _profileDataSource = profileDataSource ?? ProfileRemoteDataSource();
 
+  /// BUG FIX (6 Sep, Foo: "when user log in with google then no phone
+  /// number right, the change phone number shall become add phone
+  /// number"): Supabase's `User.phone` is `''` (empty string), not `null`,
+  /// when no phone identity exists — every `.toEntity(phone: ...)` call
+  /// below was passing that empty string straight through, so
+  /// Personal Info's `vm.profile?.phone == null` check was always false
+  /// for a Google-only account and showed "Change"/the raw empty string
+  /// instead of "Add"/"Not set".
+  String? _normalizePhone(String? phone) => (phone == null || phone.isEmpty) ? null : phone;
+
   String _requireUserId() {
     final id = _profileDataSource.currentUserId;
     if (id == null) {
@@ -78,12 +89,69 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       await _authDataSource.signInWithGoogleAndAwaitSession(
         redirectTo: _googleRedirectUrl,
       );
+      await _backfillFromGoogleIdentity();
       // Awaited deliberately so a failure fetching the profile row right
       // after sign-in is still caught here and mapped to
       // GoogleSignInFailure, rather than escaping uncaught.
       return await _fetchCurrentProfile();
-    } catch (_) {
+    } catch (e) {
+      // DIAGNOSTIC ("login page should bring in the Google account"
+      // report): if this never completes, the two most likely causes are
+      // on the Supabase side: (1) Authentication → Providers → Google
+      // isn't configured with a real Client ID/Secret yet, or (2)
+      // io.supabase.narratemy://login-callback/ isn't in Authentication →
+      // URL Configuration → Redirect URLs (Supabase silently refuses to
+      // hand the session back to a redirect URL it doesn't recognize,
+      // which looks exactly like this call hanging until timeout). Check
+      // the debug console next time this is tapped.
+      debugPrint('signInWithGoogle failed: $e');
       throw GoogleSignInFailure(RegisterMessages.m3GoogleSignInFailed);
+    }
+  }
+
+  /// A tourist who signs in with Google already told Google their name and
+  /// picture, so asking for them again is busywork. Supabase copies the
+  /// provider's claims onto `auth.users.user_metadata`; this lifts the two
+  /// useful ones onto the `profiles` row.
+  ///
+  /// Only fills a column that is currently EMPTY, so it never overwrites a
+  /// name the tourist edited or a photo they uploaded — which also makes
+  /// it safe to run on every Google sign-in rather than only the first.
+  ///
+  /// Best-effort by design: wrapped so a failure here can never turn a
+  /// perfectly good sign-in into GoogleSignInFailure. Google's key names
+  /// differ by provider and have changed over time, so both spellings of
+  /// each are checked.
+  Future<void> _backfillFromGoogleIdentity() async {
+    try {
+      final user = _authDataSource.currentUser;
+      if (user == null) return;
+      final meta = user.userMetadata ?? const <String, dynamic>{};
+
+      String? pick(List<String> keys) {
+        for (final k in keys) {
+          final v = meta[k];
+          if (v is String && v.trim().isNotEmpty) return v.trim();
+        }
+        return null;
+      }
+
+      final googleName = pick(['full_name', 'name']);
+      final googleAvatar = pick(['avatar_url', 'picture']);
+      if (googleName == null && googleAvatar == null) return;
+
+      final dto = await _profileDataSource.fetchProfileRow(user.id);
+      final nameIsEmpty = dto.fullName == null || dto.fullName!.trim().isEmpty;
+      final avatarIsEmpty = dto.avatarUrl == null || dto.avatarUrl!.trim().isEmpty;
+      if (!nameIsEmpty && !avatarIsEmpty) return;
+
+      await _profileDataSource.backfillOAuthProfile(
+        user.id,
+        fullName: nameIsEmpty ? googleName : null,
+        avatarUrl: avatarIsEmpty ? googleAvatar : null,
+      );
+    } catch (e) {
+      debugPrint('Google profile backfill skipped: $e');
     }
   }
 
@@ -99,6 +167,12 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     try {
       await _authDataSource.sendOtp(e164Phone, shouldCreateUser: true);
     } on AuthException catch (e) {
+      // When the ONLY problem is that no SMS provider is configured/
+      // reachable in this environment (not the phone number itself),
+      // don't surface that to the tourist at all — proceed as if the OTP
+      // was sent, same as every check above already passed. The OTP
+      // screen opens as normal; there's just no real code behind it yet.
+      if (_looksLikeProviderError(e)) return;
       throw _mapSendOtpException(e);
     }
   }
@@ -148,6 +222,8 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
         password: password,
       );
     } on AuthException catch (e) {
+      // See the matching comment in sendPhoneRegistrationOtp above.
+      if (_looksLikeProviderError(e)) return;
       throw _mapSendOtpException(e);
     }
   }
@@ -189,6 +265,8 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     try {
       await _authDataSource.sendOtp(e164Phone, shouldCreateUser: false);
     } on AuthException catch (e) {
+      // See the matching comment in sendPhoneRegistrationOtp above.
+      if (_looksLikeProviderError(e)) return;
       throw _mapSendOtpException(e, useUc401Messages: true);
     }
   }
@@ -246,6 +324,8 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     try {
       await _authDataSource.sendOtp(e164Phone, shouldCreateUser: false);
     } on AuthException catch (e) {
+      // See the matching comment in sendPhoneRegistrationOtp above.
+      if (_looksLikeProviderError(e)) return;
       throw _mapSendOtpException(e);
     }
   }
@@ -333,7 +413,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       final dto = await _profileDataSource.fetchProfileRow(userId);
       final user = Supabase.instance.client.auth.currentUser;
       return dto.toEntity(
-        phone: user?.phone,
+        phone: _normalizePhone(user?.phone),
         hasGoogleLinked:
             user?.identities?.any((i) => i.provider == 'google') ?? false,
         createdAt: user == null ? null : DateTime.tryParse(user.createdAt),
@@ -344,17 +424,16 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   }
 
   @override
-  Future<Profile> updatePersonalInfo({String? fullName, String? bio}) async {
+  Future<Profile> updatePersonalInfo({String? fullName}) async {
     final userId = _requireUserId();
     try {
       final dto = await _profileDataSource.updatePersonalInfo(
         userId,
         fullName: fullName,
-        bio: bio,
       );
       final user = Supabase.instance.client.auth.currentUser;
       return dto.toEntity(
-        phone: user?.phone,
+        phone: _normalizePhone(user?.phone),
         hasGoogleLinked:
             user?.identities?.any((i) => i.provider == 'google') ?? false,
         createdAt: user == null ? null : DateTime.tryParse(user.createdAt),
@@ -438,6 +517,13 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       if (_looksLikeRateLimit(e)) {
         throw RateLimitedFailure(ProfileMessages.m6UnableToUpdate);
       }
+      // BUG FIX (6 Sep, Foo: "the sent otp on the phone number change in
+      // the personal info fail to redirect user to otp pages"): this was
+      // the one send-OTP call site that didn't check
+      // `_looksLikeProviderError` — while no SMS provider is configured,
+      // every attempt threw the raw Twilio error here instead of
+      // proceeding like the other four call sites already do.
+      if (_looksLikeProviderError(e)) return;
       throw ServerFailure(e.message);
     }
   }
@@ -500,16 +586,60 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     try {
       await _authDataSource.linkGoogleAndAwaitUpdate(redirectTo: _googleRedirectUrl);
     } on AuthException catch (e) {
+      // DIAGNOSTIC ("can't add a Google account" report): the most likely
+      // cause is that the Supabase project's "Allow manual linking"
+      // setting (Dashboard → Authentication → Sign In / Providers, beta,
+      // OFF by default) isn't enabled — `linkIdentity()` then throws an
+      // AuthApiException with message "Manual linking is disabled" instead
+      // of actually launching the Google flow. Check the debug console
+      // next time this is tapped; if the message contains "manual
+      // linking", that confirms it.
+      debugPrint('linkGoogleAccount failed: AuthException(${e.statusCode}): ${e.message}');
+      if (_looksLikeManualLinkingDisabled(e)) {
+        // STILL seeing this after enabling "Allow manual linking"? Three
+        // things to double-check, in order of likelihood — none of these
+        // are things the client code can detect or work around:
+        //  1. The toggle was saved on a DIFFERENT Supabase project than
+        //     the one this app actually points to. Compare the Project
+        //     Ref in the dashboard's URL against `app_config.dart`'s
+        //     `supabaseUrl` (the ref is the subdomain, e.g.
+        //     `abcdefgh.supabase.co` → ref `abcdefgh`).
+        //  2. It's easy to toggle the WRONG setting — Supabase also has
+        //     an "allow automatic linking of accounts with the same
+        //     email" checkbox (under each provider's own settings),
+        //     which is a different feature and does NOT enable this.
+        //     The one this needs is specifically labelled "Allow manual
+        //     linking" under Authentication → Sign In / Providers (it's
+        //     marked beta/experimental, near the bottom of that page).
+        //  3. The change can take a minute or two to propagate — try
+        //     again after a short wait, and after a full app restart
+        //     (not just hot reload) so a stale auth session isn't reused.
+        // The raw exception is appended below in debug builds only, so
+        // it's visible directly in the on-screen error rather than only
+        // in `flutter run`'s console.
+        throw GoogleSignInFailure(
+          'Google account linking is turned off for this app. Enable '
+          '"Allow manual linking" in the Supabase dashboard '
+          '(Authentication → Sign In / Providers) and try again.'
+          '${kDebugMode ? '\n[debug] ${e.statusCode}: ${e.message}' : ''}',
+        );
+      }
       if (_looksLikeIdentityAlreadyLinked(e)) {
         // REQ_503_16: the Google identity itself is already linked to a
         // DIFFERENT NarrateMy account.
         throw GoogleSignInFailure(ProfileMessages.m14GoogleAlreadyLinked);
       }
       throw GoogleSignInFailure(ProfileMessages.m13UnableToLinkGoogle);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('linkGoogleAccount failed: $e');
       throw GoogleSignInFailure(ProfileMessages.m13UnableToLinkGoogle);
     }
     return _fetchCurrentProfile();
+  }
+
+  bool _looksLikeManualLinkingDisabled(AuthException e) {
+    final msg = e.message.toLowerCase();
+    return msg.contains('manual linking');
   }
 
   @override
@@ -537,7 +667,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     final dto = await _profileDataSource.fetchProfileRow(userId);
     final user = Supabase.instance.client.auth.currentUser;
     return dto.toEntity(
-      phone: user?.phone,
+      phone: _normalizePhone(user?.phone),
       hasGoogleLinked: user?.identities?.any((i) => i.provider == 'google') ?? false,
       createdAt: user == null ? null : DateTime.tryParse(user.createdAt),
     );
@@ -615,7 +745,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     }
     final dto = await _profileDataSource.fetchProfileRow(user.id);
     return dto.toEntity(
-      phone: user.phone,
+      phone: _normalizePhone(user.phone),
       hasGoogleLinked: _authDataSource.currentUserHasGoogleIdentity,
       createdAt: DateTime.tryParse(user.createdAt),
     );
@@ -638,5 +768,25 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     return msg.contains('rate limit') ||
         msg.contains('too many') ||
         e.statusCode == '429';
+  }
+
+  /// Per explicit request: while no SMS provider (Twilio/etc.) is
+  /// configured on this Supabase project, sending an OTP fails with a raw
+  /// provider error such as "Error sending confirmation OTP to provider:
+  /// Authentication Error - invalid username. More information:
+  /// https://twilio.com/docs/error/20003" — meaningless and alarming to a
+  /// tourist, and not something the phone number they typed caused. This
+  /// is caught in every send/resend-OTP call site so the app proceeds as
+  /// if the OTP were sent instead of surfacing it. Remove this check (or
+  /// let it just stop matching once a provider is configured) if a real
+  /// send failure should start being shown again.
+  bool _looksLikeProviderError(AuthException e) {
+    final msg = e.message.toLowerCase();
+    return msg.contains('sending confirmation') ||
+        msg.contains('sending otp') ||
+        msg.contains('sms provider') ||
+        msg.contains('twilio') ||
+        msg.contains('error sending') ||
+        (msg.contains('provider') && msg.contains('authentication error'));
   }
 }
