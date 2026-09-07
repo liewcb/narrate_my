@@ -405,13 +405,13 @@ class _HeroSection extends StatelessWidget {
     Color statusColor;
     switch (status.toLowerCase()) {
       case 'upcoming':
-        statusColor = AppColors.pineGreen;
+        statusColor = Colors.yellow.shade600;
         break;
       case 'ongoing':
-        statusColor = AppColors.terracotta;
+        statusColor = Colors.green.shade600;
         break;
       default:
-        statusColor = AppColors.mutedText;
+        statusColor = Colors.orange.shade400;
     }
     return SizedBox(
       height: 380,

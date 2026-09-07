@@ -250,7 +250,10 @@ class AiPromptBuilder {
     buffer.writeln('- CRITICAL SPEED CONSTRAINT: Plan quickly and concisely. '
         'Do not over-analyze candidates in your reasoning. Output the JSON '
         'array immediately once you have selected the places.');
-    buffer.writeln('- Include every MUST-VISIT place exactly once.');
+    buffer.writeln('- Include every MUST-VISIT place exactly once. '
+        'ALL VALIDATED MUST-VISIT PLACES ARE REQUIRED TO APPEAR IN THE '
+        'GENERATED ITINERARY — never omit, replace, duplicate or invent a '
+        'must-visit place.');
     buffer.writeln('- Use only the supplied place IDs. Never invent places or IDs.');
     buffer.writeln('- A place may appear only once across the whole trip.');
     buffer.writeln('- Return exactly ${request.totalDays} day(s).');

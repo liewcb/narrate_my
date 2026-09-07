@@ -80,15 +80,7 @@ class _GenerationBody extends StatelessWidget {
               explorationTime: vm.draft.exploration ?? 'Standard',
               mustVisitPlaceIds: List.of(vm.draft.mustVisitPlaceIds),
               tripStartDate: vm.draft.startDate ?? DateTime.now(),
-              // 👇 Regenerate navigates back to a fresh generation screen
-              onRegenerate: () async {
-                await Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => GenerationScreen(draft: vm.draft),
-                  ),
-                );
-              },
+              // ✅ REMOVED the dead-context onRegenerate block here
               userId: vm.userId,
               draft: vm.draft,
             ),
@@ -124,23 +116,15 @@ class _GenerationBody extends StatelessWidget {
                         builder: (_) => ItineraryFinalScreen(
                           result: result,
                           title:
-                              vm.draft.tripName.isEmpty ? 'My Trip' : vm.draft.tripName,
+                          vm.draft.tripName.isEmpty ? 'My Trip' : vm.draft.tripName,
                           itineraryId: vm.savedItineraryId,
                           explorationTime:
-                              vm.draft.exploration ?? 'Standard',
+                          vm.draft.exploration ?? 'Standard',
                           mustVisitPlaceIds:
-                              List.of(vm.draft.mustVisitPlaceIds),
+                          List.of(vm.draft.mustVisitPlaceIds),
                           tripStartDate:
-                              vm.draft.startDate ?? DateTime.now(),
-                          onRegenerate: () async {
-                            await Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    GenerationScreen(draft: vm.draft),
-                              ),
-                            );
-                          },
+                          vm.draft.startDate ?? DateTime.now(),
+                          // ✅ REMOVED the dead-context onRegenerate block here
                           userId: vm.userId,
                           draft: vm.draft,
                         ),
@@ -274,10 +258,10 @@ class __MapHeroState extends State<_MapHero>
             ),
             AnimatedPositioned(
               left:
-                  widget.planeOffset.dx *
+              widget.planeOffset.dx *
                   (MediaQuery.of(context).size.width - 48),
               bottom:
-                  widget.planeOffset.dy *
+              widget.planeOffset.dy *
                   (MediaQuery.of(context).size.height - 48),
               duration: const Duration(milliseconds: 1300),
               curve: Curves.easeInOut,
@@ -525,20 +509,20 @@ class _StepList extends StatelessWidget {
                       ? const Icon(Icons.check, color: Colors.white, size: 16)
                       : isActive
                       ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation(
-                              AppColors.brandGreen,
-                            ),
-                          ),
-                        )
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(
+                        AppColors.brandGreen,
+                      ),
+                    ),
+                  )
                       : const Icon(
-                          Icons.radio_button_unchecked,
-                          size: 16,
-                          color: AppColors.outline,
-                        ),
+                    Icons.radio_button_unchecked,
+                    size: 16,
+                    color: AppColors.outline,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -619,7 +603,7 @@ class _FunFact extends StatelessWidget {
                 children: const [
                   TextSpan(
                     text:
-                        "Penang's George Town has over 12,000 heritage buildings - we'll route you through the best street art alleys.",
+                    "Penang's George Town has over 12,000 heritage buildings - we'll route you through the best street art alleys.",
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.normal,

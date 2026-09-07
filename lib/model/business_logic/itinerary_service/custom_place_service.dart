@@ -67,6 +67,25 @@ class NearbyPlaceResult {
   });
 }
 
+/// Deterministic, day-scoped recommendations split into the two categories
+/// the "Recommended Places" UI shows. Produced by retrieval + filtering +
+/// ranking only — never by an AI call.
+class DayRecommendations {
+  final List<NearbyPlaceResult> attractions;
+  final List<NearbyPlaceResult> restaurants;
+
+  const DayRecommendations({
+    required this.attractions,
+    required this.restaurants,
+  });
+
+  const DayRecommendations.empty()
+      : attractions = const [],
+        restaurants = const [];
+
+  bool get isEmpty => attractions.isEmpty && restaurants.isEmpty;
+}
+
 /// Distance/proximity information shown to the user for a searched place.
 class PlaceProximityInfo {
   final Place place;
@@ -315,6 +334,173 @@ class CustomPlaceService {
   }
 
   // ============================================================
+  // 2b. DAY-SCOPED RECOMMENDATIONS (deterministic — no AI)
+  // ============================================================
+
+  /// Strict food venue types — used to split the Restaurants tab and to keep
+  /// food out of the Attractions tab.
+  static const List<String> _foodTypes = [
+    'restaurant',
+    'cafe',
+    'bakery',
+    'meal_takeaway',
+    'meal_delivery',
+  ];
+
+  /// Safety-floor attraction types when no interest maps to any.
+  static const List<String> _generalAttractionTypes = [
+    'tourist_attraction',
+    'museum',
+    'park',
+    'natural_feature',
+    'art_gallery',
+  ];
+
+  /// Retrieves, filters and ranks candidate places for ONE day, split into
+  /// Attractions and Restaurants.
+  ///
+  /// Fully application-side and deterministic (no DeepSeek): two bounded
+  /// nearby searches around the day's route centre run in parallel, then the
+  /// existing [filterCandidates] + [rankCandidates] pipeline produces the
+  /// top [maxPerCategory] of each. Designed to complete in ~3s and to be
+  /// cached by the caller so tab switching never re-hits the network.
+  Future<DayRecommendations> recommendForDay({
+    required List<Place> dayPlaces,
+    required List<String> interests,
+    required Coordinates? destinationCenter,
+    required Set<String> usedPlaceIds,
+    required int dayOfWeek,
+    required String transportMode,
+    int maxPerCategory = 8,
+  }) async {
+    final center = destinationCenter ?? _centroid(dayPlaces);
+    if (center == null) return const DayRecommendations.empty();
+
+    // Route anchors for detour-aware ranking (first/last stop of the day).
+    final anchors = InsertionAnchors(
+      previousStop: dayPlaces.isNotEmpty ? dayPlaces.first : null,
+      nextStop: dayPlaces.length > 1 ? dayPlaces.last : null,
+    );
+
+    // Two independent searches — run concurrently to minimise latency.
+    final searches = await Future.wait([
+      _safeNearby(center, _attractionTypesFor(interests)),
+      _safeNearby(center, _foodTypes),
+    ]);
+
+    final attractionCandidates = _dedupeById(searches[0]);
+    final foodCandidates = _dedupeById(searches[1]);
+
+    final filteredAttractions = _hardFilterForDay(
+      filterCandidates(
+        candidates: attractionCandidates,
+        usedPlaceIds: usedPlaceIds,
+        dayOfWeek: dayOfWeek,
+      ),
+      center: center,
+    );
+    final filteredFood = _hardFilterForDay(
+      filterCandidates(
+        candidates: foodCandidates,
+        usedPlaceIds: usedPlaceIds,
+        dayOfWeek: dayOfWeek,
+      ),
+      center: center,
+    );
+
+    final rankedAttractions = rankCandidates(
+      candidates: filteredAttractions,
+      anchors: anchors,
+      interests: interests,
+      tripLocation: center,
+      transportMode: transportMode,
+    ).take(maxPerCategory).toList();
+
+    final rankedFood = rankCandidates(
+      candidates: filteredFood,
+      anchors: anchors,
+      interests: interests,
+      tripLocation: center,
+      transportMode: transportMode,
+    ).take(maxPerCategory).toList();
+
+    return DayRecommendations(
+      attractions: rankedAttractions,
+      restaurants: rankedFood,
+    );
+  }
+
+  /// Attraction Google types for the traveler's interests, with food venues
+  /// removed so the Attractions tab never shows restaurants.
+  List<String> _attractionTypesFor(List<String> interests) {
+    final types = <String>{};
+    for (final interest in interests) {
+      types.addAll(
+        InterestMapping.getAttractionGoogleTypesForInterest(interest),
+      );
+    }
+    types.removeWhere(_foodTypes.contains);
+    if (types.isEmpty) types.addAll(_generalAttractionTypes);
+    return types.take(10).toList();
+  }
+
+  Future<List<Place>> _safeNearby(Coordinates center, List<String> types) async {
+    try {
+      return await _placesDataSource.searchNearbyPlaces(
+        latitude: center.latitude,
+        longitude: center.longitude,
+        radiusMeters: ItineraryConstants.customPlaceSearchRadiusMeters,
+        types: types,
+      );
+    } catch (e) {
+      debugPrint('[CustomPlace] recommend nearby search failed: $e');
+      return const [];
+    }
+  }
+
+  List<Place> _dedupeById(List<Place> places) {
+    final seen = <String>{};
+    final out = <Place>[];
+    for (final p in places) {
+      if (p.placeId.isEmpty) continue;
+      if (seen.add(p.placeId)) out.add(p);
+    }
+    return out;
+  }
+
+  Coordinates? _centroid(List<Place> places) {
+    double lat = 0, lng = 0;
+    var n = 0;
+    for (final p in places) {
+      if (p.latitude == 0 && p.longitude == 0) continue;
+      lat += p.latitude;
+      lng += p.longitude;
+      n++;
+    }
+    if (n == 0) return null;
+    return Coordinates(latitude: lat / n, longitude: lng / n);
+  }
+
+  /// Hard day-scoped eligibility filter applied on top of [filterCandidates]:
+  /// a usable visit duration and destination compatibility (within the
+  /// itinerary's maximum search radius of the selected day's centre).
+  List<Place> _hardFilterForDay(List<Place> candidates,
+      {required Coordinates center}) {
+    return candidates.where((place) {
+      // FR-ADD-06 — duration must be positive.
+      final duration = place.visitDurationMinutes ??
+          ItineraryConstants.defaultDurationMinutes;
+      if (duration <= 0) return false;
+      // FR-ADD-08 — must belong to the selected day's destination area.
+      if (center.distanceTo(place.coordinates) >
+          ItineraryConstants.maxSearchRadiusKm) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  // ============================================================
   // 3. CANDIDATE FILTERING
   // ============================================================
 
@@ -457,7 +643,16 @@ class CustomPlaceService {
     required String travelPace,
     required List<String> interests,
     Coordinates? tripLocation,
+    // Optional overrides used by the "Recommended Places" flow. Defaults
+    // preserve the existing "Add Custom Place" behaviour exactly.
+    Duration? aiTimeoutOverride,
+    bool placeIdContract = false,
+    // Every place id already scheduled ANYWHERE in the itinerary. Re-checked
+    // at commit time (duplicate detection uses placeId, never the name) so a
+    // place already used on another day can never be added again.
+    Set<String> itineraryUsedPlaceIds = const {},
   }) async {
+    final effectiveAiTimeout = aiTimeoutOverride ?? aiTimeout;
     // ── 1. Fast deterministic pre-checks (no AI, no network) ──
     if (newPlace.placeId.isEmpty) {
       return CustomPlacePlanResult.problem('Please select a valid place.');
@@ -468,6 +663,11 @@ class CustomPlaceService {
     }
     // Duplicate rule — placeId identity, against the temporary day state.
     if (existingStops.any((s) => s.place.placeId == newPlace.placeId)) {
+      return CustomPlacePlanResult.problem(
+          'This place is already in your itinerary.');
+    }
+    // Whole-itinerary duplicate re-check (placeId, not name).
+    if (itineraryUsedPlaceIds.contains(newPlace.placeId)) {
       return CustomPlacePlanResult.problem(
           'This place is already in your itinerary.');
     }
@@ -521,6 +721,8 @@ class CustomPlaceService {
       travelPace: travelPace,
       explorationTime: explorationTime,
       transportMode: transportMode,
+      timeout: effectiveAiTimeout,
+      placeIdContract: placeIdContract,
     );
 
     // AI position feasible? Its clamped duration is re-checked.
@@ -609,6 +811,12 @@ class CustomPlaceService {
 
   /// Asks the AI ONLY "after which existing stop should this place go?".
   /// No clock times, no travel math, no invented places — Dart owns those.
+  ///
+  /// [placeIdContract] switches the response shape to the traveler-facing
+  /// "Recommended Places" contract (`insert_after_place_id` +
+  /// `recommended_duration_minutes` + `reason`); otherwise the legacy
+  /// `{insertIndex, visitMinutes}` shape is used. Both are mapped to the same
+  /// internal `(insertIndex, visitMinutes)` record.
   Future<({int insertIndex, int? visitMinutes})?> _aiInsertionPosition({
     required List<ExistingStopContext> existingStops,
     required Place newPlace,
@@ -617,6 +825,8 @@ class CustomPlaceService {
     required String travelPace,
     required String explorationTime,
     required String transportMode,
+    required Duration timeout,
+    bool placeIdContract = false,
   }) async {
     final buf = StringBuffer()
       ..writeln('You insert one new stop into an existing day plan.')
@@ -642,26 +852,48 @@ class CustomPlaceService {
           'lat=${s.place.placeLatitude.toStringAsFixed(3)}, '
           'lng=${s.place.placeLongitude.toStringAsFixed(3)}, '
           'time=${hhmm(s.startTime.hour * 60 + s.startTime.minute)}-'
-          '${hhmm(s.endTime.hour * 60 + s.endTime.minute)}');
+          '${hhmm(s.endTime.hour * 60 + s.endTime.minute)}, '
+          'duration=${s.durationMinutes}min, '
+          'mustVisit=${s.isMustVisit}, '
+          'travelFromPrev=${s.travelFromPrevMinutes}min');
     }
-    buf
-      ..writeln()
-      ..writeln('insertIndex = number of stops BEFORE the new stop '
-          '(0 = start, ${existingStops.length} = end). Consider geography, '
-          'category flow and day balance.')
-      ..writeln('Respond with compact JSON ONLY, no markdown:')
-      ..writeln('{"insertIndex":2,"visitMinutes":75}');
+
+    if (placeIdContract) {
+      buf
+        ..writeln()
+        ..writeln('Choose the best position for the NEW PLACE and a sensible '
+            'visit duration. Consider geography, category flow, opening '
+            'hours and day balance. Do NOT compute clock times.')
+        ..writeln('insert_after_place_id = the placeId of the existing stop to '
+            'place the new stop AFTER, or null to insert at the very start.')
+        ..writeln('Respond with compact JSON ONLY, no markdown:')
+        ..writeln('{"insert_after_place_id":"<existing_place_id_or_null>",'
+            '"recommended_duration_minutes":60,'
+            '"reason":"short reason"}');
+    } else {
+      buf
+        ..writeln()
+        ..writeln('insertIndex = number of stops BEFORE the new stop '
+            '(0 = start, ${existingStops.length} = end). Consider geography, '
+            'category flow and day balance.')
+        ..writeln('Respond with compact JSON ONLY, no markdown:')
+        ..writeln('{"insertIndex":2,"visitMinutes":75}');
+    }
 
     try {
       final raw = await _aiService
           .generateRawContent(
             buf.toString(),
-            timeout: aiTimeout,
-            totalBudget: aiTimeout,
-            requestName: 'CUSTOM_PLACE_INSERT',
+            timeout: timeout,
+            totalBudget: timeout,
+            requestName: placeIdContract
+                ? 'RECOMMENDED_PLACE_INSERT'
+                : 'CUSTOM_PLACE_INSERT',
           )
-          .timeout(aiTimeout);
-      return _parseAiInsertion(raw, existingStops.length);
+          .timeout(timeout);
+      return placeIdContract
+          ? _parseAiInsertionByPlaceId(raw, existingStops)
+          : _parseAiInsertion(raw, existingStops.length);
     } catch (e) {
       debugPrint('[CustomPlace] AI position failed (fallback next): $e');
       return null;
@@ -686,6 +918,40 @@ class CustomPlaceService {
         insertIndex: idx,
         visitMinutes: (data['visitMinutes'] as num?)?.toInt(),
       );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Parses the `insert_after_place_id` contract into an insertion index.
+  /// `null` → insert at the start (0); an existing stop's placeId → the index
+  /// right after it; an unknown id → null (caller falls back deterministically).
+  ({int insertIndex, int? visitMinutes})? _parseAiInsertionByPlaceId(
+    String raw,
+    List<ExistingStopContext> existingStops,
+  ) {
+    try {
+      final text = raw.trim().replaceAll('```', '');
+      final start = text.indexOf('{');
+      final end = text.lastIndexOf('}');
+      if (start < 0 || end <= start) return null;
+      final data = jsonDecode(text.substring(start, end + 1));
+      if (data is! Map<String, dynamic>) return null;
+
+      final afterId = data['insert_after_place_id'];
+      final duration = (data['recommended_duration_minutes'] as num?)?.toInt();
+
+      int insertIndex;
+      if (afterId == null) {
+        insertIndex = 0;
+      } else {
+        final id = afterId.toString();
+        final pos = existingStops.indexWhere((s) => s.place.placeId == id);
+        if (pos == -1) return null; // unknown id → deterministic fallback
+        insertIndex = pos + 1;
+      }
+      if (insertIndex < 0 || insertIndex > existingStops.length) return null;
+      return (insertIndex: insertIndex, visitMinutes: duration);
     } catch (_) {
       return null;
     }

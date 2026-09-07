@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 class LocalDatabaseService {
   static final LocalDatabaseService _instance =
-      LocalDatabaseService._internal();
+  LocalDatabaseService._internal();
   factory LocalDatabaseService() => _instance;
   LocalDatabaseService._internal();
 
@@ -19,7 +19,7 @@ class LocalDatabaseService {
     final path = join(await getDatabasesPath(), 'narratemy.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 4, // ✅ Incremented from 3 to 4
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -35,6 +35,24 @@ class LocalDatabaseService {
     if (oldVersion < 3) {
       await _upgradeBookmarkCacheV3(db);
     }
+    // ✅ NEW: Migration to add missing columns for version 4
+    if (oldVersion < 4) {
+      await _upgradeItineraryV4(db);
+    }
+  }
+
+  /// ✅ NEW: Migration to add travel_type and transportation_mode columns
+  Future<void> _upgradeItineraryV4(Database db) async {
+    // Check if columns exist before adding them
+    final columns = await db.rawQuery('PRAGMA table_info(itineraries)');
+    final columnNames = columns.map((col) => col['name'] as String).toList();
+
+    if (!columnNames.contains('travel_type')) {
+      await db.execute('ALTER TABLE itineraries ADD COLUMN travel_type TEXT');
+    }
+    if (!columnNames.contains('transportation_mode')) {
+      await db.execute('ALTER TABLE itineraries ADD COLUMN transportation_mode TEXT');
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -43,9 +61,9 @@ class LocalDatabaseService {
   }
 
   Future<void> _createItineraryTables(
-    Database db, {
-    bool ifNotExists = false,
-  }) async {
+      Database db, {
+        bool ifNotExists = false,
+      }) async {
     final guard = ifNotExists ? 'IF NOT EXISTS ' : '';
     await db.execute('''
       CREATE TABLE ${guard}destinations (
@@ -78,6 +96,7 @@ class LocalDatabaseService {
       )
     ''');
 
+    // ✅ Updated CREATE TABLE with all required columns
     await db.execute('''
       CREATE TABLE ${guard}itineraries (
         itinerary_id TEXT PRIMARY KEY,
@@ -89,6 +108,8 @@ class LocalDatabaseService {
         total_days INTEGER NOT NULL,
         exploration_time TEXT NOT NULL,
         travel_pace TEXT NOT NULL,
+        travel_type TEXT,
+        transportation_mode TEXT,
         interests TEXT NOT NULL,
         cover_image_url TEXT,
         status TEXT DEFAULT 'UPCOMING',
@@ -146,14 +167,13 @@ class LocalDatabaseService {
 
     final columns = await db.rawQuery('PRAGMA table_info(bookmarks)');
     final itemIdColumns = columns.where(
-      (column) => column['name'] == 'item_id',
+          (column) => column['name'] == 'item_id',
     );
     final itemIdIsRequired =
         itemIdColumns.isNotEmpty &&
-        (itemIdColumns.first['notnull'] as int? ?? 0) == 1;
+            (itemIdColumns.first['notnull'] as int? ?? 0) == 1;
     if (!itemIdIsRequired) return;
 
-    // SQLite cannot drop NOT NULL in place, so rebuild while preserving data.
     await db.execute('ALTER TABLE bookmarks RENAME TO bookmarks_v2_backup');
     await _createBookmarksTable(db);
     await db.execute('''
@@ -167,11 +187,11 @@ class LocalDatabaseService {
   }
 
   Future<void> _addColumnIfMissing(
-    Database db,
-    String table,
-    String column,
-    String definition,
-  ) async {
+      Database db,
+      String table,
+      String column,
+      String definition,
+      ) async {
     final columns = await db.rawQuery('PRAGMA table_info($table)');
     if (!columns.any((item) => item['name'] == column)) {
       await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');

@@ -5,10 +5,12 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_final_vm.dart';
 import 'add_place_screen.dart';
 import 'edit_itinerary_screen.dart';
+import 'generation_screen.dart';
 import 'my_itineraries_screen.dart';
 import 'widgets/view_place_detail_screen.dart';
 
@@ -73,12 +75,28 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
     super.dispose();
   }
 
-  /// Prompts user with a confirmation dialog before discarding
+  /// Prompts user with a confirmation dialog before discarding.
+  /// Goes back to the previous screen on confirmation.
+  /// Prompts user with a confirmation dialog before discarding.
+  /// Clears the draft and navigates back to the main itineraries screen on confirmation.
   Future<void> _handleDiscard() async {
+    // If the itinerary is saved and there are no unsaved changes,
+    // just go back to the main screen without asking.
+    if (_vm.itineraryId != null && !_vm.hasUnsavedChanges) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const MyItinerariesScreen()),
+            (route) => false, // Clears the entire navigation stack
+      );
+      return;
+    }
+
     final shouldDiscard = await showConfirmationDialog(
       context: context,
-      title: 'Discard Itinerary?',
-      message: 'Are you sure you want to discard this generated plan? Any unsaved progress will be lost.',
+      title: _vm.itineraryId == null ? 'Discard Itinerary?' : 'Discard Changes?',
+      message: _vm.itineraryId == null
+          ? 'This plan has not been saved yet. Discard it permanently?'
+          : 'You have unsaved changes. Discard them?',
       confirmLabel: 'Discard',
       cancelLabel: 'Cancel',
       confirmColor: AppColors.error,
@@ -88,9 +106,17 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
     );
 
     if (shouldDiscard == true && mounted) {
+      // This cleans out the temporary plan data
       await _vm.clearDraft();
-      // Pop the screen
-      Navigator.pop(context);
+
+      if (mounted) {
+        // Navigate cleanly to the main screen
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const MyItinerariesScreen()),
+              (route) => false,
+        );
+      }
     }
   }
 
@@ -247,18 +273,36 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
                         child: _DayCard(
                           day: day,
                           isSelected: index == _vm.selectedDayIndex,
-                          onAddPlace: () {
-                            final id = _vm.itineraryId;
-                            if (id == null) return;
-                            Navigator.push(
+                          onAddPlace: () async {
+                            final days = _vm.result.scheduledDays;
+                            if (days == null || index >= days.length) return;
+                            final updated =
+                            await Navigator.push<ScheduledDay>(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => AddPlaceScreen(
-                                  itineraryId: id,
+                                  itineraryId: _vm.itineraryId ?? '',
                                   dayIndex: index,
+                                  explorationTime: _vm.explorationTime,
+                                  workingDay: days[index],
+                                  itineraryUsedPlaceIds: _vm.allPlaceIds,
+                                  dayDate: days[index].date,
+                                  transportMode:
+                                  _vm.draft?.transportation ?? 'walking',
+                                  travelPace: _vm.draft?.pace ?? 'Standard',
+                                  interests:
+                                  _vm.draft?.interests.toList() ?? const [],
+                                  mustVisitPlaceIds: _vm.mustVisitPlaceIds,
+                                  destinationCenter:
+                                  _vm.destinationCenterForDay(index),
                                 ),
                               ),
                             );
+                            if (updated != null && mounted) {
+                              // Replace ONLY the selected day in the working
+                              // preview; every other day is preserved.
+                              _vm.applyDayUpdate(index, updated);
+                            }
                           },
                           onEditDay: () {
                             Navigator.push<ItineraryResult>(
@@ -274,8 +318,8 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
                                   transportMode: _vm.draft?.transportation ??
                                       'walking',
                                   interests:
-                                      _vm.draft?.interests.toList() ??
-                                          const [],
+                                  _vm.draft?.interests.toList() ??
+                                      const [],
                                 ),
                               ),
                             ).then((updated) {
@@ -297,8 +341,19 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
         ),
         bottomNavigationBar: _BottomActions(
           onDiscard: _handleDiscard,
-          onRegenerate: _vm.canRegenerate ? () => _vm.regenerate() : null,
-          isRegenerating: _vm.isRegenerating,
+
+          // ✅ UPDATE THIS: Route directly using the Final Screen's active context
+          onRegenerate: widget.draft != null
+              ? () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => GenerationScreen(draft: widget.draft!),
+              ),
+            );
+          }
+              : null,
+          isRegenerating: false,
           onSave: _vm.canSave ? () => _handleSave() : null,
           isSaving: _vm.isSaveInProgress,
           saveMessage: _vm.saveMessage,
@@ -309,7 +364,7 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  SUB-WIDGETS
+//  SUB-WIDGETS (unchanged)
 // ═══════════════════════════════════════════════════════════════════
 
 class _HeroSection extends StatefulWidget {
@@ -1039,13 +1094,13 @@ class _BottomActions extends StatelessWidget {
               onPressed: (onSave == null || isSaving) ? null : onSave,
               icon: isSaving
                   ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0x80FFFFFF),
-                      ),
-                    )
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0x80FFFFFF),
+                ),
+              )
                   : const Icon(Icons.check_circle, size: 18, color: AppColors.surface),
               label: Text(
                 isSaving ? 'Saving...' : 'Save Itinerary',

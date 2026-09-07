@@ -1,5 +1,6 @@
 ﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
@@ -8,14 +9,14 @@ import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/custom_place_service.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
+import '../../model/entities/coordinates.dart';
 import '../../model/entities/itinerary_stop.dart';
-import '../../model/entities/place.dart';
 import '../../viewmodel/Itinerary/edit_itinerary_vm.dart';
-import 'manage_itinerary/add_custom_screen.dart';
+import 'recommended_places_screen.dart';
 import 'widgets/change_location_picker_sheet.dart';
 
 /// Edits a single day of the generated itinerary during preview/review.
-/// Now supports switching between days via a day selector.
+/// Supports switching between days via a day selector + an "All" overview mode.
 class EditItineraryScreen extends StatefulWidget {
   final ItineraryResult result;
   final String title;
@@ -48,9 +49,14 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   GoogleMapController? _mapController;
 
   // ─── Multi-day state ────────────────────────────────────────
+  // -1 = All, 0..n-1 = specific day
   late int _selectedDayIndex;
   late final int _totalDays;
+
   final ScrollController _scrollController = ScrollController();
+  final ScrollController _tabScrollController = ScrollController();
+  // keys[0] = All, keys[1..] = Day 1, Day 2, ...
+  late final List<GlobalKey> _tabKeys;
 
   @override
   void initState() {
@@ -58,62 +64,69 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     _totalDays = widget.result.scheduledDays?.length ?? 0;
     _selectedDayIndex = _totalDays > 0
         ? (widget.dayNumber - 1).clamp(0, _totalDays - 1)
-        : 0;
+        : -1;
+    _tabKeys = List.generate(_totalDays + 1, (_) => GlobalKey());
     _initViewModel();
   }
 
   void _initViewModel() {
-    _vm = EditItineraryViewModel(
-      result: widget.result,
-      dayIndex: _selectedDayIndex,
-      tripStartDate: widget.tripStartDate,
-      explorationTime: widget.explorationTime,
-      mustVisitPlaceIds: widget.mustVisitPlaceIds,
-      title: widget.title,
-    );
+    if (_selectedDayIndex >= 0) {
+      _vm = EditItineraryViewModel(
+        result: widget.result,
+        dayIndex: _selectedDayIndex,
+        tripStartDate: widget.tripStartDate,
+        explorationTime: widget.explorationTime,
+        mustVisitPlaceIds: widget.mustVisitPlaceIds,
+        title: widget.title,
+        transportMode: widget.transportMode,
+      );
+    }
     _changesApplied = false;
   }
 
   @override
   void dispose() {
-    _vm.dispose();
+    if (_selectedDayIndex >= 0) {
+      _vm.dispose();
+    }
     _scrollController.dispose();
+    _tabScrollController.dispose();
     _mapController?.dispose();
     super.dispose();
   }
 
   // ─── Day switching ──────────────────────────────────────────
   void _selectDay(int index) {
+    // index == -1 → All
+    // index >= 0  → specific day
     if (index == _selectedDayIndex) return;
 
     try {
-      // 1. Keep a temporary reference to the old VM so we can dispose of it safely later
-      final oldVm = _vm;
+      final oldVm = _selectedDayIndex >= 0 ? _vm : null;
 
       setState(() {
         _selectedDayIndex = index;
-
-        // 2. Initialize the new VM immediately so the widget tree binds to it on the next frame
-        _vm = EditItineraryViewModel(
-          result: widget.result,
-          dayIndex: index,
-          tripStartDate: widget.tripStartDate,
-          explorationTime: widget.explorationTime,
-          mustVisitPlaceIds: widget.mustVisitPlaceIds,
-          title: widget.title,
-        );
+        if (index >= 0) {
+          _vm = EditItineraryViewModel(
+            result: widget.result,
+            dayIndex: index,
+            tripStartDate: widget.tripStartDate,
+            explorationTime: widget.explorationTime,
+            mustVisitPlaceIds: widget.mustVisitPlaceIds,
+            title: widget.title,
+            transportMode: widget.transportMode,
+          );
+        }
         _changesApplied = false;
       });
 
-      // 3. Handle cleanup, maps, and scrolling AFTER the widget tree has rebuilt
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Safely dispose of the old VM now that nothing is listening to it
-        oldVm.dispose();
+        oldVm?.dispose();
 
-        // Update map bounds for the new day
-        _fitMapBounds();
+        if (index >= 0) {
+          _fitMapBounds();
+        }
 
-        // Smoothly scroll back to the top of the content
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
             0,
@@ -121,6 +134,12 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             curve: Curves.easeOut,
           );
         }
+
+        // Center the correct tab (All = key 0, Day N = key N+1)
+        final tabKeyIndex = index == -1 ? 0 : index + 1;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _centerSelectedTab(tabKeyIndex);
+        });
       });
     } catch (e) {
       debugPrint('[EditItineraryScreen] Day switch failed: $e');
@@ -128,13 +147,31 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text('Unable to load Day ${index + 1}. Please try again.'),
+            content: Text(
+              index == -1
+                  ? 'Unable to load All days. Please try again.'
+                  : 'Unable to load Day ${index + 1}. Please try again.',
+            ),
           ),
         );
     }
   }
 
-  // ─── Map helpers ──────────────────────────────────────────
+  /// Centers the tapped day tab within the horizontal selector.
+  void _centerSelectedTab(int tabKeyIndex) {
+    if (tabKeyIndex < 0 || tabKeyIndex >= _tabKeys.length) return;
+    final tabContext = _tabKeys[tabKeyIndex].currentContext;
+    if (tabContext == null) return;
+
+    Scrollable.ensureVisible(
+      tabContext,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+      alignment: 0.5,
+    );
+  }
+
+  // ─── Map helpers (single-day) ───────────────────────────────
 
   Set<Marker> _buildMarkers() {
     final markers = <Marker>{};
@@ -206,10 +243,10 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
-  // ─── Navigation & Save (unchanged) ─────────────────────────
+  // ─── Navigation & Save ─────────────────────────
 
   Future<void> _handleBack() async {
-    if (!_vm.hasChanges || _changesApplied) {
+    if (_selectedDayIndex < 0 || !_vm.hasChanges || _changesApplied) {
       Navigator.pop(context, null);
       return;
     }
@@ -229,22 +266,23 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 
   void _reviewChanges() {
+    if (_selectedDayIndex < 0) return;
+
     final errors = _vm.validate();
     if (errors.isNotEmpty) {
-      // Invalid temporary itinerary — do NOT leave the edit screen.
       _showProblem(_friendlyValidationError(errors.first));
       return;
     }
     _vm.applyChanges();
     if (_vm.appliedResult != null) {
       _changesApplied = true;
-      // Show the confirmation BEFORE popping: the root ScaffoldMessenger
-      // keeps it visible on the previous screen.
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
-            content: Text('Your itinerary changes were applied.'),
+            content: Text(
+                'Changes applied to your itinerary preview. '
+                'Press Save to store them.'),
             duration: Duration(seconds: 2),
           ),
         );
@@ -252,7 +290,6 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     }
   }
 
-  /// Traveler-facing Problem message (never technical details).
   void _showProblem(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -260,7 +297,6 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 
   Future<void> _pickStartTime(int index) async {
-    // Dart-calculated valid options only — no arbitrary time entry.
     final options = _vm.availableStartTimes(index);
     if (options.isEmpty) {
       _showProblem(_vm.error ??
@@ -379,8 +415,6 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     }
   }
 
-  /// Visit duration bottom sheet — natural travel-app choices only, hard
-  /// 2-hour maximum, feasibility pre-calculated by the ViewModel.
   Future<void> _pickDuration(int index) async {
     final options = _vm.availableDurations(index);
     if (options.isEmpty) {
@@ -506,37 +540,59 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     if (h > 0) return '$h hr';
     return '$m min';
   }
-  /// Add Place = a SEPARATE operation from Change Location. Opens the real
-  /// Add Custom Place screen (search + bookmarks), which runs fast
-  /// deterministic checks, one compact AI insertion-position request and
-  /// deterministic validation, then returns the validated proposed day.
-  /// The proposal is applied to the TEMPORARY itinerary state only — the
-  /// final Save process persists it later.
+
+  /// Opens the day-scoped "Recommended Places" flow. Recommendations and the
+  /// AI insertion planning run against the CURRENT TEMPORARY day state only;
+  /// the validated proposed day is applied to this editor's working state and
+  /// nothing is written to the database (persistence happens on Review/Save).
   Future<void> _showAddPicker() async {
-    final result = await Navigator.push<({int dayIndex, ScheduledDay day})>(
+    final existingStops = _vm.stops
+        .map((s) => ExistingStopContext(
+              place: s.place,
+              startTime: s.startTime,
+              endTime: s.endTime,
+              durationMinutes: s.durationMinutes,
+              travelFromPrevMinutes: s.travelFromPrevMinutes,
+              isMustVisit: s.isMustVisit,
+            ))
+        .toList();
+
+    // Whole-itinerary place ids so recommendations never suggest a duplicate.
+    final usedIds = <String>{};
+    for (final d in (widget.result.scheduledDays ?? const <ScheduledDay>[])) {
+      for (final stop in d.stops) {
+        usedIds.add(stop.attraction.place.placeId);
+      }
+    }
+
+    // Geographic centre of the selected day (destination compatibility).
+    Coordinates? dayCenter;
+    if (_vm.stops.isNotEmpty) {
+      double lat = 0, lng = 0;
+      var n = 0;
+      for (final s in _vm.stops) {
+        final p = s.place;
+        if (p.latitude == 0 && p.longitude == 0) continue;
+        lat += p.latitude;
+        lng += p.longitude;
+        n++;
+      }
+      if (n > 0) dayCenter = Coordinates(latitude: lat / n, longitude: lng / n);
+    }
+
+    final result = await Navigator.push<RecommendedPlaceResult>(
       context,
       MaterialPageRoute(
-        builder: (_) => AddCustomStopScreen(
-          itineraryId: 'preview',
-          dayIndex: _vm.dayNumber,
+        builder: (_) => RecommendedPlacesScreen(
+          dayNumber: _vm.dayNumber,
           dayDate: _vm.dayDate,
-          availableDayIndices: [_vm.dayNumber],
+          existingStops: existingStops,
+          usedPlaceIds: usedIds,
+          interests: widget.interests,
+          transportMode: widget.transportMode,
           explorationTime: widget.explorationTime,
           travelPace: 'Standard',
-          transportMode: widget.transportMode,
-          interests: widget.interests,
-          // Preview mode: seed the Add screen with the CURRENT TEMPORARY
-          // day schedule so planning runs against uncommitted edits.
-          dayStops: _vm.stops
-              .map((s) => ExistingStopContext(
-                    place: s.place,
-                    startTime: s.startTime,
-                    endTime: s.endTime,
-                    durationMinutes: s.durationMinutes,
-                    travelFromPrevMinutes: s.travelFromPrevMinutes,
-                    isMustVisit: s.isMustVisit,
-                  ))
-              .toList(),
+          destinationCenter: dayCenter,
         ),
       ),
     );
@@ -551,8 +607,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-                '${_vm.stops[result.dayIndex - 1].name} added to Day '
-                '${_vm.dayNumber}. Remember to save your changes.'),
+                '${result.addedPlaceName} added to Day ${_vm.dayNumber}. '
+                'Remember to save your changes.'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -562,19 +618,15 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              _vm.error ?? 'This place cannot fit into your current schedule.',
+              _vm.error ??
+                  'This place cannot fit into Day ${_vm.dayNumber}.',
             ),
           ),
         );
     }
   }
 
-  /// Change Location = REPLACEMENT, not addition:
-  ///   editability check → AI recommendations + manual search →
-  ///   ViewPlaceDetailScreen (replacement mode) → "Use This Place" →
-  ///   final validation → temporary replacement → recalculation → validate.
   Future<void> _showReplacePicker(int index) async {
-    // 1. Editability gate — Problem message, no recommendation call.
     final lockedReason = _vm.stopLockedReason(index);
     if (lockedReason != null) {
       _showProblem(lockedReason);
@@ -582,10 +634,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     }
 
     final stop = _vm.stops[index];
-    final scheduledIds =
-        _vm.stops.map((s) => s.placeId).toSet();
+    final scheduledIds = _vm.stops.map((s) => s.placeId).toSet();
 
-    // 2. Recommendation sheet (AI ranked + manual search inside).
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -595,7 +645,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       ),
       builder: (_) => ChangeLocationPickerSheet(
         stop: ItineraryStop(
-          stopId: index + 1, // temporary identity for the preview stop
+          stopId: index + 1,
           itineraryId: 'preview',
           placeId: stop.placeId,
           dayIndex: _vm.dayNumber,
@@ -612,14 +662,12 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         tripDate: _vm.dayDate,
         interests: const [],
         explorationTime: widget.explorationTime,
-        // 3. "Use This Place" → final validation + temporary replacement.
         onUsePlace: (selected) async {
           final ok = _vm.replaceStop(index, selected);
           if (ok) {
             _fitMapBounds();
-            return null; // success
+            return null;
           }
-          // Failed validation — original stop remains unchanged.
           return _vm.error ??
               'This place cannot fit into your remaining schedule.';
         },
@@ -641,13 +689,27 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 
   Future<void> _removeStop(int index) async {
+    if (index < 0 || index >= _vm.stops.length) return;
     final stop = _vm.stops[index];
+
+    // Protected cases: never show a dialog that implies removal is allowed.
+    // (The ViewModel re-enforces these as the authoritative business rules.)
     if (stop.isMustVisit) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
-            content: Text('This place is a must-visit and cannot be removed.'),
+            content: Text('Cannot remove a must-visit place'),
+          ),
+        );
+      return;
+    }
+    if (_vm.stops.length <= 1) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Cannot remove the last stop from a day'),
           ),
         );
       return;
@@ -655,13 +717,15 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
 
     final confirmed = await showConfirmationDialog(
       context: context,
-      title: 'Remove "${stop.name}"?',
-      message: 'This stop will be removed from Day ${_vm.dayNumber}.',
+      title: 'Remove Place?',
+      message: 'Are you sure you want to remove this place from '
+          'Day ${_vm.dayNumber}?',
       confirmLabel: 'Remove',
     );
     if (confirmed != true || !mounted) return;
 
-    final ok = _vm.removeStop(index);
+    // Remove by STABLE placeId (never by list position alone).
+    final ok = await _vm.removeStopByPlaceId(stop.placeId);
     if (!mounted) return;
     if (ok) {
       _fitMapBounds();
@@ -693,7 +757,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _vm,
+      listenable: _selectedDayIndex >= 0 ? _vm : Listenable.merge([]),
       builder: (context, _) {
         return Scaffold(
           backgroundColor: AppColors.warmBg,
@@ -704,33 +768,44 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             children: [
               SingleChildScrollView(
                 controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(), // <-- Force scrolling mechanics to remain alive
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildDaySelector(),
                     const SizedBox(height: 12),
-                    _buildHeader(),
-                    const SizedBox(height: 24),
-                    _buildMapPreview(),
-                    const SizedBox(height: 24),
-                    _buildStopsList(),
+                    if (_selectedDayIndex == -1) ...[
+                      _buildAllHeader(),
+                      const SizedBox(height: 24),
+                      _buildAllMapPreview(),
+                      const SizedBox(height: 24),
+                      _buildAllDaysList(),
+                    ] else ...[
+                      _buildHeader(),
+                      const SizedBox(height: 24),
+                      _buildMapPreview(),
+                      const SizedBox(height: 24),
+                      _buildStopsList(),
+                    ],
                     const SizedBox(height: 120),
                   ],
                 ),
               ),
-              Positioned(
-                bottom: 100,
-                right: 20,
-                child: _buildFloatingAddButton(),
-              ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: _buildBottomButton(),
-              ),
+              if (_selectedDayIndex >= 0) ...[
+                Positioned(
+                  bottom: 100,
+                  right: 20,
+                  child: _buildFloatingAddButton(),
+                ),
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: _buildBottomButton(),
+                ),
+              ],
             ],
           ),
         );
@@ -747,7 +822,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
-  // ─── App Bar (unchanged) ────────────────────────────────────
+  // ─── App Bar ────────────────────────────────────────────────
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -768,57 +843,65 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      actions: [
-        TextButton(
-          // "Done" ≠ save to database: validates the temporary itinerary,
-          // stays on the screen with a Problem message when invalid, and
-          // returns the updated ItineraryResult to the Final Screen when
-          // valid. Persistence happens only when the traveler explicitly
-          // saves on the Final Screen.
-          onPressed: _reviewChanges,
-          child: const Text(
-            'Done',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppColors.terracottaDark,
-            ),
-          ),
-        ),
-      ],
+      // actions: [
+      //   if (_selectedDayIndex >= 0)
+      //     TextButton(
+      //       onPressed: _reviewChanges,
+      //       child: const Text(
+      //         'Done',
+      //         style: TextStyle(
+      //           fontSize: 16,
+      //           fontWeight: FontWeight.w600,
+      //           color: AppColors.terracottaDark,
+      //         ),
+      //       ),
+      //     ),
+      // ],
     );
   }
 
-  // ─── Day Selector (improved) ───────────────────────────────
+  // ─── Day Selector (All + Day 1, Day 2, ...) ─────────────────
 
   Widget _buildDaySelector() {
-    if (_totalDays <= 1) return const SizedBox.shrink();
+    if (_totalDays == 0) return const SizedBox.shrink();
+
     return SizedBox(
       height: 44,
       child: ListView.separated(
+        controller: _tabScrollController,
         scrollDirection: Axis.horizontal,
-        itemCount: _totalDays,
+        itemCount: _totalDays + 1,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          final isActive = index == _selectedDayIndex;
+          final isAll = index == 0;
+          final dayIndex = isAll ? -1 : index - 1;
+          final isActive = dayIndex == _selectedDayIndex;
+
           return GestureDetector(
-            onTap: () => _selectDay(index),
+            key: _tabKeys[index],
+            onTap: () => _selectDay(dayIndex),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: isActive ? AppColors.terracottaDark : AppColors.surfaceInactive,
+                color: isActive
+                    ? AppColors.terracottaDark
+                    : AppColors.surfaceInactive,
                 borderRadius: BorderRadius.circular(30),
                 border: Border.all(
-                  color: isActive ? AppColors.terracottaDark : AppColors.taupe.withOpacity(0.3),
+                  color: isActive
+                      ? AppColors.terracottaDark
+                      : AppColors.taupe.withOpacity(0.3),
                 ),
               ),
               child: Center(
                 child: Text(
-                  'Day ${index + 1}',
+                  isAll ? 'All' : 'Day ${dayIndex + 1}',
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                    fontWeight:
+                    isActive ? FontWeight.bold : FontWeight.w500,
                     color: isActive ? Colors.white : AppColors.charcoal,
                   ),
                 ),
@@ -830,7 +913,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
-  // ─── Header ─────────────────────────────────────────────────
+  // ─── Single-day Header ──────────────────────────────────────
 
   Widget _buildHeader() {
     final dateFmt = DateFormat('d MMM');
@@ -858,7 +941,34 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
-  // ─── Map Preview (forces rebuild on day change) ────────────
+  // ─── All Header ─────────────────────────────────────────────
+
+  Widget _buildAllHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'All days · ${widget.title}',
+          style: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.charcoal,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Overview of your full itinerary. Tap a day to edit it.',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            color: AppColors.mutedText,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ─── Single-day Map ─────────────────────────────────────────
 
   Widget _buildMapPreview() {
     final initialPos = _vm.stops.isNotEmpty
@@ -883,9 +993,9 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         child: Stack(
           children: [
             GoogleMap(
-              // 🔑 Force map to rebuild when day changes
               key: ValueKey('map_$_selectedDayIndex'),
-              initialCameraPosition: CameraPosition(target: initialPos, zoom: 11),
+              initialCameraPosition:
+              CameraPosition(target: initialPos, zoom: 11),
               markers: _buildMarkers(),
               polylines: _buildPolylines(),
               onMapCreated: (controller) {
@@ -899,7 +1009,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               top: 12,
               left: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: AppColors.pineDark.withOpacity(0.9),
                   borderRadius: BorderRadius.circular(30),
@@ -920,7 +1031,222 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
-  // ─── Stops List (with empty state) ─────────────────────────
+  // ─── All Map (collects stops from every day) ────────────────
+
+  Widget _buildAllMapPreview() {
+    // Build a temporary list of all stops across days for the overview map.
+    // Uses the same ViewModel shape so markers stay consistent.
+    final allStops = <EditableStop>[];
+    final days = widget.result.scheduledDays ?? [];
+
+    for (int i = 0; i < days.length; i++) {
+      final tempVm = EditItineraryViewModel(
+        result: widget.result,
+        dayIndex: i,
+        tripStartDate: widget.tripStartDate,
+        explorationTime: widget.explorationTime,
+        mustVisitPlaceIds: widget.mustVisitPlaceIds,
+        title: widget.title,
+      );
+      allStops.addAll(tempVm.stops);
+      tempVm.dispose();
+    }
+
+    final initialPos = allStops.isNotEmpty
+        ? LatLng(allStops.first.place.latitude, allStops.first.place.longitude)
+        : const LatLng(3.1390, 101.6869);
+
+    return Container(
+      height: 240,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            offset: Offset(0, 2),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            GoogleMap(
+              key: const ValueKey('map_all'),
+              initialCameraPosition:
+              CameraPosition(target: initialPos, zoom: 11),
+              markers: {
+                for (int i = 0; i < allStops.length; i++)
+                  Marker(
+                    markerId: MarkerId('${allStops[i].placeId}_$i'),
+                    position: LatLng(
+                      allStops[i].place.latitude,
+                      allStops[i].place.longitude,
+                    ),
+                    infoWindow: InfoWindow(title: allStops[i].name),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueRed,
+                    ),
+                  ),
+              },
+              onMapCreated: (controller) {
+                _mapController = controller;
+                if (allStops.isEmpty) return;
+                if (allStops.length == 1) {
+                  controller.animateCamera(
+                    CameraUpdate.newLatLngZoom(
+                      LatLng(allStops.first.place.latitude,
+                          allStops.first.place.longitude),
+                      14,
+                    ),
+                  );
+                  return;
+                }
+                double minLat = allStops.first.place.latitude;
+                double maxLat = allStops.first.place.latitude;
+                double minLng = allStops.first.place.longitude;
+                double maxLng = allStops.first.place.longitude;
+                for (final s in allStops) {
+                  if (s.place.latitude < minLat) minLat = s.place.latitude;
+                  if (s.place.latitude > maxLat) maxLat = s.place.latitude;
+                  if (s.place.longitude < minLng) minLng = s.place.longitude;
+                  if (s.place.longitude > maxLng) maxLng = s.place.longitude;
+                }
+                controller.animateCamera(
+                  CameraUpdate.newLatLngBounds(
+                    LatLngBounds(
+                      southwest: LatLng(minLat, minLng),
+                      northeast: LatLng(maxLat, maxLng),
+                    ),
+                    48.0,
+                  ),
+                );
+              },
+              zoomControlsEnabled: false,
+              myLocationButtonEnabled: false,
+            ),
+            Positioned(
+              top: 12,
+              left: 12,
+              child: Container(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.pineDark.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Text(
+                  '${allStops.length} Stops across $_totalDays days',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── All Days List ──────────────────────────────────────────
+
+  Widget _buildAllDaysList() {
+    final days = widget.result.scheduledDays ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'DAYS',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: AppColors.mutedText,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...List.generate(days.length, (i) {
+          // Create a lightweight VM just to read the stop names for the preview card
+          final tempVm = EditItineraryViewModel(
+            result: widget.result,
+            dayIndex: i,
+            tripStartDate: widget.tripStartDate,
+            explorationTime: widget.explorationTime,
+            mustVisitPlaceIds: widget.mustVisitPlaceIds,
+            title: widget.title,
+          );
+          final dayStops = tempVm.stops;
+          tempVm.dispose();
+
+          return GestureDetector(
+            onTap: () => _selectDay(i),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x0A000000),
+                    offset: Offset(0, 2),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Day ${i + 1}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.charcoal,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${dayStops.length} stops',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.mutedText,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.chevron_right, color: AppColors.taupe),
+                    ],
+                  ),
+                  if (dayStops.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      dayStops.take(3).map((s) => s.name).join(' · '),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.warmBrown,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  // ─── Single-day Stops List ──────────────────────────────────
 
   Widget _buildStopsList() {
     final stops = _vm.stops;
@@ -943,17 +1269,19 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             child: Center(
               child: Column(
                 children: [
-                  const Icon(Icons.map_outlined, size: 40, color: AppColors.mutedText),
+                  const Icon(Icons.map_outlined,
+                      size: 40, color: AppColors.mutedText),
                   const SizedBox(height: 8),
                   Text(
                     'No stops for this day',
-                    style: TextStyle(fontSize: 14, color: AppColors.mutedText),
+                    style:
+                    TextStyle(fontSize: 14, color: AppColors.mutedText),
                   ),
                   const SizedBox(height: 12),
                   ElevatedButton.icon(
                     onPressed: _showAddPicker,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add a place'),
+                    icon: const Icon(Icons.auto_awesome),
+                    label: const Text('Recommended Places'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.terracottaDark,
                       foregroundColor: Colors.white,
@@ -1001,7 +1329,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                           content: Text(
                             _vm.error ??
                                 'That order does not allow enough travel time '
-                                'between these stops.',
+                                    'between these stops.',
                           ),
                         ),
                       );
@@ -1037,10 +1365,12 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                     height: 32,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.terracottaDark, width: 2),
+                      border: Border.all(
+                          color: AppColors.terracottaDark, width: 2),
                       color: AppColors.warmBg,
                     ),
-                    child: const Icon(Icons.add, size: 20, color: AppColors.terracottaDark),
+                    child: const Icon(Icons.add,
+                        size: 20, color: AppColors.terracottaDark),
                   ),
                 ],
               ),
@@ -1056,7 +1386,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     return FloatingActionButton(
       onPressed: _showAddPicker,
       backgroundColor: AppColors.tealGreen,
-      child: const Icon(Icons.add, color: Colors.white, size: 28),
+      tooltip: 'Recommended Places',
+      child: const Icon(Icons.add, color: Colors.white, size: 26),
     );
   }
 
@@ -1110,10 +1441,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     return '$h:$m';
   }
 
-  /// Converts a validation error message into a user-friendly string.
-  /// Messages that are already friendly are passed through.
   String _friendlyValidationError(String msg) {
-    // Add a short prefix for common patterns.
     if (msg.startsWith('Stop "') && msg.contains('has an invalid time')) {
       return 'One of the stops has an invalid time sequence.';
     }
@@ -1130,7 +1458,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 }
 
-// ─── Stop Item, DashedLinePainter (unchanged) ────────────────
+// ─── Stop Item ────────────────────────────────────────────────
 
 class _StopItem extends StatelessWidget {
   final EditableStop stop;
@@ -1177,7 +1505,9 @@ class _StopItem extends StatelessWidget {
               shape: BoxShape.circle,
               color: stop.isMustVisit
                   ? AppColors.terracottaDark
-                  : (isFirst ? AppColors.tealGreen : AppColors.surfaceInactive),
+                  : (isFirst
+                  ? AppColors.tealGreen
+                  : AppColors.surfaceInactive),
               border: isFirst || stop.isMustVisit
                   ? null
                   : Border.all(color: AppColors.taupe.withOpacity(0.3)),
@@ -1188,7 +1518,9 @@ class _StopItem extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: (isFirst || stop.isMustVisit) ? Colors.white : AppColors.charcoal,
+                  color: (isFirst || stop.isMustVisit)
+                      ? Colors.white
+                      : AppColors.charcoal,
                 ),
               ),
             ),
@@ -1229,14 +1561,18 @@ class _StopItem extends StatelessWidget {
                             if (stop.isMustVisit) ...[
                               const SizedBox(height: 4),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: AppColors.dangerBg,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Text(
                                   'Must-visit',
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.dangerText),
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.dangerText),
                                 ),
                               ),
                             ],
@@ -1263,7 +1599,8 @@ class _StopItem extends StatelessWidget {
                                 color: AppColors.surfaceInactive,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.schedule, size: 20, color: AppColors.warmBrown),
+                              child: const Icon(Icons.schedule,
+                                  size: 20, color: AppColors.warmBrown),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -1276,7 +1613,8 @@ class _StopItem extends StatelessWidget {
                                 color: AppColors.surfaceInactive,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.swap_horiz, size: 20, color: AppColors.warmBrown),
+                              child: const Icon(Icons.swap_horiz,
+                                  size: 20, color: AppColors.warmBrown),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -1289,7 +1627,8 @@ class _StopItem extends StatelessWidget {
                                 color: AppColors.dangerBg,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.delete_outline, size: 20, color: AppColors.dangerText),
+                              child: const Icon(Icons.delete_outline,
+                                  size: 20, color: AppColors.dangerText),
                             ),
                           ),
                           const SizedBox(width: 4),
@@ -1302,7 +1641,8 @@ class _StopItem extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.location_on, size: 20, color: AppColors.terracottaDark),
+                      const Icon(Icons.location_on,
+                          size: 20, color: AppColors.terracottaDark),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -1321,7 +1661,8 @@ class _StopItem extends StatelessWidget {
                     onTap: onEditDuration,
                     child: Row(
                       children: [
-                        const Icon(Icons.schedule, size: 20, color: AppColors.terracottaDark),
+                        const Icon(Icons.schedule,
+                            size: 20, color: AppColors.terracottaDark),
                         const SizedBox(width: 8),
                         Text(
                           'Visit: $durationLabel',
