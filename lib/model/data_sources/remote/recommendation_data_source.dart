@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/localization/app_localizations.dart';
 import '../../../core/services/database_manager.dart';
 import '../../dto/recommendation_dto.dart';
 
@@ -55,7 +56,7 @@ class RecommendationRemoteDataSource {
       rethrow;
     } catch (e) {
       throw RecommendationRemoteException(
-        'Unable to retrieve nearby recommendations.',
+        AppLocalizations.t('recommendation.remoteUnavailable'),
         cause: e,
       );
     }
@@ -68,7 +69,7 @@ class RecommendationRemoteDataSource {
         return message.toString();
       }
     }
-    return 'Unable to retrieve nearby recommendations.';
+    return AppLocalizations.t('recommendation.remoteUnavailable');
   }
 }
 

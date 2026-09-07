@@ -1,0 +1,19 @@
+[33ma4a30f1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{0}: merge origin/master: Fast-forward
+[33ma9617dc[m HEAD@{1}: commit: Fix corrupted .gitignore
+[33m1bee721[m HEAD@{2}: merge origin/master: Merge made by the 'ort' strategy.
+[33m317217a[m HEAD@{3}: merge origin/master: Merge made by the 'ort' strategy.
+[33me49a0f4[m HEAD@{4}: commit (merge): Merge remote-tracking branch 'origin/master'
+[33m668fc87[m HEAD@{5}: commit: chore: ignore Flutter ephemeral build folders
+[33m90b8067[m HEAD@{6}: commit: fix(module5): Fix OTP verification gate, Google OAuth backfill, and hCaptcha sitekey
+[33me16167f[m HEAD@{7}: merge origin/master: Fast-forward
+[33me339d92[m HEAD@{8}: merge origin/master: Fast-forward
+[33m49eed44[m HEAD@{9}: merge origin/master: Fast-forward
+[33m0a6b487[m HEAD@{10}: merge origin/master: Fast-forward
+[33me1daab5[m HEAD@{11}: merge origin/master: Fast-forward
+[33mf559275[m HEAD@{12}: commit: Rename profile_business_logic to profile; nest view screens under view/profile; add whole-app localization system
+[33mf2e40a2[m HEAD@{13}: merge origin/master: Fast-forward
+[33m50a74f7[m HEAD@{14}: commit: Restructure Module 5 folders
+[33m7be5f68[m HEAD@{15}: merge origin/master: Fast-forward
+[33ma8c12a4[m HEAD@{16}: commit (merge): Merge branch 'master' of https://github.com/liewcb/narrate_my
+[33m5634b5c[m HEAD@{17}: commit: Module 5: real Supabase auth/profile implementation, merged AuthRepository into ProfileRepository to match architecture diagram
+[33mef25121[m HEAD@{18}: clone: from https://github.com/liewcb/narrate_my.git

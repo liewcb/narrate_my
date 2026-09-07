@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../../../../core/localization/app_localizations.dart';
 import '../../../data_sources/local/recommendation_cache_local_data_source.dart';
 import '../../../data_sources/remote/recommendation_data_source.dart';
 import '../../../data_sources/remote/recommendation_preference_context_data_source.dart';
@@ -76,9 +77,8 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
         ..sort((a, b) => a.rank.compareTo(b.rank));
 
       if (dtos.isNotEmpty && recommendations.isEmpty) {
-        throw const RecommendationResolutionException(
-          'Recommendations were found, but their map locations could not be '
-          'verified. Please try again.',
+        throw RecommendationResolutionException(
+          AppLocalizations.t('recommendation.resolutionFailed'),
         );
       }
 
@@ -104,8 +104,7 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
       if (cached != null) return cached.recommendations;
       throw RecommendationUnavailableException(
         error.isQuotaLimited
-            ? 'AI recommendation quota has been reached. Please try again '
-                  'later.'
+            ? AppLocalizations.t('recommendation.quotaReached')
             : error.message,
       );
     } catch (_) {

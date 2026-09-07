@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_vm.dart';
 import '../../../../model/entities/ar_object.dart';
 
 /// UC100 BF-5: "System displays a notification banner at the top of the
@@ -57,14 +61,16 @@ class _ARNotificationBannerState extends State<ARNotificationBanner> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     final groups = _groupByBand();
     final sortedCeilings = groups.keys.toList()..sort();
     final count = groups.values.fold<int>(0, (sum, list) => sum + list.length);
     final label = count == 0
-        ? 'No heritage markers detected nearby'
+        ? AppLocalizations.t('ar.noMarkersNearby')
         : count == 1
-        ? '1 heritage marker detected nearby'
-        : '$count heritage markers detected nearby';
+        ? AppLocalizations.t('ar.markerDetectedOne')
+        : AppLocalizations.t('ar.markersDetectedMany')
+              .replaceFirst('{count}', '$count');
 
     return SafeArea(
       bottom: false,
@@ -130,7 +136,8 @@ class _ARNotificationBannerState extends State<ARNotificationBanner> {
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8, top: 4),
                           child: Text(
-                            '<${ceiling}M ATTRACTIONS',
+                            AppLocalizations.t('ar.attractionsBand')
+                                .replaceFirst('{ceiling}', '$ceiling'),
                             style: const TextStyle(
                               color: Color(0xFFDE8A46),
                               fontSize: 11.5,

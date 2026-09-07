@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:provider/provider.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_vm.dart';
 import '../../../../viewmodel/ar/ar_placement_vm.dart';
 
 /// Standalone 3D Landmark Model Viewport Widget with persistent loading shield and GPU optimizations.
@@ -44,6 +46,7 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     const cardBg = Color(0xFF1B2A2B);
     const accentOrange = Color(0xFFD67D4A);
 
@@ -128,7 +131,11 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
                                   ),
                                   const SizedBox(height: 14),
                                   Text(
-                                    "Loading 3D $landmarkName...",
+                                    AppLocalizations.t('ar.loading3d')
+                                        .replaceFirst(
+                                          '{landmarkName}',
+                                          landmarkName,
+                                        ),
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 14,
@@ -137,9 +144,9 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
                                     ),
                                   ),
                                   const SizedBox(height: 6),
-                                  const Text(
-                                    "Compiling 3D WebGL geometry & textures",
-                                    style: TextStyle(
+                                  Text(
+                                    AppLocalizations.t('ar.compilingGeometry'),
+                                    style: const TextStyle(
                                       color: Colors.white70,
                                       fontSize: 11.5,
                                     ),
@@ -162,14 +169,14 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.touch_app_outlined, color: Colors.white70, size: 12),
-                              SizedBox(width: 4),
+                              const Icon(Icons.touch_app_outlined, color: Colors.white70, size: 12),
+                              const SizedBox(width: 4),
                               Text(
-                                "360° View",
-                                style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
+                                AppLocalizations.t('ar.view360'),
+                                style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
                               ),
                             ],
                           ),
@@ -197,19 +204,19 @@ class _AR3DViewerOverlayState extends State<AR3DViewerOverlay> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          const Text(
-                            "3D Model Unavailable",
-                            style: TextStyle(
+                          Text(
+                            AppLocalizations.t('ar.model3dUnavailableTitle'),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
-                            "The representative 3D model could not be loaded. Storytelling can continue without the 3D model.",
+                          Text(
+                            AppLocalizations.t('ar.model3dUnavailableBody'),
                             textAlign: TextAlign.center,
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 12,
                               height: 1.4,

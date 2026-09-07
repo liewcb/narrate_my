@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_vm.dart';
 
 /// Live camera feed used as the AR background (BF-1: "opens the AR Camera
 /// feature"). Purely presentational — no permission logic here, that's
@@ -201,6 +205,7 @@ class _ARCameraViewState extends State<ARCameraView>
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     return FutureBuilder<void>(
       future: _initFuture,
       builder: (context, snapshot) {
@@ -222,7 +227,9 @@ class _ARCameraViewState extends State<ARCameraView>
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    _isRecovering ? "Resuming AR Camera..." : "Initializing camera...",
+                    _isRecovering
+                        ? AppLocalizations.t('ar.resumingCamera')
+                        : AppLocalizations.t('ar.initializingCamera'),
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_vm.dart';
 import '../../../../viewmodel/ar/ar_placement_vm.dart';
 
 /// Top bar displaying Landmark title, Back button, and LIVE / Mode indicators
@@ -8,6 +10,7 @@ class ARPlacementTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     const accentOrange = Color(0xFFD67D4A);
     final topPadding = MediaQuery.of(context).padding.top + 16;
 
@@ -42,7 +45,9 @@ class ARPlacementTopBar extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  tooltip: data.hasStarted ? 'Back to Actions' : 'Exit AR',
+                  tooltip: data.hasStarted
+                      ? AppLocalizations.t('ar.backToActions')
+                      : AppLocalizations.t('ar.exitAr'),
                   icon: Icon(
                     data.hasStarted ? Icons.close : Icons.arrow_back_ios_new,
                     color: Colors.white,
@@ -103,13 +108,13 @@ class ARPlacementTopBar extends StatelessWidget {
                     color: const Color(0xFF2E6A4B),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.circle, size: 10, color: Colors.greenAccent),
-                      SizedBox(width: 6),
+                      const Icon(Icons.circle, size: 10, color: Colors.greenAccent),
+                      const SizedBox(width: 6),
                       Text(
-                        "LIVE",
-                        style: TextStyle(
+                        AppLocalizations.t('ar.live'),
+                        style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
@@ -142,7 +147,7 @@ class ARPlacementTopBar extends StatelessWidget {
                             color: Colors.white,
                             size: 22,
                           ),
-                          tooltip: 'Take Photo with Manja',
+                          tooltip: AppLocalizations.t('ar.takePhotoTooltip'),
                           onPressed: () async {
                             final messenger = ScaffoldMessenger.of(context);
                             final vm = context.read<ARPlacementViewModel>();
@@ -151,13 +156,13 @@ class ARPlacementTopBar extends StatelessWidget {
                             if (success) {
                               messenger.showSnackBar(
                                 SnackBar(
-                                  content: const Row(
+                                  content: Row(
                                     children: [
-                                      Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
-                                      SizedBox(width: 10),
+                                      const Icon(Icons.check_circle, color: Colors.greenAccent, size: 20),
+                                      const SizedBox(width: 10),
                                       Text(
-                                        "📸 Photo saved to Gallery!",
-                                        style: TextStyle(fontWeight: FontWeight.bold),
+                                        AppLocalizations.t('ar.photoSaved'),
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
                                       ),
                                     ],
                                   ),
@@ -172,7 +177,7 @@ class ARPlacementTopBar extends StatelessWidget {
                             } else {
                               messenger.showSnackBar(
                                 SnackBar(
-                                  content: const Text("Failed to save photo. Please try again."),
+                                  content: Text(AppLocalizations.t('ar.photoSaveFailed')),
                                   backgroundColor: Colors.redAccent.shade700,
                                   behavior: SnackBarBehavior.floating,
                                 ),

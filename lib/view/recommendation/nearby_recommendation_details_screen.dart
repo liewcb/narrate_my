@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/ai_assistant/global_ai_assistant.dart';
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/google_maps_directions_button.dart';
 import '../../core/widgets/place_image.dart';
@@ -91,19 +93,20 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
         final shouldLogin = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('Log in to bookmark'),
-            content: const Text(
-              'You need to log in before you can save attractions to your '
-              'bookmarks.',
+            title: Text(
+              AppLocalizations.t('recommendation.loginToBookmarkTitle'),
+            ),
+            content: Text(
+              AppLocalizations.t('recommendation.loginToBookmarkBody'),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('No'),
+                child: Text(AppLocalizations.t('recommendation.no')),
               ),
               FilledButton(
                 onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('Log in'),
+                child: Text(AppLocalizations.t('recommendation.logIn')),
               ),
             ],
           ),
@@ -133,6 +136,7 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     final bookmarkViewModel = context.watch<BookmarkVm>();
 
     return Material(
@@ -159,7 +163,7 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'ATTRACTION DETAILS',
+                    AppLocalizations.t('recommendation.attractionDetailsLabel'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
@@ -170,7 +174,7 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Close details',
+                  tooltip: AppLocalizations.t('recommendation.closeDetailsTooltip'),
                   onPressed: () => Navigator.of(context).pop(),
                   icon: const Icon(Icons.keyboard_arrow_down_rounded),
                 ),
@@ -232,7 +236,7 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
                 Expanded(
                   child: _InfoCard(
                     icon: Icons.near_me_outlined,
-                    label: 'DISTANCE',
+                    label: AppLocalizations.t('recommendation.distanceLabel'),
                     value: '${recommendation.distanceKm.toStringAsFixed(1)} km',
                   ),
                 ),
@@ -240,9 +244,12 @@ class NearbyRecommendationDetailsScreen extends StatelessWidget {
                 Expanded(
                   child: _InfoCard(
                     icon: Icons.schedule_rounded,
-                    label: 'EST. TRAVEL',
-                    value:
-                        '~${recommendation.estimatedTravelMinutes} min by car',
+                    label: AppLocalizations.t('recommendation.estTravelLabel'),
+                    value: AppLocalizations.t('recommendation.estTravelValue')
+                        .replaceFirst(
+                          '{minutes}',
+                          '${recommendation.estimatedTravelMinutes}',
+                        ),
                     accent: true,
                   ),
                 ),
@@ -365,7 +372,11 @@ class _BookmarkButton extends StatelessWidget {
                     ? Icons.bookmark_rounded
                     : Icons.bookmark_border_rounded,
               ),
-        label: Text(isBookmarked ? 'Bookmarked' : 'Bookmark'),
+        label: Text(
+          isBookmarked
+              ? AppLocalizations.t('recommendation.bookmarked')
+              : AppLocalizations.t('recommendation.bookmark'),
+        ),
       ),
     );
   }

@@ -101,23 +101,22 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
                 children: [
                   TextButton(
                     onPressed: vm.isSaving ? null : _finish,
-                    child: const Text('Skip'),
+                    child: Text(AppLocalizations.t('onboarding.skip')),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Personalize your journey',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.ink),
+              Text(
+                AppLocalizations.t('onboarding.title'),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.ink),
               ),
               const SizedBox(height: 6),
-              const Text(
-                "Tell us what you're into so we can tailor recommendations — "
-                'you can always change this later in Profile.',
-                style: TextStyle(fontSize: 14, color: AppColors.inkSoft, height: 1.4),
+              Text(
+                AppLocalizations.t('onboarding.subtitle'),
+                style: const TextStyle(fontSize: 14, color: AppColors.inkSoft, height: 1.4),
               ),
               const SizedBox(height: 22),
-              const _SectionLabel('What kind of attractions do you enjoy?'),
+              _SectionLabel(AppLocalizations.t('onboarding.attractionsQuestion')),
               const SizedBox(height: 10),
               AttractionTileGrid(
                 options: kAttractionCategories,
@@ -142,7 +141,7 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
                 onToggle: (v) => _toggle(_dietary, v),
               ),
               const SizedBox(height: 22),
-              const _SectionLabel('Dietary Restrictions & Allergies'),
+              _SectionLabel(AppLocalizations.t('ui.dietaryRestrictionsTitle')),
               const SizedBox(height: 10),
               _ChipWrap(
                 options: kDietaryRestrictionOptions,
@@ -154,8 +153,8 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
               const SizedBox(height: 10),
               ...kAccessibilityOptions.map(
                 (option) => TogglePreferenceTile(
-                  title: option,
-                  subtitle: kAccessibilityDescriptions[option],
+                  title: optionLabel(option),
+                  subtitle: accessibilityDescription(option),
                   emoji: kAccessibilityEmoji[option],
                   value: _accessibility.contains(option),
                   onChanged: (_) => _toggle(_accessibility, option),
@@ -167,7 +166,7 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
               ],
               const SizedBox(height: 20),
               PrimaryButton(
-                label: 'Finish setup',
+                label: AppLocalizations.t('onboarding.finishSetup'),
                 isLoading: vm.isSaving,
                 onPressed: () => _finishSetup(vm),
               ),
@@ -205,7 +204,7 @@ class _ChipWrap extends StatelessWidget {
       children: options.map((option) {
         final isSelected = selected.contains(option);
         return FilterChip(
-          label: Text(option),
+          label: Text(optionLabel(option)),
           selected: isSelected,
           onSelected: (_) => onToggle(option),
           showCheckmark: false,

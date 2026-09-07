@@ -149,7 +149,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
                               onToggle: (v) => setState(() => _toggle(_dietary, v)),
                             ),
                             _ChipSection(
-                              title: 'Dietary Restrictions & Allergies',
+                              title: AppLocalizations.t('ui.dietaryRestrictionsTitle'),
                               options: kDietaryRestrictionOptions,
                               selected: _dietaryRestrictions,
                               onToggle: (v) => setState(() => _toggle(_dietaryRestrictions, v)),
@@ -158,8 +158,8 @@ class _PreferencesViewState extends State<_PreferencesView> {
                             const SizedBox(height: 10),
                             ...kAccessibilityOptions.map(
                               (option) => TogglePreferenceTile(
-                                title: option,
-                                subtitle: kAccessibilityDescriptions[option],
+                                title: optionLabel(option),
+                                subtitle: accessibilityDescription(option),
                                 emoji: kAccessibilityEmoji[option],
                                 value: _accessibility.contains(option),
                                 onChanged: (_) => setState(() => _toggle(_accessibility, option)),
@@ -258,7 +258,7 @@ class _ChipSection extends StatelessWidget {
               final isSelected = selected.contains(option);
               final color = chipColor ?? AppColors.accent;
               return FilterChip(
-                label: Text(option),
+                label: Text(optionLabel(option)),
                 selected: isSelected,
                 onSelected: (_) => onToggle(option),
                 showCheckmark: false,

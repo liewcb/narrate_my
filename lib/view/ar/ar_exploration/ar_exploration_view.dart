@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../../../core/ai_assistant/global_ai_assistant.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
 import '../../../viewmodel/ar/ar_exploration_vm.dart';
 import '../../../model/entities/ar_object.dart';
 import '../ar_placement/ar_placement_view.dart';
@@ -153,6 +155,7 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ARExplorationViewModel>();
+    context.watch<LocaleVm>();
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -268,8 +271,7 @@ class _PermissionDeniedView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              message ??
-                  'Camera and Location access are required to use the AR feature.',
+              message ?? AppLocalizations.t('ar.permissionRequired'),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white, fontSize: 15),
             ),
@@ -283,7 +285,7 @@ class _PermissionDeniedView extends StatelessWidget {
                       .retryAfterPermissionGranted();
                 }
               },
-              child: const Text('Enable in Settings'),
+              child: Text(AppLocalizations.t('ar.enableInSettings')),
             ),
           ],
         ),
@@ -307,14 +309,14 @@ class _ErrorView extends StatelessWidget {
             const Icon(Icons.error_outline, color: Colors.white70, size: 48),
             const SizedBox(height: 16),
             Text(
-              message ?? 'Something went wrong starting the AR camera.',
+              message ?? AppLocalizations.t('ar.cameraStartError'),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white, fontSize: 15),
             ),
             const SizedBox(height: 20),
             FilledButton(
               onPressed: () => context.read<ARExplorationViewModel>().init(),
-              child: const Text('Retry'),
+              child: Text(AppLocalizations.t('ar.retry')),
             ),
           ],
         ),

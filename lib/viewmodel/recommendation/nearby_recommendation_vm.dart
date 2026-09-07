@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/localization/app_localizations.dart';
 import '../../core/services/permission_service.dart';
 import '../../model/business_logic/shared_services/location_service.dart';
 import '../../model/entities/ar_site.dart';
@@ -71,8 +72,8 @@ class NearbyRecommendationVm extends ChangeNotifier {
 
     try {
       if (!await _locationService.isLocationServiceEnabled()) {
-        throw const _NearbyLocationException(
-          'Turn on location services to discover nearby attractions.',
+        throw _NearbyLocationException(
+          AppLocalizations.t('recommendation.locationServicesOff'),
         );
       }
 
@@ -82,8 +83,8 @@ class NearbyRecommendationVm extends ChangeNotifier {
         _hasLocationPermission = status.isGranted;
       }
       if (!_hasLocationPermission) {
-        throw const _NearbyLocationException(
-          'Location permission is required to find nearby attractions.',
+        throw _NearbyLocationException(
+          AppLocalizations.t('recommendation.locationPermissionRequired'),
         );
       }
 
@@ -121,7 +122,9 @@ class NearbyRecommendationVm extends ChangeNotifier {
         // otherwise valid Nearby recommendations.
         debugPrint('Unable to load AR map sites: $error');
         _arSites = [];
-        _arSitesErrorMessage = 'AR locations are temporarily unavailable.';
+        _arSitesErrorMessage = AppLocalizations.t(
+          'recommendation.arLocationsUnavailable',
+        );
       }
     } catch (e) {
       _errorMessage = e is _NearbyLocationException
@@ -130,7 +133,7 @@ class NearbyRecommendationVm extends ChangeNotifier {
           ? e.message
           : e is RecommendationUnavailableException
           ? e.message
-          : 'Unable to load nearby attractions. Please try again.';
+          : AppLocalizations.t('recommendation.unableToLoad');
     } finally {
       _isLoading = false;
       _notifyIfActive();

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/ai_assistant/global_ai_assistant.dart';
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/google_maps_directions_button.dart';
 import '../../model/entities/ar_site.dart';
@@ -47,10 +49,10 @@ Future<void> showNearbyArSiteDetails(
               const SizedBox(height: 18),
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'AR LOCATION',
-                      style: TextStyle(
+                      AppLocalizations.t('recommendation.arLocationLabel'),
+                      style: const TextStyle(
                         color: AppColors.primary,
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -59,7 +61,7 @@ Future<void> showNearbyArSiteDetails(
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Close details',
+                    tooltip: AppLocalizations.t('recommendation.closeDetailsTooltip'),
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.keyboard_arrow_down_rounded),
                   ),
@@ -98,7 +100,9 @@ Future<void> showNearbyArSiteDetails(
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(
-                          '${site.experiences.length} AR attractions share this exact location',
+                          AppLocalizations.t(
+                            'recommendation.arSharedLocationNotice',
+                          ).replaceFirst('{count}', '${site.experiences.length}'),
                           style: const TextStyle(
                             color: AppColors.accentDark,
                             fontSize: 12,
@@ -154,14 +158,18 @@ class ARAvailableBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(99),
         border: Border.all(color: const Color(0xFFD5C2FA)),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.view_in_ar_rounded, color: Color(0xFF7048B7), size: 17),
-          SizedBox(width: 6),
+          const Icon(
+            Icons.view_in_ar_rounded,
+            color: Color(0xFF7048B7),
+            size: 17,
+          ),
+          const SizedBox(width: 6),
           Text(
-            'AR available',
-            style: TextStyle(
+            AppLocalizations.t('recommendation.arAvailable'),
+            style: const TextStyle(
               color: Color(0xFF7048B7),
               fontSize: 12,
               fontWeight: FontWeight.w800,
@@ -237,7 +245,10 @@ class ARAvailabilityPanel extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         Text(
-          '${site.experiences.length} AR ${site.experiences.length == 1 ? 'experience' : 'experiences'}',
+          site.experiences.length == 1
+              ? AppLocalizations.t('recommendation.arExperienceCountOne')
+              : AppLocalizations.t('recommendation.arExperienceCountMany')
+                    .replaceFirst('{count}', '${site.experiences.length}'),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             color: AppColors.ink,
             fontWeight: FontWeight.w800,
@@ -245,9 +256,9 @@ class ARAvailabilityPanel extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         if (site.experiences.isEmpty)
-          const Text(
-            'AR experience information has not been linked yet.',
-            style: TextStyle(color: AppColors.inkFaint),
+          Text(
+            AppLocalizations.t('recommendation.noArInfoLinked'),
+            style: const TextStyle(color: AppColors.inkFaint),
           )
         else
           ...site.experiences.map(
@@ -262,7 +273,11 @@ class ARAvailabilityPanel extends StatelessWidget {
           child: FilledButton.icon(
             onPressed: canOpenAr && onOpenAr != null ? onOpenAr : null,
             icon: const Icon(Icons.camera_alt_rounded),
-            label: Text(canOpenAr ? 'Open AR' : 'Visit location to unlock AR'),
+            label: Text(
+              canOpenAr
+                  ? AppLocalizations.t('recommendation.openAr')
+                  : AppLocalizations.t('recommendation.visitToUnlockAr'),
+            ),
           ),
         ),
       ],
@@ -271,14 +286,14 @@ class ARAvailabilityPanel extends StatelessWidget {
 
   String _availabilityMessage(bool canOpenAr, double? nearestDistance) {
     if (canOpenAr) {
-      return 'You are within an AR activation area. Open the AR camera to '
-          'interact with this location.';
+      return AppLocalizations.t('recommendation.availabilityWithinArea');
     }
     if (nearestDistance == null) {
-      return 'Visit this location to use its AR experiences.';
+      return AppLocalizations.t('recommendation.availabilityVisitSite');
     }
-    return 'AR works on site. The nearest activation point is '
-        '${_formatDistance(nearestDistance)} away.';
+    return AppLocalizations.t(
+      'recommendation.availabilityNearestPoint',
+    ).replaceFirst('{distance}', _formatDistance(nearestDistance));
   }
 }
 
@@ -322,8 +337,10 @@ class _ExperienceRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   active
-                      ? 'Available now'
-                      : '${_formatDistance(distance)} away',
+                      ? AppLocalizations.t('recommendation.availableNow')
+                      : AppLocalizations.t(
+                          'recommendation.awayDistance',
+                        ).replaceFirst('{distance}', _formatDistance(distance)),
                   style: TextStyle(
                     color: active ? AppColors.primary : AppColors.inkFaint,
                     fontSize: 12,

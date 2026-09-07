@@ -12,17 +12,22 @@ import '../../../core/theme/app_theme.dart';
 /// directly here to avoid pulling in an extra third-party dependency for
 /// one widget.
 ///
-/// IMPORTANT — UNVERIFIED AGAINST A LIVE HCAPTCHA SITE: hCaptcha site keys
-/// are normally restricted to the domain(s) registered for them in the
-/// hCaptcha dashboard, and a WebView loaded via `loadHtmlString` (as this
-/// widget does) has no real origin — platforms vary on what hCaptcha sees
-/// (roughly `about:blank` on Android, sometimes treated as `file://`).
-/// If the challenge fails to render or errors out immediately once you've
-/// set a real `AppConfig.hcaptchaSiteKey`, the fix is almost certainly on
-/// the hCaptcha dashboard side, not this widget: add "localhost" (hCaptcha
-/// dashboard → your site → Hostnames) to the site's allowed hostnames, or
-/// check hCaptcha's current docs for the recommended mobile-WebView setup
-/// — this was written without a live site key to test against.
+/// FIXED (Foo: clicking the "I am human" checkbox showed hCaptcha's own
+/// "Invalid data" error, then this widget's onError -> "Verification
+/// failed. Please try again."). Root cause: `loadHtmlString` with no
+/// `baseUrl` gives the WebView no real origin (`about:blank` on Android),
+/// and hCaptcha's own JS needs a plausible `https://` document location to
+/// compute internally before it will process a checkbox click — hCaptcha's
+/// own official Flutter guide sidesteps this entirely by hosting the HTML
+/// on a real domain and loading it via a URL instead of `loadHtmlString`.
+/// Since this app has no static hosting to spare for one file, the
+/// practical fix is passing a `baseUrl` below: the WebView never actually
+/// makes a network request to it (hCaptcha's own requests still go to its
+/// own API domains) — it only needs to look like a real HTTPS origin.
+/// Domain allowlisting is OFF by default on hCaptcha sites, so this
+/// placeholder domain does NOT need to be added anywhere on the hCaptcha
+/// dashboard for this to work; it only matters if you deliberately turn
+/// allowlisting on later, in which case add this same host there too.
 class HCaptchaWidget extends StatefulWidget {
   final ValueChanged<String> onVerified;
   final VoidCallback? onError;
@@ -35,6 +40,12 @@ class HCaptchaWidget extends StatefulWidget {
 
 class _HCaptchaWidgetState extends State<HCaptchaWidget> {
   static const _channelName = 'HCaptchaChannel';
+
+  /// Placeholder HTTPS origin so the WebView isn't `about:blank` — see the
+  /// class doc comment above. No network request is ever sent to this
+  /// host; it exists purely so hCaptcha's JS has a real-looking
+  /// `document.location` to work with.
+  static const _baseUrl = 'https://narratemy-app.local/';
 
   late final WebViewController _controller;
 
@@ -85,7 +96,7 @@ class _HCaptchaWidgetState extends State<HCaptchaWidget> {
           }
         },
       )
-      ..loadHtmlString(_html);
+      ..loadHtmlString(_html, baseUrl: _baseUrl);
   }
 
   @override

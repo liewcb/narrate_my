@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_vm.dart';
 import '../../../../model/entities/ar_placement.dart';
 import '../../../../viewmodel/ar/ar_placement_vm.dart';
 import './ar_3d_viewer_overlay.dart';
@@ -10,6 +12,7 @@ class ARStorytellingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     const accentOrange = Color(0xFFD67D4A);
     final topPadding = MediaQuery.of(context).padding.top + 70;
 
@@ -43,8 +46,12 @@ class ARStorytellingPanel extends StatelessWidget {
         final bool show3DModel = hasModelAsset && data.show3d && (isPlaying || isPaused || isCompleted);
 
         final String actionLabel = isPlaying
-            ? "Pause"
-            : (isCompleted ? "Replay Story" : (isPaused ? "Resume" : "Play"));
+            ? AppLocalizations.t('ar.actionPause')
+            : (isCompleted
+                  ? AppLocalizations.t('ar.actionReplay')
+                  : (isPaused
+                        ? AppLocalizations.t('ar.actionResume')
+                        : AppLocalizations.t('ar.actionPlay')));
         final IconData actionIcon = isPlaying
             ? Icons.pause
             : (isCompleted ? Icons.replay : Icons.play_arrow);
@@ -124,15 +131,15 @@ class ARStorytellingPanel extends StatelessWidget {
             ),
           ],
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.touch_app, color: Colors.amberAccent, size: 26),
-            SizedBox(width: 12),
+            const Icon(Icons.touch_app, color: Colors.amberAccent, size: 26),
+            const SizedBox(width: 12),
             Flexible(
               child: Text(
-                "Tap ground to place Manja & continue story",
-                style: TextStyle(
+                AppLocalizations.t('ar.tapGroundContinue'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
@@ -209,7 +216,7 @@ class ARStorytellingPanel extends StatelessWidget {
                     const Icon(Icons.check_circle_outline, color: Colors.amberAccent, size: 15),
                     const SizedBox(width: 5),
                     Text(
-                      "Story Completed",
+                      AppLocalizations.t('ar.storyCompleted'),
                       style: TextStyle(
                         color: Colors.amberAccent.withValues(alpha: 0.9),
                         fontSize: 12,
@@ -220,7 +227,9 @@ class ARStorytellingPanel extends StatelessWidget {
                 )
               else
                 Text(
-                  isPaused ? "Paused" : "Tap Play to begin",
+                  isPaused
+                      ? AppLocalizations.t('ar.paused')
+                      : AppLocalizations.t('ar.tapPlayToBegin'),
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.6),
                     fontSize: 12,
@@ -238,8 +247,10 @@ class ARStorytellingPanel extends StatelessWidget {
                     size: 22,
                   ),
                   tooltip: !hasModelAsset
-                      ? 'No 3D Model Available'
-                      : ((data.show3d as bool) ? 'Hide 3D Model' : 'Show 3D Model'),
+                      ? AppLocalizations.t('ar.no3dModelAvailable')
+                      : ((data.show3d as bool)
+                            ? AppLocalizations.t('ar.hide3dModel')
+                            : AppLocalizations.t('ar.show3dModel')),
                   onPressed: () {
                     if (!hasModelAsset) {
                       final messenger = ScaffoldMessenger.of(context);
@@ -252,7 +263,11 @@ class ARStorytellingPanel extends StatelessWidget {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  "No 3D model available for ${data.landmarkName}",
+                                  AppLocalizations.t('ar.no3dModelForLandmark')
+                                      .replaceFirst(
+                                        '{landmarkName}',
+                                        data.landmarkName as String,
+                                      ),
                                   style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.white),
                                 ),
                               ),
@@ -325,7 +340,7 @@ class ARStorytellingPanel extends StatelessWidget {
                 context.read<ARPlacementViewModel>().stopStorytelling();
               },
               icon: const Icon(Icons.stop, size: 20),
-              label: const Text("End Story"),
+              label: Text(AppLocalizations.t('ar.endStory')),
             ),
           ),
         ),

@@ -5,6 +5,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as maps;
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/services/map_marker_layout.dart';
 import '../../model/data_sources/remote/recommendation_data_source.dart';
 import '../../model/entities/ar_site.dart';
@@ -82,6 +84,7 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     final viewModel = context.watch<NearbyRecommendationVm>();
     final location = viewModel.currentLocation;
 
@@ -218,7 +221,8 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
             title: recommendation.name,
             snippet: arSite == null
                 ? recommendation.category
-                : 'AR available • ${recommendation.category}',
+                : AppLocalizations.t('recommendation.arAvailableSnippet')
+                      .replaceFirst('{category}', recommendation.category),
           ),
           onTap: () => showNearbyRecommendationDetails(
             context,
@@ -244,8 +248,10 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
           icon: _arAvailableMarker ?? maps.BitmapDescriptor.defaultMarker,
           infoWindow: maps.InfoWindow(
             title: site.name,
-            snippet:
-                '${site.experiences.length} AR ${site.experiences.length == 1 ? 'experience' : 'experiences'} available',
+            snippet: site.experiences.length == 1
+                ? AppLocalizations.t('recommendation.arExperiencesAvailableOne')
+                : AppLocalizations.t('recommendation.arExperiencesAvailableMany')
+                      .replaceFirst('{count}', '${site.experiences.length}'),
           ),
           onTap: () => showNearbyArSiteDetails(
             context,
@@ -390,14 +396,20 @@ class _MapLegend extends StatelessWidget {
       color: AppColors.surface,
       elevation: 2,
       borderRadius: BorderRadius.circular(12),
-      child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _LegendItem(color: Color(0xFF4285F4), label: 'Recommended'),
-            SizedBox(width: 10),
-            _LegendItem(color: Color(0xFFEA4335), label: 'AR available'),
+            _LegendItem(
+              color: const Color(0xFF4285F4),
+              label: AppLocalizations.t('recommendation.mapLegendRecommended'),
+            ),
+            const SizedBox(width: 10),
+            _LegendItem(
+              color: const Color(0xFFEA4335),
+              label: AppLocalizations.t('recommendation.arAvailable'),
+            ),
           ],
         ),
       ),
@@ -459,10 +471,13 @@ class _MapHeader extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Nearby Attractions',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    AppLocalizations.t('recommendation.headerTitle'),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 Container(
@@ -475,7 +490,8 @@ class _MapHeader extends StatelessWidget {
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
-                    '$count found',
+                    AppLocalizations.t('recommendation.foundCount')
+                        .replaceFirst('{count}', '$count'),
                     style: const TextStyle(
                       color: AppColors.primary,
                       fontSize: 11,
@@ -493,7 +509,7 @@ class _MapHeader extends StatelessWidget {
           shape: const CircleBorder(),
           elevation: 3,
           child: IconButton(
-            tooltip: 'Refresh nearby attractions',
+            tooltip: AppLocalizations.t('recommendation.refreshTooltip'),
             onPressed: isLoading ? null : onRefresh,
             icon: isLoading
                 ? const SizedBox.square(
@@ -517,10 +533,10 @@ class _MapHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = isLoading
-        ? 'Finding attractions near you...'
+        ? AppLocalizations.t('recommendation.hintFinding')
         : hasRecommendations
-        ? 'Tap any attraction to view details'
-        : 'No mappable attractions found';
+        ? AppLocalizations.t('recommendation.hintTapToView')
+        : AppLocalizations.t('recommendation.hintNoneFound');
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
@@ -583,7 +599,7 @@ class _LocationState extends StatelessWidget {
                 ),
               const SizedBox(height: 18),
               Text(
-                message ?? 'Finding your current location...',
+                message ?? AppLocalizations.t('recommendation.findingLocation'),
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
@@ -594,7 +610,7 @@ class _LocationState extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: onRetry,
                   icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Try again'),
+                  label: Text(AppLocalizations.t('recommendation.tryAgain')),
                 ),
               ],
             ],
@@ -632,7 +648,10 @@ class _ErrorBanner extends StatelessWidget {
                 ),
               ),
             ),
-            TextButton(onPressed: onRetry, child: const Text('Retry')),
+            TextButton(
+              onPressed: onRetry,
+              child: Text(AppLocalizations.t('recommendation.retry')),
+            ),
           ],
         ),
       ),

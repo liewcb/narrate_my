@@ -187,7 +187,19 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     }
     try {
       await _authDataSource.verifyOtp(e164Phone: e164Phone, otp: otp);
-    } on AuthException {
+    } on AuthException catch (e) {
+      // DIAGNOSTIC (Foo: OTP verify shows "invalid data" instead of the
+      // usual message) — logging the RAW Supabase error here so the real
+      // reason shows up in `flutter run`'s console instead of being
+      // silently swallowed by the generic message below. The leading
+      // suspect is Supabase's own native "Enable CAPTCHA protection"
+      // toggle (Dashboard -> Authentication -> Attack Protection) being
+      // ON: this app deliberately does NOT wire a captcha_token into
+      // signInWithOtp/verifyOTP (it implements its own separate 5-failed-
+      // attempt gate via the `verify-captcha` Edge Function instead), so
+      // if that native toggle is on, EVERY phone OTP call is rejected by
+      // Supabase itself before it ever reaches this app's own logic.
+      debugPrint('verifyPhoneRegistrationOtp failed: AuthException(${e.statusCode}): ${e.message}');
       throw OtpFailure(RegisterMessages.m6InvalidOrExpiredOtp);
     }
     return _fetchCurrentProfile();
@@ -281,7 +293,9 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     }
     try {
       await _authDataSource.verifyOtp(e164Phone: e164Phone, otp: otp);
-    } on AuthException {
+    } on AuthException catch (e) {
+      // See the matching diagnostic comment in verifyPhoneRegistrationOtp.
+      debugPrint('verifyPhoneLoginOtp failed: AuthException(${e.statusCode}): ${e.message}');
       throw OtpFailure(LoginMessages.m5InvalidOrExpiredOtp);
     }
     return _fetchCurrentProfile();

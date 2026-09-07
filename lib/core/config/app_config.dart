@@ -40,18 +40,11 @@ class AppConfig {
   /// it's a Supabase Edge Function secret, see
   /// `supabase/functions/verify-captcha/index.ts`).
   ///
-  /// PLACEHOLDER — the OTP screen's CAPTCHA gate (5 failed attempts) will
-  /// not render a real challenge until you replace this with your own
-  /// hCaptcha site key (https://dashboard.hcaptcha.com → your site →
-  /// "Sitekey"). Free tier is enough for this.
-  // hCaptcha's OFFICIAL TEST SITE KEY — always renders a solvable challenge
-  // and always issues a token, no account/hostname allow-listing needed.
-  // MUST be paired with hCaptcha's matching test SECRET server-side (see
-  // supabase/functions/verify-captcha/index.ts). Replace both with a real
-  // site + secret pair before shipping: register at
-  // https://dashboard.hcaptcha.com, then `supabase secrets set
-  // HCAPTCHA_SECRET=0x...`.
-  static const String hcaptchaSiteKey = '10000000-ffff-ffff-ffff-000000000001';
+  /// Real site key from https://dashboard.hcaptcha.com — the matching
+  /// SECRET key must be set as the `HCAPTCHA_SECRET` Supabase Edge Function
+  /// secret (never committed here); see
+  /// `supabase/functions/verify-captcha/index.ts`.
+  static const String hcaptchaSiteKey = '06e67972-2304-45ca-9a8c-0fb4edd63dac';
 
   /// Max device pitch (degrees, 0 = held level/upright pointing at the
   /// horizon) before markers are hidden. Beyond this the tourist is

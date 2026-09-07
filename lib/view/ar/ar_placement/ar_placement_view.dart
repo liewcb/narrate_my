@@ -4,6 +4,8 @@ import 'package:ar_flutter_plugin_plus/ar_flutter_plugin_plus.dart';
 import 'package:ar_flutter_plugin_plus/datatypes/config_planedetection.dart';
 
 import '../../../core/ai_assistant/global_ai_assistant.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
 import '../../../core/widgets/app_bottom_navigation.dart';
 import '../../../model/entities/ar_object.dart';
 import '../../../viewmodel/ar/ar_placement_vm.dart';
@@ -57,26 +59,26 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
     with WidgetsBindingObserver {
   GlobalAiAssistantController? _assistantController;
 
-  static const _navItems = [
+  List<BottomNavItem> _navItems() => [
     BottomNavItem(
       icon: Icons.camera_alt_outlined,
       selectedIcon: Icons.camera_alt,
-      label: 'AR',
+      label: AppLocalizations.t('nav.ar'),
     ),
     BottomNavItem(
       icon: Icons.assignment_outlined,
       selectedIcon: Icons.assignment,
-      label: 'Itinerary',
+      label: AppLocalizations.t('nav.itinerary'),
     ),
     BottomNavItem(
       icon: Icons.location_on_outlined,
       selectedIcon: Icons.location_on,
-      label: 'Nearby',
+      label: AppLocalizations.t('nav.nearby'),
     ),
     BottomNavItem(
       icon: Icons.person_outline,
       selectedIcon: Icons.person,
-      label: 'Profile',
+      label: AppLocalizations.t('nav.profile'),
     ),
   ];
 
@@ -127,6 +129,7 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
   @override
   Widget build(BuildContext context) {
     final vm = context.read<ARPlacementViewModel>();
+    context.watch<LocaleVm>();
     final hasStarted = context.select<ARPlacementViewModel, bool>(
       (m) => m.hasStartedStorytelling,
     );
@@ -196,10 +199,10 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
                           ),
                         ],
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          SizedBox(
+                          const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
@@ -207,10 +210,10 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
                               color: Colors.amberAccent,
                             ),
                           ),
-                          SizedBox(width: 10),
+                          const SizedBox(width: 10),
                           Text(
-                            "Placing Manja on ground...",
-                            style: TextStyle(
+                            AppLocalizations.t('ar.placingManja'),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
@@ -235,7 +238,7 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
           ],
         ),
         bottomNavigationBar: AppBottomNavBar(
-          items: _navItems,
+          items: _navItems(),
           currentIndex: 0,
           onTap: (index) {
             if (index == 0) {

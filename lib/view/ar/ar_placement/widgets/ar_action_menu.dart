@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_vm.dart';
 import '../../../../viewmodel/ar/ar_placement_vm.dart';
 import '../../../../viewmodel/ar/ar_recommendation_vm.dart';
 import './video_player_overlay.dart';
@@ -10,6 +12,7 @@ class ARActionMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     const primaryTeal = Color(0xFF2E656A);
 
     return Selector<
@@ -55,15 +58,15 @@ class ARActionMenu extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.touch_app, color: Colors.amberAccent, size: 26),
-                  SizedBox(width: 12),
+                  const Icon(Icons.touch_app, color: Colors.amberAccent, size: 26),
+                  const SizedBox(width: 12),
                   Flexible(
                     child: Text(
-                      "Move device & tap surface to place Manja",
-                      style: TextStyle(
+                      AppLocalizations.t('ar.moveDeviceTapSurface'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
@@ -107,9 +110,9 @@ class ARActionMenu extends StatelessWidget {
                             .openStorytellingMenu();
                       },
                       icon: const Icon(Icons.play_arrow),
-                      label: const Text(
-                        "Storytelling",
-                        style: TextStyle(
+                      label: Text(
+                        AppLocalizations.t('ar.storytelling'),
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
@@ -156,9 +159,9 @@ class ARActionMenu extends StatelessWidget {
                               }
                             },
                             icon: const Icon(Icons.play_circle_fill, size: 18),
-                            label: const Text(
-                              "Watch Video",
-                              style: TextStyle(fontSize: 13),
+                            label: Text(
+                              AppLocalizations.t('ar.watchVideo'),
+                              style: const TextStyle(fontSize: 13),
                             ),
                           ),
                         ),
@@ -189,9 +192,9 @@ class ARActionMenu extends StatelessWidget {
                               Icons.recommend_outlined,
                               size: 18,
                             ),
-                            label: const Text(
-                              "Recommend",
-                              style: TextStyle(fontSize: 13),
+                            label: Text(
+                              AppLocalizations.t('ar.recommend'),
+                              style: const TextStyle(fontSize: 13),
                             ),
                           ),
                         ),

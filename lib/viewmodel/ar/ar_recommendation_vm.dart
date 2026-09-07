@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/localization/app_localizations.dart';
 import '../../model/business_logic/shared_services/location_service.dart';
 import '../../model/data_sources/remote/ar_recommendation_remote_data_source.dart';
 import '../../model/entities/ar_object.dart';
@@ -90,7 +91,7 @@ class ARRecommendationVm extends ChangeNotifier {
         excludedMarkerIds: exclusions,
       );
       if (_recommendations.isEmpty) {
-        _errorMessage = 'No suitable follow-up attractions were found.';
+        _errorMessage = AppLocalizations.t('ar.noFollowUpAttractions');
       }
     } catch (error) {
       debugPrint('Unable to load AR recommendations: $error');

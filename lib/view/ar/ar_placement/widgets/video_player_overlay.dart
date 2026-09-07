@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_vm.dart';
 import '../../../../model/business_logic/ar_placement_service/video_playback_service.dart';
 
 /// Clean, high-performance in-app YouTube Video Player Screen.
@@ -189,6 +192,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     const accentOrange = Color(0xFFD67D4A);
 
     if (_hasError || _controller == null) {
@@ -321,9 +325,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      "Loading video...",
-                      style: TextStyle(
+                    Text(
+                      AppLocalizations.t('ar.loadingVideo'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -390,7 +394,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           iconSize: isLandscape ? 36 : 28,
                           color: Colors.white,
                           icon: const Icon(Icons.replay_10_rounded),
-                          tooltip: 'Rewind 10s',
+                          tooltip: AppLocalizations.t('ar.rewind10s'),
                           onPressed: () => _seekRelative(-10),
                         ),
                         const SizedBox(width: 16),
@@ -434,7 +438,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           iconSize: isLandscape ? 36 : 28,
                           color: Colors.white,
                           icon: const Icon(Icons.forward_10_rounded),
-                          tooltip: 'Forward 10s',
+                          tooltip: AppLocalizations.t('ar.forward10s'),
                           onPressed: () => _seekRelative(10),
                         ),
                       ],
@@ -503,7 +507,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                                   color: Colors.white,
                                   size: 22,
                                 ),
-                                tooltip: isLandscape ? 'Exit Fullscreen' : 'Fullscreen',
+                                tooltip: isLandscape
+                                    ? AppLocalizations.t('ar.exitFullscreen')
+                                    : AppLocalizations.t('ar.fullscreen'),
                                 onPressed: () {
                                   _controller?.toggleFullScreenMode();
                                 },
@@ -566,7 +572,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ),
             child: IconButton(
               icon: const Icon(Icons.close, color: Colors.white, size: 20),
-              tooltip: 'Close',
+              tooltip: AppLocalizations.t('ar.close'),
               onPressed: () => Navigator.of(context).pop(),
             ),
           ),
@@ -578,7 +584,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget _buildUnavailableState(Color accentOrange) {
     final hasUrl = (widget.videoUrl != null && widget.videoUrl!.trim().isNotEmpty) ||
         (widget.videoUrlBackup != null && widget.videoUrlBackup!.trim().isNotEmpty);
-    const errorMessage = "The related video is currently unavailable. Please try again later.";
+    final errorMessage = AppLocalizations.t('ar.videoUnavailableBody');
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -599,9 +605,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
-            "Video Unavailable",
-            style: TextStyle(
+          Text(
+            AppLocalizations.t('ar.videoUnavailableTitle'),
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -653,7 +659,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : const Icon(Icons.refresh, size: 18),
-                label: const Text("Retry Playback"),
+                label: Text(AppLocalizations.t('ar.retryPlayback')),
               ),
             ),
         ],

@@ -53,6 +53,70 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/localization/app_localizations.dart';
+
+/// Translation-key lookup for the option-value constants below.
+///
+/// The constants (e.g. [kAttractionCategories]) hold their ENGLISH values
+/// on purpose — those strings are the stable identifiers used everywhere
+/// else in the code: stored in the DB via [Preferences], used as
+/// `Set<String>.contains()` selection keys, and used as `Map` keys for
+/// [kAttractionCategoryImages] / [kAccessibilityEmoji] /
+/// [kAccessibilityDescriptions]. Changing them to a translated string would
+/// break all of that. Instead, this map translates an English option value
+/// to its display label ONLY — call [optionLabel] wherever an option value
+/// is shown to the user, and keep passing the raw English value everywhere
+/// else (selection sets, storage, image/icon/emoji lookups).
+const Map<String, String> _kOptionLabelKeys = {
+  'Heritage': 'pref.attr.heritage',
+  'Nature': 'pref.attr.nature',
+  'Food': 'pref.attr.food',
+  'Shopping': 'pref.attr.shopping',
+  'Adventure': 'pref.attr.adventure',
+  'Malay': 'pref.cuisine.malay',
+  'Chinese': 'pref.cuisine.chinese',
+  'Indian': 'pref.cuisine.indian',
+  'Peranakan/Nyonya': 'pref.cuisine.peranakan',
+  'Western': 'pref.cuisine.western',
+  'Street Food': 'pref.cuisine.streetFood',
+  'Seafood': 'pref.cuisine.seafood',
+  'Vegetarian-Friendly': 'pref.cuisine.vegetarianFriendly',
+  'Halal': 'pref.dietary.halal',
+  'Vegetarian': 'pref.dietary.vegetarian',
+  'Vegan': 'pref.dietary.vegan',
+  'No Pork': 'pref.restriction.noPork',
+  'No Beef': 'pref.restriction.noBeef',
+  'Gluten-Free': 'pref.restriction.glutenFree',
+  'Nut Allergy': 'pref.restriction.nutAllergy',
+  'Shellfish Allergy': 'pref.restriction.shellfishAllergy',
+  'Dairy-Free / Lactose Intolerant': 'pref.restriction.dairyFree',
+  'Wheelchair Accessible': 'pref.access.wheelchair',
+  'Mobility Assistance': 'pref.access.mobility',
+  'Visual Assistance': 'pref.access.visual',
+};
+
+/// Translated display label for an option value from any of the lists
+/// below (falls back to the raw English value if it isn't in the map, so
+/// a newly-added option that hasn't been translated yet still renders).
+String optionLabel(String englishValue) {
+  final key = _kOptionLabelKeys[englishValue];
+  return key == null ? englishValue : AppLocalizations.t(key);
+}
+
+/// Translation key lookup for [kAccessibilityDescriptions]' English values.
+const Map<String, String> _kAccessibilityDescKeys = {
+  'Wheelchair Accessible': 'pref.access.wheelchairDesc',
+  'Mobility Assistance': 'pref.access.mobilityDesc',
+  'Visual Assistance': 'pref.access.visualDesc',
+};
+
+/// Translated subtitle for an accessibility option (see
+/// [kAccessibilityDescriptions] for the English source values).
+String? accessibilityDescription(String englishValue) {
+  final key = _kAccessibilityDescKeys[englishValue];
+  return key == null ? kAccessibilityDescriptions[englishValue] : AppLocalizations.t(key);
+}
+
 /// REQ_503_4 vocabulary — what kind of attractions/activities a tourist is
 /// interested in (Preferences / onboarding). No longer doubles as an
 /// exclusion vocabulary — see the REQ_503_7 note above.

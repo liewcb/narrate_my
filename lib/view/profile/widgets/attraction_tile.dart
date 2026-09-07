@@ -151,7 +151,7 @@ class AttractionTileGrid extends StatelessWidget {
       itemBuilder: (context, i) {
         final option = options[i];
         return AttractionTile(
-          label: option,
+          label: optionLabel(option),
           selected: selected.contains(option),
           onTap: () => onToggle(option),
         );

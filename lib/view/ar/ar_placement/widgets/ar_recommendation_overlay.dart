@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/ai_assistant/global_ai_assistant.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_vm.dart';
 import '../../../../core/widgets/google_maps_directions_button.dart';
 import '../../../../core/widgets/place_image.dart';
 import '../../../../model/entities/ar_recommendation.dart';
@@ -22,6 +24,7 @@ class ARRecommendationOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ARRecommendationVm>();
+    context.watch<LocaleVm>();
     if (!vm.isVisible) return const SizedBox.shrink();
 
     return Positioned.fill(
@@ -44,18 +47,18 @@ class ARRecommendationOverlay extends StatelessWidget {
                         color: _orange,
                         borderRadius: BorderRadius.circular(22),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.shield_outlined,
                             size: 15,
                             color: Colors.white,
                           ),
-                          SizedBox(width: 6),
+                          const SizedBox(width: 6),
                           Text(
-                            'Recommended for you',
-                            style: TextStyle(
+                            AppLocalizations.t('ar.recommendedForYou'),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
@@ -66,7 +69,7 @@ class ARRecommendationOverlay extends StatelessWidget {
                     ),
                     const Spacer(),
                     IconButton.filledTonal(
-                      tooltip: 'Close recommendations',
+                      tooltip: AppLocalizations.t('ar.closeRecommendations'),
                       onPressed: vm.close,
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.white.withValues(alpha: 0.16),
@@ -77,19 +80,19 @@ class ARRecommendationOverlay extends StatelessWidget {
                   ],
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(22, 6, 22, 10),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(22, 6, 22, 10),
                 child: Row(
                   children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 3,
                       height: 18,
                       child: ColoredBox(color: _orange),
                     ),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Text(
-                      'CONTINUE YOUR EXPERIENCE',
-                      style: TextStyle(
+                      AppLocalizations.t('ar.continueYourExperience'),
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -116,15 +119,15 @@ class _RecommendationBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (viewModel.isLoading && viewModel.recommendations.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Color(0xFFF28A45)),
-            SizedBox(height: 14),
+            const CircularProgressIndicator(color: Color(0xFFF28A45)),
+            const SizedBox(height: 14),
             Text(
-              'Finding the best next experiences…',
-              style: TextStyle(color: Colors.white70),
+              AppLocalizations.t('ar.findingNextExperiences'),
+              style: const TextStyle(color: Colors.white70),
             ),
           ],
         ),
@@ -157,7 +160,7 @@ class _RecommendationBody extends StatelessWidget {
                   side: const BorderSide(color: Colors.white54),
                 ),
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Try again'),
+                label: Text(AppLocalizations.t('recommendation.tryAgain')),
               ),
             ],
           ),
@@ -237,19 +240,18 @@ class _ARRecommendationCardState extends State<_ARRecommendationCard> {
     final shouldLogin = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Log in to bookmark'),
-        content: const Text(
-          'You need to log in before you can save attractions to your '
-          'bookmarks.',
+        title: Text(AppLocalizations.t('recommendation.loginToBookmarkTitle')),
+        content: Text(
+          AppLocalizations.t('recommendation.loginToBookmarkBody'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('No'),
+            child: Text(AppLocalizations.t('recommendation.no')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Log in'),
+            child: Text(AppLocalizations.t('recommendation.logIn')),
           ),
         ],
       ),
@@ -419,7 +421,7 @@ class _ExpandedRecommendation extends StatelessWidget {
               Expanded(
                 child: _Metric(
                   icon: Icons.near_me_outlined,
-                  label: 'DISTANCE',
+                  label: AppLocalizations.t('recommendation.distanceLabel'),
                   value: '${recommendation.distanceKm.toStringAsFixed(1)} km',
                 ),
               ),
@@ -429,7 +431,7 @@ class _ExpandedRecommendation extends StatelessWidget {
                   icon: recommendation.isWalkable
                       ? Icons.directions_walk_rounded
                       : Icons.directions_car_outlined,
-                  label: 'EST. TRAVEL',
+                  label: AppLocalizations.t('recommendation.estTravelLabel'),
                   value: recommendation.travelSummary,
                 ),
               ),
@@ -495,7 +497,9 @@ class _ExpandedRecommendation extends StatelessWidget {
                                   : Icons.bookmark_border_rounded,
                             ),
                       label: Text(
-                        bookmarkVm.isBookmarked ? 'Bookmarked' : 'Bookmark',
+                        bookmarkVm.isBookmarked
+                            ? AppLocalizations.t('recommendation.bookmarked')
+                            : AppLocalizations.t('recommendation.bookmark'),
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),

@@ -6,6 +6,8 @@ import '../../view/ar/ar_exploration/ar_exploration_view.dart';
 import '../../view/recommendation/nearby_recommendation_screen.dart';
 import '../../view/profile/profile_home_screen.dart';
 import '../ai_assistant/global_ai_assistant.dart';
+import '../localization/app_localizations.dart';
+import '../localization/locale_vm.dart';
 import '../widgets/app_bottom_navigation.dart';
 
 /// The main routing shell for the four persistent application tabs.
@@ -43,26 +45,26 @@ class _AppRoutesState extends State<AppRoutes> {
     _buildTabScreen(3),
   ];
 
-  static const _items = [
+  List<BottomNavItem> _items() => [
     BottomNavItem(
       icon: Icons.camera_alt_outlined,
       selectedIcon: Icons.camera_alt,
-      label: 'AR',
+      label: AppLocalizations.t('nav.ar'),
     ),
     BottomNavItem(
       icon: Icons.assignment_outlined,
       selectedIcon: Icons.assignment,
-      label: 'Itinerary',
+      label: AppLocalizations.t('nav.itinerary'),
     ),
     BottomNavItem(
       icon: Icons.location_on_outlined,
       selectedIcon: Icons.location_on,
-      label: 'Nearby',
+      label: AppLocalizations.t('nav.nearby'),
     ),
     BottomNavItem(
       icon: Icons.person_outline,
       selectedIcon: Icons.person,
-      label: 'Profile',
+      label: AppLocalizations.t('nav.profile'),
     ),
   ];
 
@@ -76,10 +78,11 @@ class _AppRoutesState extends State<AppRoutes> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     return Scaffold(
       body: IndexedStack(index: _index, children: _screens()),
       bottomNavigationBar: AppBottomNavBar(
-        items: _items,
+        items: _items(),
         currentIndex: _index,
         onTap: _selectTab,
       ),

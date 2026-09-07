@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_vm.dart';
 import '../../../../viewmodel/ar/ar_placement_vm.dart';
 
 /// Scanning prompt guiding the user to move the device and tap on detected planes
@@ -8,6 +10,7 @@ class ARScanningGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     final topPadding = MediaQuery.of(context).padding.top + 90;
 
     return Selector<ARPlacementViewModel, ({bool isPlaced, bool hasStartedStorytelling})>(
@@ -37,16 +40,16 @@ class ARScanningGuide extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.vibration, color: Colors.amberAccent, size: 24),
-                  SizedBox(width: 12),
+                  const Icon(Icons.vibration, color: Colors.amberAccent, size: 24),
+                  const SizedBox(width: 12),
                   Flexible(
                     child: Text(
-                      "No suitable placement surface detected. Please move your device to scan the surrounding area.",
+                      AppLocalizations.t('ar.noPlacementSurface'),
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13.5,
                         fontWeight: FontWeight.w500,
