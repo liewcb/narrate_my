@@ -62,7 +62,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     _selectedDayIndex = _totalDays > 0
         ? (widget.dayNumber - 1).clamp(0, _totalDays - 1)
         : -1;
-    _tabKeys = List.generate(_totalDays + 1, (_) => GlobalKey());
+    _tabKeys = List.generate(_totalDays, (_) => GlobalKey());
     _initViewModel();
   }
 
@@ -126,7 +126,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             curve: Curves.easeOut,
           );
         }
-        final tabKeyIndex = index == -1 ? 0 : index + 1;
+        final tabKeyIndex = index;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _centerSelectedTab(tabKeyIndex);
         });
@@ -672,13 +672,11 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _buildCompactHero(), // ✅ Added compact hero section
+                    const SizedBox(height: 16),
                     _buildDaySelector(),
                     const SizedBox(height: 12),
-                    if (_selectedDayIndex == -1) ...[
-                      _buildAllHeader(),
-                      const SizedBox(height: AppSpacing.cardPadding),
-                      _buildAllDaysList(),
-                    ] else ...[
+                    if (_selectedDayIndex >= 0) ...[
                       _buildHeader(),
                       const SizedBox(height: AppSpacing.cardPadding),
                       _buildMapPreview(),
@@ -709,9 +707,95 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         onPressed: _handleBack,
       ),
       title: Text(
-        widget.title.isEmpty ? 'Edit Itinerary' : widget.title,
+        'Edit Itinerary',
         style: AppTextStyles.pageTitle,
       ),
+    );
+  }
+
+  // ─── Compact Hero Section ─────────────────────────────────────
+
+  Widget _buildCompactHero() {
+    final endDate = widget.tripStartDate.add(Duration(days: _totalDays > 0 ? _totalDays - 1 : 0));
+    final now = DateTime.now();
+    final nowDay = DateTime(now.year, now.month, now.day);
+    final startDay = DateTime(widget.tripStartDate.year, widget.tripStartDate.month, widget.tripStartDate.day);
+    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+
+    String statusLabel;
+    Color bgColor;
+    Color fgColor;
+    IconData icon;
+
+    if (endDay.isBefore(nowDay)) {
+      bgColor = Colors.orange.shade100;
+      fgColor = Colors.deepOrange.shade900;
+      icon = Icons.history;
+      statusLabel = 'Past';
+    } else if (startDay.isAfter(nowDay)) {
+      bgColor = Colors.yellow.shade400;
+      fgColor = Colors.red.shade800;
+      icon = Icons.event_available;
+      statusLabel = 'Upcoming';
+    } else {
+      bgColor = Colors.green.shade600;
+      fgColor = Colors.white;
+      icon = Icons.play_circle_outline;
+      statusLabel = 'Ongoing';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                widget.title.isEmpty ? 'My Trip' : widget.title,
+                style: GoogleFonts.nunito(
+                  fontSize: 20, // Smaller than typical 24/28 pageTitle
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.ink,
+                  height: 1.2,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8.0),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 12, color: fgColor),
+                  const SizedBox(width: 4),
+                  Text(
+                    statusLabel,
+                    style: AppTextStyles.labelSm.copyWith(
+                      color: fgColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4.0),
+        Text(
+          '$_totalDays Days • ${DateFormat('d MMM').format(widget.tripStartDate)} – ${DateFormat('d MMM').format(endDate)}',
+          style: GoogleFonts.nunito(
+            fontSize: 13,
+            color: AppColors.inkFaint,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 
@@ -723,11 +807,10 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       child: ListView.separated(
         controller: _tabScrollController,
         scrollDirection: Axis.horizontal,
-        itemCount: _totalDays + 1,
+        itemCount: _totalDays,
         separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.componentGap),
         itemBuilder: (context, index) {
-          final isAll = index == 0;
-          final dayIndex = isAll ? -1 : index - 1;
+          final dayIndex = index;
           final isActive = dayIndex == _selectedDayIndex;
 
           return GestureDetector(
@@ -745,7 +828,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               ),
               child: Center(
                 child: Text(
-                  isAll ? 'All' : 'Day ${dayIndex + 1}',
+                  'Day ${dayIndex + 1}',
                   style: GoogleFonts.nunito(
                     fontSize: 13,
                     fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
@@ -765,30 +848,14 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ✅ Removed the redundant widget.title since it's in the hero now
         Text(
-          'Day ${_vm.dayNumber} · ${dateFmt.format(_vm.dayDate)} · ${_vm.title}',
+          'Day ${_vm.dayNumber} · ${dateFmt.format(_vm.dayDate)}',
           style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink),
         ),
         const SizedBox(height: 4),
         Text(
           'Reorder, edit or add places to your day.',
-          style: AppTextStyles.labelSm,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAllHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'All days · ${widget.title}',
-          style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Overview of your full itinerary. Tap a day to edit it.',
           style: AppTextStyles.labelSm,
         ),
       ],
@@ -819,22 +886,6 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           myLocationButtonEnabled: false,
         ),
       ),
-    );
-  }
-
-  Widget _buildAllDaysList() {
-    final days = widget.result.scheduledDays ?? [];
-    return Column(
-      children: List.generate(days.length, (i) {
-        return ListTile(
-          title: Text(
-            'Day ${i + 1}',
-            style: AppTextStyles.bodyLg,
-          ),
-          trailing: const Icon(Icons.chevron_right, color: AppColors.inkSoft),
-          onTap: () => _selectDay(i),
-        );
-      }),
     );
   }
 

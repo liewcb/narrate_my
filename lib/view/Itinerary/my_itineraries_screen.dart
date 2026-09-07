@@ -65,7 +65,6 @@ class _ItinerariesView extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: AppColors.bg,
         elevation: 0,
-        // ❌ REMOVED leading and actions refresh buttons
         title: Text(
           "My Itineraries",
           style: GoogleFonts.nunito(

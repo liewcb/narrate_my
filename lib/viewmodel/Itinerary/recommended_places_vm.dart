@@ -8,6 +8,7 @@
 //      -> exact distance filtering
 //      -> remove globally-used place IDs
 //      -> local preference/rating/distance ranking
+//      -> FAST DART PRE-CHECK (mathematical feasibility)
 //      -> Attractions / Restaurants
 //
 // Selection:
@@ -49,6 +50,7 @@ class RecommendedPlacesVM extends ChangeNotifier {
 
   final DatabaseRecommendedPlacesService _databaseService;
   final AiPlaceInsertionService _aiInsertionService;
+  final CustomPlaceService _customPlaceService; // ✅ Added to inject pre-check
 
   static const Duration aiTimeout = Duration(seconds: 6);
 
@@ -64,10 +66,13 @@ class RecommendedPlacesVM extends ChangeNotifier {
     this.destinationCenter,
     DatabaseRecommendedPlacesService? databaseService,
     AiPlaceInsertionService? aiInsertionService,
+    CustomPlaceService? customPlaceService,
   })  : _databaseService =
-            databaseService ?? DatabaseRecommendedPlacesService(),
+      databaseService ?? DatabaseRecommendedPlacesService(),
         _aiInsertionService =
-            aiInsertionService ?? AiPlaceInsertionService();
+            aiInsertionService ?? AiPlaceInsertionService(),
+        _customPlaceService =
+            customPlaceService ?? CustomPlaceService();
 
   bool isLoadingRecommendations = false;
   String? recommendationsError;
@@ -92,8 +97,8 @@ class RecommendedPlacesVM extends ChangeNotifier {
   bool isBookmarked(String placeId) => false;
 
   List<NearbyPlaceResult> forCategory(
-    RecommendationCategory category,
-  ) {
+      RecommendationCategory category,
+      ) {
     return category == RecommendationCategory.attractions
         ? _attractions
         : _restaurants;
@@ -107,29 +112,49 @@ class RecommendedPlacesVM extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final dayPlaces = existingStops.map((stop) => stop.place).toList();
+
       final result = await _databaseService.recommendForDay(
-        dayPlaces: existingStops.map((s) => s.place).toList(),
+        dayPlaces: dayPlaces,
         interests: interests,
-        destinationCenter: destinationCenter ?? _centroidOfStops(),
+        destinationCenter: destinationCenter,
         usedPlaceIds: usedPlaceIds,
         transportMode: transportMode,
-        maxPerCategory: maximumRecommendations,
+        maxPerCategory: 15, // Retrieve more initially so we can filter them down
       );
 
-      _attractions = _cleanResults(result.attractions);
-      _restaurants = _cleanResults(result.restaurants);
+      // ✅ DART FAST PRE-CHECK FILTER: Hide places that exceed the day's hours
+      final filteredAttractions = result.attractions.where((candidate) {
+        return _databaseService.canPlaceFitLocally(
+          place: candidate.place,
+          existingStops: existingStops,
+          explorationTime: explorationTime,
+        );
+      }).toList();
+
+      // ✅ DART FAST PRE-CHECK FILTER
+      final filteredRestaurants = result.restaurants.where((candidate) {
+        return _databaseService.canPlaceFitLocally(
+          place: candidate.place,
+          existingStops: existingStops,
+          explorationTime: explorationTime,
+        );
+      }).toList();
+
+      _attractions = _cleanResults(filteredAttractions);
+      _restaurants = _cleanResults(filteredRestaurants);
       _recommendationsLoaded = true;
 
       if (_attractions.isEmpty && _restaurants.isEmpty) {
         recommendationsError =
-            'No recommended places are available in the database for this day.';
+        'No recommended places are available in the database for this day.';
       }
     } catch (e, stack) {
       debugPrint('[Recommended Places DB] load failed: $e');
       debugPrintStack(stackTrace: stack);
 
       recommendationsError =
-          'Unable to load recommended places from the database. '
+      'Unable to load recommended places from the database. '
           'Please try again.';
     } finally {
       isLoadingRecommendations = false;
@@ -190,7 +215,7 @@ class RecommendedPlacesVM extends ChangeNotifier {
 
       if (aiResult == null) {
         planError =
-            'The AI validation timed out or failed. Please try another place.';
+        'The AI validation timed out or failed. Please try another place.';
         _planResult = null;
         return;
       }
@@ -208,7 +233,7 @@ class RecommendedPlacesVM extends ChangeNotifier {
 
       if (insertIndex == null) {
         planError =
-            'The AI returned an invalid insertion position. Please try again.';
+        'The AI returned an invalid insertion position. Please try again.';
         _planResult = null;
         return;
       }
@@ -219,7 +244,7 @@ class RecommendedPlacesVM extends ChangeNotifier {
 
       if (startTime == null || endTime == null) {
         planError =
-            'The AI returned an incomplete schedule. Please try again.';
+        'The AI returned an incomplete schedule. Please try again.';
         _planResult = null;
         return;
       }
@@ -231,7 +256,7 @@ class RecommendedPlacesVM extends ChangeNotifier {
         startTime: startTime,
         endTime: endTime,
         travelFromPreviousMinutes:
-            aiResult.travelFromPreviousMinutes ?? 0,
+        aiResult.travelFromPreviousMinutes ?? 0,
         reason: aiResult.reason,
       );
 
@@ -268,8 +293,8 @@ class RecommendedPlacesVM extends ChangeNotifier {
   }
 
   List<NearbyPlaceResult> _cleanResults(
-    List<NearbyPlaceResult> source,
-  ) {
+      List<NearbyPlaceResult> source,
+      ) {
     final seen = <String>{};
     final cleaned = <NearbyPlaceResult>[];
 
@@ -302,7 +327,7 @@ class RecommendedPlacesVM extends ChangeNotifier {
     }
 
     final index = existingStops.indexWhere(
-      (stop) => stop.place.placeId == afterId,
+          (stop) => stop.place.placeId == afterId,
     );
 
     if (index < 0) return null;
@@ -363,12 +388,12 @@ class RecommendedPlacesVM extends ChangeNotifier {
 
     final totalDuration = stops.fold<int>(
       0,
-      (sum, stop) => sum + stop.durationMinutes,
+          (sum, stop) => sum + stop.durationMinutes,
     );
 
     final totalTravelTime = stops.fold<double>(
       0,
-      (sum, stop) => sum + stop.travelFromPreviousMinutes,
+          (sum, stop) => sum + stop.travelFromPreviousMinutes,
     );
 
     return ScheduledDay(

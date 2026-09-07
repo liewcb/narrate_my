@@ -116,39 +116,43 @@ class _EditStopScreenState extends State<EditStopScreen> {
           backgroundColor: _bg,
           extendBodyBehindAppBar: true,
           appBar: _buildAppBar(context),
-          body: SingleChildScrollView(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: MediaQuery.of(context).padding.top + 80,
-              bottom: 48,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildCompactHero(),
-                const SizedBox(height: 24),
-                if (!_viewModel.isEditable) _buildLockedBanner(),
-                if (_viewModel.isEditable) ...[
-                  _buildLocationSection(),
+          body: RefreshIndicator(
+            onRefresh: () => _viewModel.refreshTimeOptions(),
+            color: AppColors.accent,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: MediaQuery.of(context).padding.top + 80,
+                bottom: 48,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildCompactHero(),
                   const SizedBox(height: 24),
-                ],
-                _buildTimeAndDuration(),
-                const SizedBox(height: 24),
-                _buildStopStatus(),
-                const SizedBox(height: 24),
-                _buildScheduleInfo(),
-                if (_viewModel.isSkipped) ...[
+                  if (!_viewModel.isEditable) _buildLockedBanner(),
+                  if (_viewModel.isEditable) ...[
+                    _buildLocationSection(),
+                    const SizedBox(height: 24),
+                  ],
+                  _buildTimeAndDuration(),
                   const SizedBox(height: 24),
-                  _buildSkipReason(),
+                  _buildStopStatus(),
+                  const SizedBox(height: 24),
+                  _buildScheduleInfo(),
+                  if (_viewModel.isSkipped) ...[
+                    const SizedBox(height: 24),
+                    _buildSkipReason(),
+                  ],
+                  if (_viewModel.error != null) ...[
+                    const SizedBox(height: 16),
+                    _buildErrorBanner(),
+                  ],
+                  const SizedBox(height: 32),
+                  if (_viewModel.isEditable) _buildRemoveButton(),
                 ],
-                if (_viewModel.error != null) ...[
-                  const SizedBox(height: 16),
-                  _buildErrorBanner(),
-                ],
-                const SizedBox(height: 32),
-                if (_viewModel.isEditable) _buildRemoveButton(),
-              ],
+              ),
             ),
           ),
         );
@@ -1353,7 +1357,9 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
     super.dispose();
   }
 
-  Future<void> _openPlaceDetail(Place place) async {
+
+  // ✅ UPDATED: Accepts the suggestedDuration
+  Future<void> _openPlaceDetail(Place place, {int? suggestedDuration}) async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -1362,7 +1368,8 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
           initialPlace: place,
           isReplacement: true,
           onUsePlace: (selected) async {
-            final result = await _vm.confirmReplacement(selected);
+            // ✅ PASSES DURATION TO VIEWMODEL
+            final result = await _vm.confirmReplacement(selected, suggestedDuration: suggestedDuration);
             return result.isSuccessful ? null : result.message;
           },
         ),
@@ -1616,7 +1623,8 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
                 final rec = _vm.recommendations[index];
                 return _RecommendationCard(
                   recommendation: rec,
-                  onTap: () => _openPlaceDetail(rec.place),
+                  // ✅ PASS AI DURATION DOWN TO ONTAP
+                  onTap: () => _openPlaceDetail(rec.place, suggestedDuration: rec.suggestedDuration),
                 );
               },
             ),
@@ -1777,8 +1785,9 @@ class _RecommendationCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                       ],
+                      // ✅ ADDED: Display the AI suggested duration in the UI!
                       Text(
-                        recommendation.distanceText,
+                        '${recommendation.distanceText} • ${recommendation.suggestedDuration} min',
                         style: const TextStyle(
                             fontSize: 12, color: AppColors.inkFaint),
                       ),

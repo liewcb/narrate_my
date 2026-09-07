@@ -284,10 +284,10 @@ class ItineraryValidator {
   /// the route cannot be calculated. Reused by the ViewModel so the value
   /// persisted for the edited stop matches the validation routing.
   Future<int?> travelMinutesBetween(
-    Coordinates origin,
-    Coordinates destination,
-    String transportMode,
-  ) async {
+      Coordinates origin,
+      Coordinates destination,
+      String transportMode,
+      ) async {
     try {
       final info = await _maps.getTravelTime(
         origin: origin,
@@ -296,10 +296,30 @@ class ItineraryValidator {
       );
       return info.durationMinutes.ceil();
     } catch (_) {
-      return null;
+      // FALLBACK: When the Google Maps API fails (e.g. over water or no roads),
+      // use a mathematical straight-line distance to estimate travel time.
+      return _estimateTravelMinutes(
+        distanceKm: origin.distanceTo(destination),
+        mode: transportMode,
+      );
     }
   }
 
+  int _estimateTravelMinutes({
+    required double distanceKm,
+    required String mode,
+  }) {
+    final normalized = mode.toLowerCase().trim();
+
+    final speedKph = switch (normalized) {
+      'walking' => 5.0,
+      'driving' => 40.0,
+      'transit' => 30.0,
+      _ => 5.0,
+    };
+
+    return ((distanceKm / speedKph) * 60.0).ceil();
+  }
   // ─────────────────────────── Internals ───────────────────────────────
 
   /// Travel time for the leg inbound to `stops[leg]`.

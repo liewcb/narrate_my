@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import '../../model/entities/trip_draft.dart';
 import './split_days_screen.dart';
 
 /// Step 4: Allocate days to each destination.
 /// Receives the current draft from the previous wizard step.
 class AddAllocationScreen extends StatelessWidget {
-  final TripDraft draft;
-
-  const AddAllocationScreen({super.key, required this.draft});
+  const AddAllocationScreen({super.key}); // Removed constructor parameter
 
   @override
   Widget build(BuildContext context) {
-    // Build DestinationWithDays list from the draft's destinations.
-    // Use daySplit if available, otherwise default to 1 day per destination.
+    // Read directly from global notifier
+    final draft = context.watch<TripDraftNotifier>().draft;
+
     final destinationsWithDays = draft.destinations.map((dest) {
       final allocatedDays = draft.daySplit[dest.destinationName] ?? 1;
       return DestinationWithDays(
@@ -23,10 +24,8 @@ class AddAllocationScreen extends StatelessWidget {
       );
     }).toList();
 
-    // If daySplit is empty, distribute days evenly (or fallback to totalDays / count).
     int totalDays = draft.totalDays;
     if (draft.daySplit.isEmpty) {
-      // Use even distribution as fallback.
       final count = destinationsWithDays.length;
       if (count > 0) {
         final base = totalDays ~/ count;

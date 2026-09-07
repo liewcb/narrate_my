@@ -369,24 +369,46 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
     try {
       await _ensureSelectedDestinations();
-      // REQ_MV_01 — the repository query is scoped to the authenticated
-      // user's ID, so only that traveler's bookmarks are ever returned.
       final dtos = await _bookmarkRepository.getBookmarksWithPlaces(user_id);
-      final mapped = dtos.map((dto) {
-        try {
-          return _toWizardPlace(dto.place, '').copyWith(isEnabled: true);
-        } catch (e) {
-          return null;
-        }
-      }).where((w) => w != null).cast<WizardPlace>().toList();
 
-      // REQ_MV_02 — only destination-relevant bookmarks are selectable.
-      final filtered = mapped.where((w) => _belongsToAnySelectedDestinationByPlace(w)).toList();
-      if (filtered.isEmpty && mapped.isNotEmpty) {
-        _bookmarks = mapped.map((w) => w.copyWith(isEnabled: false)).toList();
-      } else {
-        _bookmarks = filtered.isEmpty ? mapped : filtered;
+      final validBookmarks = <WizardPlace>[];
+      final disabledBookmarks = <WizardPlace>[];
+
+      for (final dto in dtos) {
+        final place = dto.place;
+
+        // 1. Find which selected destination this bookmark belongs to
+        Destination? matchedDest;
+        for (final dest in _cachedSelectedDestinations) {
+          final destCoords = (dest.latitude != null && dest.longitude != null)
+              ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
+              : null;
+
+          if (_belongsToDestination(place, dest, destCoords)) {
+            matchedDest = dest;
+            break;
+          }
+        }
+
+        // 2. If it belongs to a destination, attach the destinationId!
+        if (matchedDest != null) {
+          validBookmarks.add(_toWizardPlace(
+            place,
+            matchedDest.destinationName,
+            destinationId: matchedDest.destinationId, // ✅ Attach destination ID here!
+          ).copyWith(isEnabled: true));
+        } else {
+          // If it's completely outside the trip, keep it disabled
+          disabledBookmarks.add(_toWizardPlace(
+            place,
+            'Outside Travel Area',
+          ).copyWith(isEnabled: false));
+        }
       }
+
+      // Show valid ones if they exist, otherwise show disabled ones.
+      _bookmarks = validBookmarks.isNotEmpty ? validBookmarks : disabledBookmarks;
+
     } catch (e) {
       bookmarksError = 'Could not load bookmarks.';
       _bookmarks = [];
@@ -587,8 +609,6 @@ class Step3AddPlaceVM extends ChangeNotifier {
       if (destCoords == null) continue;
       final distanceKm = _mapsService.distanceKm(destCoords, place.coordinates);
       if (distanceKm <= ItineraryConstants.maxSearchRadiusKm) {
-        // Inside the destination's travel area — warn only when the place
-        // sits beyond the destination hotspot's suggested radius.
         final hotspot = _selectedHotspot ??
             await _hotspotForDestination(dest.destinationId);
         if (hotspot != null) {
@@ -604,8 +624,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
             hotspot.suggestedRadiusKm,
           );
           if (status == HotspotDistanceStatus.outsideHotspot) {
-            return 'This place is outside the recommended area for this '
-                'destination. Do you still want to add it as a must-visit?';
+            return 'This place is outside the main sightseeing area for this destination. Adding it may significantly increase your travel time.';
           }
         }
         return null;
@@ -831,6 +850,9 @@ class Step3AddPlaceVM extends ChangeNotifier {
         for (final place in filteredResults) {
           if (!seenIds.add(place.placeId)) continue;
 
+          // ✅ NEW: Ensure the searched place is actually inside the destination bounds!
+          if (!_belongsToDestination(place, dest, coords)) continue;
+
           double? distanceKm;
           String? distanceStatus;
           if (hotspot != null) {
@@ -845,7 +867,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
             distanceStatus = classifyHotspotDistance(
               distanceKm,
               hotspot.suggestedRadiusKm,
-            ).label; // ✅ now works
+            ).label;
           }
 
           all.add(_toWizardPlace(
@@ -853,7 +875,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
             dest.destinationName,
             distanceKm: distanceKm,
             distanceStatus: distanceStatus,
-            destinationId: hotspot?.destinationId,
+            destinationId: hotspot?.destinationId ?? dest.destinationId, // ✅ Safely assign destination ID
             hotspotId: hotspot?.id,
           ));
         }

@@ -1,23 +1,4 @@
 // lib/model/business_logic/itinerary_service/change_location_service.dart
-//
-// "Change Location" business workflow for a single itinerary stop.
-//
-// Change Location is a REPLACEMENT, not an addition: the original stop is
-// untouched until the traveler explicitly confirms via "Use This Place".
-//
-// Responsibility split:
-//   Dart/business logic decides — editability (date AND time), candidate
-//   retrieval + hard filtering, duplicate checks, opening hours, travel
-//   feasibility, schedule conflicts, final schedule recalculation and
-//   validation, persistence.
-//   AI decides — which of the already-filtered candidates best replace the
-//   original stop (preference match, similarity to the original purpose,
-//   ranking, short reason). AI never modifies the schedule.
-//
-// The complete recommendation operation (retrieval + filter + AI + ranking)
-// is bounded by a hard 10-second deadline; the AI call itself is capped at
-// ~6.5s inside that budget. If AI fails, deterministic ranking is used.
-
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -41,16 +22,15 @@ import './scoring_service.dart';
 // RESULT TYPES
 // ============================================================
 
-/// Outcome of a Change Location operation.
 enum ChangeLocationOutcome { success, fallbackSuccess, problem }
 
-/// A single replacement recommendation.
 class ChangeLocationRecommendation {
   final Place place;
-  final int aiScore; // 0..100
-  final String reason; // short traveler-facing reason
-  final String distanceText; // e.g. "1.2 km • 5 min"
-  final bool isBookmarked; // Indicates if this place comes from traveler's bookmarks
+  final int aiScore;
+  final String reason;
+  final String distanceText;
+  final bool isBookmarked;
+  final int suggestedDuration; // ✅ NEW FIELD
 
   const ChangeLocationRecommendation({
     required this.place,
@@ -58,13 +38,13 @@ class ChangeLocationRecommendation {
     required this.reason,
     required this.distanceText,
     this.isBookmarked = false,
+    required this.suggestedDuration, // ✅ REQUIRED
   });
 }
 
-/// Result of [ChangeLocationService.getReplacementRecommendations].
 class ChangeLocationRecommendationResult {
   final ChangeLocationOutcome outcome;
-  final String message; // traveler-facing, never technical
+  final String message;
   final List<ChangeLocationRecommendation> recommendations;
 
   const ChangeLocationRecommendationResult({
@@ -83,10 +63,9 @@ class ChangeLocationRecommendationResult {
       );
 }
 
-/// Result of [ChangeLocationService.replaceItineraryStop].
 class ChangeLocationResult {
   final ChangeLocationOutcome outcome;
-  final String message; // traveler-facing, never technical
+  final String message;
   final ItineraryStop? updatedStop;
 
   const ChangeLocationResult({
@@ -124,10 +103,6 @@ class ChangeLocationService {
   final ScoringService _scoring = ScoringService();
   final AIService _ai = AIService();
 
-  // ─── Editability (date AND time aware) ──────────────────────
-
-  /// Validates that the itinerary can still be modified on its dates.
-  /// Past → no. Upcoming → yes. Ongoing → only future portions.
   bool validateItineraryModificationDate(Itinerary itinerary) {
     return ItineraryStatusResolver.resolve(
       startDate: itinerary.startDate,
@@ -135,10 +110,6 @@ class ChangeLocationService {
     ).isEditable;
   }
 
-  /// Whether a single stop is editable considering the current date AND
-  /// time: completed stops and stops whose scheduled time has fully passed
-  /// are locked; future days/stops and the remaining part of the current
-  /// day are editable.
   bool isStopEditable(Itinerary itinerary, ItineraryStop stop) {
     if (!validateItineraryModificationDate(itinerary)) return false;
     if (stop.stopStatus == EditStopStatuses.completed) return false;
@@ -147,15 +118,12 @@ class ChangeLocationService {
     final now = DateTime.now();
     final endOfDay = _dayDate(itinerary, stop.dayIndex)
         .add(const Duration(days: 1));
-    // Days that have fully elapsed are locked.
     if (!now.isBefore(endOfDay)) return false;
 
-    // Today's stops: locked once the scheduled end time has fully passed.
     final scheduledEnd = _stopDateTime(itinerary, stop);
     return now.isBefore(scheduledEnd);
   }
 
-  /// Day indices (1-based) that are still editable.
   List<int> getEditableDays(Itinerary itinerary) {
     final editable = <int>[];
     for (var d = 1; d <= itinerary.totalDays; d++) {
@@ -165,10 +133,6 @@ class ChangeLocationService {
     return editable;
   }
 
-  // ─── Recommendations ────────────────────────────────────────
-
-  /// Full Change Location recommendation workflow:
-  /// editability → bookmarks & candidates → hard filter → AI ranking → result.
   Future<ChangeLocationRecommendationResult> getReplacementRecommendations({
     required String itineraryId,
     required int stopId,
@@ -184,7 +148,6 @@ class ChangeLocationService {
         );
       }
 
-      // 1. Editability check (never call the AI for a locked stop).
       if (!validateItineraryModificationDate(itinerary)) {
         return ChangeLocationRecommendationResult.problem(
           'This itinerary has ended and can no longer be modified.',
@@ -206,7 +169,6 @@ class ChangeLocationService {
       final tripDate = _dayDate(itinerary, stop.dayIndex);
       final slotMinutes = stop.endTime.difference(stop.startTime).inMinutes;
 
-      // 2. Validate traveler's bookmarks first (0ms network delay)
       final validBookmarks = _filterValidCandidates(
         candidates: bookmarkedPlaces,
         currentPlace: currentPlace,
@@ -216,7 +178,6 @@ class ChangeLocationService {
         slotMinutes: slotMinutes,
       );
 
-      // 3. Fetch nearby candidates if bookmarks do not satisfy pool count
       List<Place> nearbyCandidates = [];
       if (validBookmarks.length < maxAiCandidates) {
         nearbyCandidates = await _getFilteredCandidates(
@@ -226,7 +187,6 @@ class ChangeLocationService {
         );
       }
 
-      // Combine candidates: bookmarks take priority in candidate pool
       final bookmarkedIds = validBookmarks.map((p) => p.placeId).toSet();
       final combinedMap = <String, Place>{};
       for (final p in validBookmarks) {
@@ -246,7 +206,6 @@ class ChangeLocationService {
         );
       }
 
-      // 4. AI ranking within remaining budget
       final scored = await _aiRankCandidates(
         currentStop: stop,
         itinerary: itinerary,
@@ -273,9 +232,6 @@ class ChangeLocationService {
     }
   }
 
-  // ─── Preview-editing (EditItineraryScreen) API ──────────────
-
-  /// Recommendation workflow for the PREVIEW editor (EditItineraryScreen).
   Future<ChangeLocationRecommendationResult> getPreviewReplacementRecommendations({
     required Place currentPlace,
     required DateTime tripDate,
@@ -293,7 +249,6 @@ class ChangeLocationService {
         );
       }
 
-      // 1. Validate bookmarks for preview mode
       final validBookmarks = _filterValidCandidates(
         candidates: bookmarkedPlaces,
         currentPlace: currentPlace,
@@ -303,7 +258,6 @@ class ChangeLocationService {
         slotMinutes: visitDurationMinutes,
       );
 
-      // 2. Retrieve nearby places if needed
       List<Place> nearbyCandidates = [];
       if (validBookmarks.length < maxAiCandidates) {
         nearbyCandidates = await _getFilteredCandidatesForPreview(
@@ -336,7 +290,6 @@ class ChangeLocationService {
         );
       }
 
-      // 3. AI ranking within remaining budget
       final scored = await _aiRankCandidatesForPreview(
         currentPlace: currentPlace,
         visitDurationMinutes: visitDurationMinutes,
@@ -366,7 +319,6 @@ class ChangeLocationService {
     }
   }
 
-  /// Synchronous/local hard filter for candidates (used for bookmarks & places)
   List<Place> _filterValidCandidates({
     required List<Place> candidates,
     required Place currentPlace,
@@ -375,19 +327,13 @@ class ChangeLocationService {
     required DateTime tripDate,
     required int slotMinutes,
   }) {
-    final maxVisitMinutes = slotMinutes.clamp(
-      ItineraryConstants.minimumVisitDurationMinutes,
-      ItineraryConstants.maximumVisitDurationMinutes,
-    );
-
     final existingIds = scheduledIds.where((id) => id != currentPlace.placeId).toSet();
 
     return candidates.where((p) {
       if (p.placeId == currentPlace.placeId) return false;
       if (existingIds.contains(p.placeId)) return false;
       if (p.placeLatitude == 0 && p.placeLongitude == 0) return false;
-      final duration = p.visitDurationMinutes ?? 90;
-      if (duration > maxVisitMinutes) return false;
+      // ✅ Removed the static duration filter
       if (!_isOpenOnDate(p, tripDate)) return false;
       final distanceKm = currentPlace.coordinates.distanceTo(p.coordinates);
       if (distanceKm > 5) return false;
@@ -395,7 +341,6 @@ class ChangeLocationService {
     }).toList();
   }
 
-  /// Retrieves nearby candidates and hard-filters them BEFORE the AI sees them.
   Future<List<Place>> _getFilteredCandidatesForPreview({
     required Place currentPlace,
     required DateTime tripDate,
@@ -405,10 +350,6 @@ class ChangeLocationService {
     required String explorationTime,
     required DateTime deadline,
   }) async {
-    final maxVisitMinutes = visitDurationMinutes.clamp(
-        ItineraryConstants.minimumVisitDurationMinutes,
-        ItineraryConstants.maximumVisitDurationMinutes);
-
     try {
       final raw = await _maps
           .searchNearbyPlaces(
@@ -426,8 +367,7 @@ class ChangeLocationService {
         if (p.placeId == currentPlace.placeId) continue;
         if (scheduledPlaceIds.contains(p.placeId)) continue;
         if (p.placeLatitude == 0 && p.placeLongitude == 0) continue;
-        final duration = p.visitDurationMinutes ?? 90;
-        if (duration > maxVisitMinutes) continue;
+        // ✅ Removed the static duration filter
         if (!_isOpenOnDate(p, tripDate)) continue;
         final distanceKm = currentPlace.coordinates.distanceTo(p.coordinates);
         if (distanceKm > 5) continue;
@@ -456,7 +396,6 @@ class ChangeLocationService {
     }
   }
 
-  /// AI ranking for the preview flow.
   Future<({List<ChangeLocationRecommendation> recommendations, bool usedAi})>
   _aiRankCandidatesForPreview({
     required Place currentPlace,
@@ -516,6 +455,7 @@ class ChangeLocationService {
               .distanceTo(byId[r.placeId]!.coordinates),
         ),
         isBookmarked: bookmarkedIds.contains(r.placeId),
+        suggestedDuration: r.duration, // ✅ ADDED DURATION
       ))
           .toList(),
       usedAi: true,
@@ -558,30 +498,29 @@ class ChangeLocationService {
         '- placeId: ${p.placeId} | name: ${p.placeName}$isSaved | '
             'category: ${p.placeCategory ?? 'unknown'} | '
             'rating: ${p.placeRating.toStringAsFixed(1)} | '
-            'visit: ${p.visitDurationMinutes ?? 90} min | '
             'distance km: ${currentPlace.coordinates.distanceTo(p.coordinates).toStringAsFixed(1)}',
       );
     }
     buf
       ..writeln()
-      ..writeln('TASK: Rank the 5 best replacements. Give strong consideration to places '
+      ..writeln('TASK: Rank the 5 best replacements and suggest an optimal visit duration for each. Give strong consideration to places '
           'marked [BOOKMARKED BY USER] if they fit the purpose. Balance purpose, distance, '
           'and ratings. Never invent places; use only supplied placeIds.')
       ..writeln()
       ..writeln('Respond with compact JSON ONLY (no markdown, no extra '
           'text), max 5 items, best first:')
+    // ✅ ASK FOR DURATION IN OUTPUT
       ..writeln('{"recommendations":[{"placeId":"...","score":94,'
-          '"reason":"max 12 words"}]}');
+          '"reason":"max 12 words","duration":60}]}');
     return buf.toString();
   }
 
-  // ─── Replacement (final validation + persistence) ───────────
-
-  /// Replaces an existing stop with [newPlaceId] after full deterministic validation.
+  // ✅ UPDATED: Requires new duration
   Future<ChangeLocationResult> replaceItineraryStop({
     required String itineraryId,
     required int stopId,
-    required String newPlaceId,
+    required Place newPlace, // ⬅️ CHANGED THIS LINE
+    required int newDurationMinutes,
   }) async {
     try {
       final itinerary = await _itineraryRepo.getItinerary(itineraryId);
@@ -603,20 +542,15 @@ class ChangeLocationService {
         );
       }
 
-      final newPlace = await _loadPlace(newPlaceId);
-      if (newPlace == null) {
-        return ChangeLocationResult.problem(
-          'Unable to load the selected place. Please try again.',
-        );
-      }
       if (newPlace.placeId == stop.placeId) {
         return ChangeLocationResult.problem(
           'This place is already scheduled for this stop.',
         );
       }
+
       final scheduledIds = await _scheduledPlaceIds(itineraryId);
       if (isPlaceAlreadyScheduled(
-        newPlaceId,
+        newPlace.placeId, // ⬅️ CHANGED THIS LINE
         scheduledIds,
         excludeStopId: stopId,
       )) {
@@ -626,7 +560,9 @@ class ChangeLocationService {
       }
 
       final dayStops = await _loadDayStops(itineraryId, stop.dayIndex);
-      final updatedStop = _buildUpdatedStop(stop, newPlace);
+
+      // ✅ PASS NEW DURATION
+      final updatedStop = _buildUpdatedStop(stop, newPlace, newDurationMinutes);
       final resulting = <ItineraryStop>[
         for (final s in dayStops)
           if (s.stopId == stopId) updatedStop else s,
@@ -711,20 +647,12 @@ class ChangeLocationService {
     }
   }
 
-  // ============================================================
-  // CANDIDATES
-  // ============================================================
-
   Future<List<Place>> _getFilteredCandidates({
     required Itinerary itinerary,
     required ItineraryStop stop,
     required DateTime deadline,
   }) async {
     final currentPlace = stop.place!;
-    final slotMinutes = stop.endTime.difference(stop.startTime).inMinutes;
-    final maxVisitMinutes = slotMinutes.clamp(
-        ItineraryConstants.minimumVisitDurationMinutes,
-        ItineraryConstants.maximumVisitDurationMinutes);
 
     try {
       final raw = await _maps
@@ -748,8 +676,7 @@ class ChangeLocationService {
         if (p.placeId == currentPlace.placeId) continue;
         if (existingIds.contains(p.placeId)) continue;
         if (p.placeLatitude == 0 && p.placeLongitude == 0) continue;
-        final duration = p.visitDurationMinutes ?? 90;
-        if (duration > maxVisitMinutes) continue;
+        // ✅ Removed the static duration filter
         if (!_isOpenOnDate(p, _dayDate(itinerary, stop.dayIndex))) continue;
         final distanceKm = currentPlace.coordinates.distanceTo(p.coordinates);
         if (distanceKm > 5) continue;
@@ -796,10 +723,6 @@ class ChangeLocationService {
       }) {
     return scheduledIds.contains(placeId);
   }
-
-  // ============================================================
-  // AI RECOMMENDATION
-  // ============================================================
 
   Future<({List<ChangeLocationRecommendation> recommendations, bool usedAi})>
   _aiRankCandidates({
@@ -855,6 +778,7 @@ class ChangeLocationService {
               .distanceTo(byId[r.placeId]!.coordinates),
         ),
         isBookmarked: bookmarkedIds.contains(r.placeId),
+        suggestedDuration: r.duration, // ✅ ADDED DURATION
       ))
           .toList(),
       usedAi: true,
@@ -865,7 +789,8 @@ class ChangeLocationService {
     });
   }
 
-  List<({String placeId, int score, String reason})> _parseRecommendations(
+  // ✅ UPDATED TUPLE TO RETURN DURATION
+  List<({String placeId, int score, String reason, int duration})> _parseRecommendations(
       String raw,
       Map<String, Place> byId,
       ) {
@@ -883,7 +808,7 @@ class ChangeLocationService {
       final list = data['recommendations'];
       if (list is! List) return const [];
 
-      final picks = <({String placeId, int score, String reason})>[];
+      final picks = <({String placeId, int score, String reason, int duration})>[];
       final seen = <String>{};
       for (final item in list) {
         if (item is! Map<String, dynamic>) continue;
@@ -893,10 +818,13 @@ class ChangeLocationService {
         final reason = (item['reason']?.toString() ?? '')
             .replaceAll(RegExp(r'\s+'), ' ')
             .trim();
+        // ✅ PARSE DURATION
+        final duration = (item['duration'] as num?)?.toInt() ?? 90;
         picks.add((
         placeId: id,
         score: score.clamp(0, 100),
         reason: reason.isEmpty ? 'Recommended for your trip.' : reason,
+        duration: duration,
         ));
         if (picks.length >= 5) break;
       }
@@ -937,24 +865,23 @@ class ChangeLocationService {
         '- placeId: ${p.placeId} | name: ${p.placeName}$isSaved | '
             'category: ${p.placeCategory ?? 'unknown'} | '
             'rating: ${p.placeRating.toStringAsFixed(1)} | '
-            'visit: ${p.visitDurationMinutes ?? 90} min | '
             'distance km: ${currentPlace.coordinates.distanceTo(p.coordinates).toStringAsFixed(1)}',
       );
     }
     buf
       ..writeln()
-      ..writeln('TASK: Rank the 5 best replacements. Give strong consideration to places '
+      ..writeln('TASK: Rank the 5 best replacements and suggest an optimal visit duration for each. Give strong consideration to places '
           'marked [BOOKMARKED BY USER] if they fit the purpose. Balance purpose, distance, '
           'and ratings. Never invent places; use only supplied placeIds.')
       ..writeln()
       ..writeln('Respond with compact JSON ONLY (no markdown, no extra '
           'text), max 5 items, best first:')
+    // ✅ ASK FOR DURATION IN OUTPUT
       ..writeln('{"recommendations":[{"placeId":"...","score":94,'
-          '"reason":"max 12 words"}]}');
+          '"reason":"max 12 words","duration":60}]}');
     return buf.toString();
   }
 
-  /// Deterministic ranking fallback (no AI)
   List<ChangeLocationRecommendation> _deterministicRanking(
       Place currentPlace,
       List<Place> candidates,
@@ -962,7 +889,7 @@ class ChangeLocationService {
       ) {
     double score(Place p) {
       var s = 0.0;
-      if (bookmarkedIds.contains(p.placeId)) s += 30; // Boost bookmarked places
+      if (bookmarkedIds.contains(p.placeId)) s += 30;
       final curCat = currentPlace.placeCategory?.toLowerCase();
       final cat = p.placeCategory?.toLowerCase();
       if (curCat != null && cat != null && curCat == cat) s += 30;
@@ -984,6 +911,7 @@ class ChangeLocationService {
             : catReason(p, currentPlace),
         distanceText: _distanceText(km),
         isBookmarked: isBookmarked,
+        suggestedDuration: p.visitDurationMinutes ?? 90, // ✅ FALLBACK DURATION
       );
     }).toList();
   }
@@ -1001,10 +929,6 @@ class ChangeLocationService {
     if (km < 1) return '${(km * 1000).round()} m away';
     return '${km.toStringAsFixed(1)} km away';
   }
-
-  // ============================================================
-  // SCHEDULE RECALCULATION
-  // ============================================================
 
   Future<List<ItineraryStop>?> _recalculateAffectedSchedule(
       Itinerary itinerary,
@@ -1062,7 +986,8 @@ class ChangeLocationService {
     );
   }
 
-  ItineraryStop _buildUpdatedStop(ItineraryStop stop, Place newPlace) {
+  // ✅ UPDATED: Auto-calculates endTime and durationMinutes
+  ItineraryStop _buildUpdatedStop(ItineraryStop stop, Place newPlace, int newDuration) {
     return ItineraryStop(
       stopId: stop.stopId,
       itineraryId: stop.itineraryId,
@@ -1071,8 +996,8 @@ class ChangeLocationService {
       dayIndex: stop.dayIndex,
       stopOrder: stop.stopOrder,
       startTime: stop.startTime,
-      endTime: stop.endTime,
-      durationMinutes: stop.durationMinutes,
+      endTime: stop.startTime.add(Duration(minutes: newDuration)), // ✅ UPDATE END TIME
+      durationMinutes: newDuration, // ✅ UPDATE DURATION
       travelFromPrevMinutes: stop.travelFromPrevMinutes,
       stopStatus: stop.stopStatus,
       skipReason: stop.skipReason,
@@ -1083,7 +1008,7 @@ class ChangeLocationService {
     );
   }
 
-  // Helper methods
+
   Future<ItineraryStop?> _findStop(String itineraryId, int stopId) async {
     final all = await _stopRepo.getStopsForItinerary(itineraryId);
     final match = all.where((s) => s.stopId == stopId).toList();
@@ -1127,7 +1052,6 @@ class ChangeLocationService {
   }
 }
 
-/// Status string constants shared with the existing stop model.
 class EditStopStatuses {
   static const String planned = 'PLANNED';
   static const String completed = 'COMPLETED';

@@ -3,8 +3,6 @@ import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
-import '../../model/entities/destination.dart';
-import '../../model/entities/trip_draft.dart';
 import './generation_screen.dart';
 
 class DestinationWithDays {
@@ -97,57 +95,72 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     return "Day $startDay – Day $endDay";
   }
 
+  void _saveAllocationsToNotifier() {
+    final allocatedDays = <String, int>{};
+    for (final dest in widget.destinations) {
+      allocatedDays[dest.name] = dest.days;
+    }
+
+    final currentDraft = context.read<TripDraftNotifier>().draft;
+    final updatedDraft = currentDraft.copyWith(daySplit: allocatedDays);
+    context.read<TripDraftNotifier>().updateDraft(updatedDraft);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _bgColor,
-      appBar: const WizardAppBar(
-        step: 4,
-        totalSteps: 5,
-      ),
-      body: Stack(
-        children: [
-          const SizedBox(height: 8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child:WizardProgressBar(activeSteps: 4),
-          ),
-          const SizedBox(height: 24),
-          SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 32),
-                _buildSummaryCard(),
-                const SizedBox(height: 32),
-                Text(
-                  "DESTINATIONS & SCHEDULE",
-                  style: AppTextStyles.sectionLabel,
-                ),
-                const SizedBox(height: 16),
-                for (int i = 0; i < widget.destinations.length; i++)
-                  _buildDestinationCard(
-                    index: i,
-                    title: "${i + 1}. ${widget.destinations[i].name}",
-                    dateRange: _buildDateRange(i),
-                    days: widget.destinations[i].days,
-                    imageUrl: widget.destinations[i].imageUrl,
-                    color: _getColorForDestination(widget.destinations[i].id),
-                    onAdd: () => _updateDays(i, 1),
-                    onRemove: () => _updateDays(i, -1),
-                  ),
-              ],
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          _saveAllocationsToNotifier(); // Save allocation state when navigating back
+        }
+      },
+      child: Scaffold(
+        backgroundColor: _bgColor,
+        appBar: const WizardAppBar(step: 4, totalSteps: 5),
+        body: Stack(
+          children: [
+            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: WizardProgressBar(activeSteps: 4),
             ),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _buildStickyFooter(),
-          ),
-        ],
+            const SizedBox(height: 24),
+            SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(),
+                  const SizedBox(height: 32),
+                  _buildSummaryCard(),
+                  const SizedBox(height: 32),
+                  Text(
+                    "DESTINATIONS & SCHEDULE",
+                    style: AppTextStyles.sectionLabel,
+                  ),
+                  const SizedBox(height: 16),
+                  for (int i = 0; i < widget.destinations.length; i++)
+                    _buildDestinationCard(
+                      index: i,
+                      title: "${i + 1}. ${widget.destinations[i].name}",
+                      dateRange: _buildDateRange(i),
+                      days: widget.destinations[i].days,
+                      imageUrl: widget.destinations[i].imageUrl,
+                      color: _getColorForDestination(widget.destinations[i].id),
+                      onAdd: () => _updateDays(i, 1),
+                      onRemove: () => _updateDays(i, -1),
+                    ),
+                ],
+              ),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: _buildStickyFooter(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -168,7 +181,7 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
         const SizedBox(height: 8),
         Text(
           "You have ${widget.totalPlannedDays} total days planned. "
-              "Allocate how many days to spend in each destination.",
+          "Allocate how many days to spend in each destination.",
           style: AppTextStyles.bodySm.copyWith(
             color: _subtitleColor,
             height: 1.5,
@@ -204,7 +217,10 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.green.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
@@ -231,7 +247,9 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                       Expanded(
                         flex: widget.destinations[i].days,
                         child: Container(
-                          color: _getColorForDestination(widget.destinations[i].id),
+                          color: _getColorForDestination(
+                            widget.destinations[i].id,
+                          ),
                         ),
                       ),
                       if (i < widget.destinations.length - 1 &&
@@ -257,7 +275,8 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
               for (int i = 0; i < widget.destinations.length; i++)
                 _buildLegendItem(
                   color: _getColorForDestination(widget.destinations[i].id),
-                  label: "${widget.destinations[i].name} "
+                  label:
+                      "${widget.destinations[i].name} "
                       "(${widget.destinations[i].days}d)",
                 ),
             ],
@@ -267,10 +286,7 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     );
   }
 
-  Widget _buildLegendItem({
-    required Color color,
-    required String label,
-  }) {
+  Widget _buildLegendItem({required Color color, required String label}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -281,10 +297,7 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
             color: color,
             shape: BoxShape.circle,
             boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.25),
-                blurRadius: 4,
-              ),
+              BoxShadow(color: color.withOpacity(0.25), blurRadius: 4),
             ],
           ),
         ),
@@ -327,11 +340,7 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
         borderRadius: BorderRadius.circular(AppRadius.card),
         child: Row(
           children: [
-            Container(
-              width: 6,
-              height: 112,
-              color: color,
-            ),
+            Container(width: 6, height: 112, color: color),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -384,7 +393,10 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  title.replaceFirst(RegExp(r'^[0-9]+\.\s*'), ''),
+                                  title.replaceFirst(
+                                    RegExp(r'^[0-9]+\.\s*'),
+                                    '',
+                                  ),
                                   style: AppTextStyles.bodyLg.copyWith(
                                     fontWeight: FontWeight.w700,
                                     color: _textColor,
@@ -481,16 +493,9 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
           decoration: BoxDecoration(
             color: color.withOpacity(0.08),
             shape: BoxShape.circle,
-            border: Border.all(
-              color: color.withOpacity(0.35),
-              width: 1.2,
-            ),
+            border: Border.all(color: color.withOpacity(0.35), width: 1.2),
           ),
-          child: Icon(
-            icon,
-            size: 17,
-            color: color,
-          ),
+          child: Icon(icon, size: 17, color: color),
         ),
       ),
     );
@@ -517,9 +522,7 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     // ✅ 5. Navigate to the Generation Screen (no need to pass the draft!)
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const GenerationScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const GenerationScreen()),
     );
   }
 
