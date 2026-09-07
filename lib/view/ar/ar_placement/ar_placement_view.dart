@@ -15,6 +15,7 @@ import './widgets/ar_scanning_guide.dart';
 import './widgets/ar_storytelling_panel.dart';
 import './widgets/ar_action_menu.dart';
 import './widgets/ar_recommendation_overlay.dart';
+import './widgets/ar_error_dialog.dart';
 
 /// Screen corresponding to `AR Placement Screen` in the architecture diagram.
 /// Pure View layer with strict MVVM adherence.
@@ -235,6 +236,9 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
 
             // 8. Contextual recommendations shown without unmounting ARCore.
             const ARRecommendationOverlay(),
+
+            // 9. Error Overlay (Complying with REQ_201_6: allows Retry or Return to AR exploration view)
+            const ARErrorOverlay(),
           ],
         ),
         bottomNavigationBar: AppBottomNavBar(

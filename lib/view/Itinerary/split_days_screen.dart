@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import '../../model/entities/destination.dart';
 import '../../model/entities/trip_draft.dart';
 import './generation_screen.dart';
@@ -20,13 +22,11 @@ class DestinationWithDays {
 }
 
 class SplitDaysScreen extends StatefulWidget {
-  final TripDraft draft; // Added field
   final List<DestinationWithDays> destinations;
   final int totalPlannedDays;
 
   const SplitDaysScreen({
     Key? key,
-    required this.draft, // Required parameter
     required this.destinations,
     required this.totalPlannedDays,
   }) : super(key: key);
@@ -497,44 +497,28 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
   }
 
   /// Navigates to the next screen with the updated day allocation.
+  /// Navigates to the next screen with the updated day allocation.
   void _onContinue() {
-    // Build a new mutable map from the current allocations
+    // 1. Build a map of the new day allocations
     final allocatedDays = <String, int>{};
     for (final dest in widget.destinations) {
       allocatedDays[dest.name] = dest.days;
     }
 
-    // If the draft is available (passed via widget.draft), copy it with new daySplit.
-    // Otherwise, construct a minimal draft from the available data.
-    final TripDraft updatedDraft;
-    if (widget.draft != null) {
-      // Use copyWith (immutable update) to create a new draft with the new daySplit.
-      updatedDraft = widget.draft!.copyWith(daySplit: allocatedDays);
-    } else {
-      // Fallback: build a new draft from destinations (if full Destination objects are stored)
-      // Here we assume we can reconstruct from what we have.
-      updatedDraft = TripDraft(
-        destinations: widget.destinations.map((d) {
-          // Re‑create Destination objects – you may have a better way to get them.
-          return Destination(
-            destinationId: d.id,
-            destinationName: d.name,
-            imageUrl: d.imageUrl,
-          );
-        }).toList(),
-        daySplit: allocatedDays,
-        // Copy other fields from original draft if needed; otherwise defaults.
-      );
-    }
+    // ✅ 2. Read the current draft directly from the global vault
+    final currentDraft = context.read<TripDraftNotifier>().draft;
 
-    // Navigate to the next screen (e.g., ItineraryGenerationScreen or whatever comes after split days)
+    // ✅ 3. Create an updated draft by adding the day splits
+    final updatedDraft = currentDraft.copyWith(daySplit: allocatedDays);
+
+    // ✅ 4. Save the finalized draft back to the vault
+    context.read<TripDraftNotifier>().updateDraft(updatedDraft);
+
+    // ✅ 5. Navigate to the Generation Screen (no need to pass the draft!)
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => GenerationScreen(
-          draft: updatedDraft,
-          //userId: 'current_user_id_here', // replace with actual userId
-        ),
+        builder: (_) => const GenerationScreen(),
       ),
     );
   }

@@ -191,8 +191,9 @@ class ItineraryFinalViewModel extends ChangeNotifier {
   // ─── Actions ─────────────────────────────────────────────────
 
   void selectDay(int index) {
+    if (_selectedDayIndex == index) return;
     _selectedDayIndex = index;
-    notifyListeners();
+    notifyListeners();  // ✅ critical
   }
 
   Future<void> regenerate() async {

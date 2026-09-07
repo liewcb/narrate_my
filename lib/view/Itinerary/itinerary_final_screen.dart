@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_final_vm.dart';
 import './add_place_screen.dart';
@@ -76,24 +77,22 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
   }
 
   /// Prompts user with a confirmation dialog before discarding.
-  /// Goes back to the previous screen on confirmation.
-  /// Prompts user with a confirmation dialog before discarding.
   /// Clears the draft and navigates back to the main itineraries screen on confirmation.
   Future<void> _handleDiscard() async {
-    // If the itinerary is saved and there are no unsaved changes,
-    // just go back to the main screen without asking.
     if (_vm.itineraryId != null && !_vm.hasUnsavedChanges) {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const MyItinerariesScreen()),
-            (route) => false, // Clears the entire navigation stack
+            (route) => false,
       );
       return;
     }
 
     final shouldDiscard = await showConfirmationDialog(
       context: context,
-      title: _vm.itineraryId == null ? 'Discard Itinerary?' : 'Discard Changes?',
+      title: _vm.itineraryId == null
+          ? 'Discard Itinerary?'
+          : 'Discard Changes?',
       message: _vm.itineraryId == null
           ? 'This plan has not been saved yet. Discard it permanently?'
           : 'You have unsaved changes. Discard them?',
@@ -106,11 +105,9 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
     );
 
     if (shouldDiscard == true && mounted) {
-      // This cleans out the temporary plan data
       await _vm.clearDraft();
 
       if (mounted) {
-        // Navigate cleanly to the main screen
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const MyItinerariesScreen()),
@@ -152,8 +149,8 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
       );
       debugPrint('[FINAL SAVE] Navigation completed');
     } else {
-      // Show the saveMessage to the user if available
-      final msg = _vm.saveMessage ?? 'Failed to save itinerary. Please try again.';
+      final msg = _vm.saveMessage ??
+          'Failed to save itinerary. Please try again.';
       debugPrint('[FINAL SAVE] Save did not succeed; staying on final screen. '
           'saveMessage=$msg');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -166,197 +163,230 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
       value: _vm,
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
-        body: ListenableBuilder(
-          listenable: _vm,
-          builder: (context, _) {
-            final days = _vm.days;
-            if (_dayKeys.length != days.length) {
-              _dayKeys.length = days.length;
-            }
+      child: WillPopScope(
+        onWillPop: () async {
+          await _handleDiscard();
+          return false;
+        },
+        child: Scaffold(
+          backgroundColor: AppColors.bg,
+          body: ListenableBuilder(
+            listenable: _vm,
+            builder: (context, _) {
+              final days = _vm.days;
+              if (_dayKeys.length != days.length) {
+                _dayKeys.length = days.length;
+              }
 
-            // ── Empty / error state ──────────────────────────────
-            if (days.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.map_outlined, size: 64, color: AppColors.inkFaint),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Something went wrong',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.ink),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Unable to display the generated itinerary.',
-                      style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
-                    ),
-                    if (_vm.errorMessage != null) ...[
+              // ── Empty / error state ──────────────────────────────
+              if (days.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.map_outlined, size: 64,
+                          color: AppColors.inkFaint),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Something went wrong',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight
+                            .bold, color: AppColors.ink),
+                      ),
                       const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Text(
-                          _vm.errorMessage!,
-                          style: const TextStyle(fontSize: 12, color: AppColors.error),
-                          textAlign: TextAlign.center,
+                      const Text(
+                        'Unable to display the generated itinerary.',
+                        style: TextStyle(fontSize: 14, color: AppColors
+                            .inkFaint),
+                      ),
+                      if (_vm.errorMessage != null) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(
+                            _vm.errorMessage!,
+                            style: const TextStyle(
+                                fontSize: 12, color: AppColors.error),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
+                      ],
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.surface,
+                        ),
+                        child: const Text('Go Back'),
                       ),
                     ],
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.surface,
-                      ),
-                      child: const Text('Go Back'),
+                  ),
+                );
+              }
+
+              // ── Loading state ──────────────────────────────────────
+              if (_vm.isLoading) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              // ── Main content ────────────────────────────────────────
+              return CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _HeroSection(
+                      title: _vm.title,
+                      dateRange: _vm.dateRange,
+                      places: '${_vm.totalStops}',
+                      days: '${days.length}',
+                      imageUrl: _vm.heroImageUrl,
                     ),
-                  ],
+                  ),
+                  SliverToBoxAdapter(
+                    child: _StatsBar(
+                      places: _vm.totalStops,
+                      transit: '${_vm.totalTravelTime.inHours}h',
+                      cities: _vm.cityCount,
+                    ),
+                  ),
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _DayPillsDelegate(
+                      days: days,
+                      selectedIndex: _vm.selectedDayIndex,
+                      onDaySelected: (index) {
+                        _vm.selectDay(index);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          final key = _dayKeys[index];
+                          if (key.currentContext != null) {
+                            Scrollable.ensureVisible(
+                              key.currentContext!,
+                              duration: const Duration(milliseconds: 400),
+                              curve: Curves.easeInOut,
+                              alignment: 0.1,
+                            );
+                          }
+                        });
+                      },
+                    ),
+                  ),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                        final day = days[index];
+                        return Container(
+                          key: _dayKeys[index],
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 8),
+                          child: _DayCard(
+                            day: day,
+                            isSelected: index == _vm.selectedDayIndex,
+                            onTapDay: () {
+                              _vm.selectDay(index);
+                              WidgetsBinding.instance.addPostFrameCallback((
+                                  _) {
+                                if (_dayKeys[index].currentContext != null) {
+                                  Scrollable.ensureVisible(
+                                    _dayKeys[index].currentContext!,
+                                    duration: const Duration(
+                                        milliseconds: 400),
+                                    curve: Curves.easeInOut,
+                                    alignment: 0.1,
+                                  );
+                                }
+                              });
+                            },
+                            onAddPlace: () async {
+                              final days = _vm.result.scheduledDays;
+                              if (days == null || index >= days.length)
+                                return;
+                              final updated =
+                              await Navigator.push<ScheduledDay>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      AddPlaceScreen(
+                                        itineraryId: _vm.itineraryId ?? '',
+                                        dayIndex: index,
+                                        explorationTime: _vm.explorationTime,
+                                        workingDay: days[index],
+                                        itineraryUsedPlaceIds: _vm
+                                            .allPlaceIds,
+                                        dayDate: days[index].date,
+                                        transportMode:
+                                        _vm.draft?.transportation ??
+                                            'walking',
+                                        travelPace: _vm.draft?.pace ??
+                                            'Standard',
+                                        interests:
+                                        _vm.draft?.interests.toList() ??
+                                            const [],
+                                        mustVisitPlaceIds: _vm
+                                            .mustVisitPlaceIds,
+                                        destinationCenter:
+                                        _vm.destinationCenterForDay(index),
+                                      ),
+                                ),
+                              );
+                              if (updated != null && mounted) {
+                                _vm.applyDayUpdate(index, updated);
+                              }
+                            },
+                            onEditDay: () {
+                              Navigator.push<ItineraryResult>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      EditItineraryScreen(
+                                        result: _vm.result,
+                                        title: _vm.title,
+                                        dayNumber: day.dayNumber,
+                                        tripStartDate: _vm.tripStartDate,
+                                        explorationTime: _vm.explorationTime,
+                                        mustVisitPlaceIds: _vm
+                                            .mustVisitPlaceIds,
+                                        transportMode: _vm.draft
+                                            ?.transportation ??
+                                            'walking',
+                                        interests:
+                                        _vm.draft?.interests.toList() ??
+                                            const [],
+                                      ),
+                                ),
+                              ).then((updated) {
+                                if (updated != null && mounted) {
+                                  _vm.updateResult(updated);
+                                }
+                              });
+                            },
+                          ),
+                        );
+                      },
+                      childCount: days.length,
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 140)),
+                ],
+              );
+            },
+          ),
+          bottomNavigationBar: _BottomActions(
+            onDiscard: _handleDiscard,
+            onRegenerate: widget.draft != null
+                ? () {
+              context.read<TripDraftNotifier>().updateDraft(widget.draft!);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const GenerationScreen(),
                 ),
               );
-            }
-
-            // ── Loading state ──────────────────────────────────────
-            if (_vm.isLoading) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            // ── Main content ────────────────────────────────────────
-            return CustomScrollView(
-              controller: _scrollController,
-              slivers: [
-                SliverToBoxAdapter(
-                  child: _HeroSection(
-                    title: _vm.title,
-                    dateRange: _vm.dateRange,
-                    places: '${_vm.totalStops}',
-                    days: '${days.length}',
-                    imageUrl: _vm.heroImageUrl,
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: _StatsBar(
-                    places: _vm.totalStops,
-                    transit: '${_vm.totalTravelTime.inHours}h',
-                    cities: _vm.cityCount,
-                  ),
-                ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _DayPillsDelegate(
-                    days: days,
-                    selectedIndex: _vm.selectedDayIndex,
-                    onDaySelected: (index) {
-                      _vm.selectDay(index);
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        final key = _dayKeys[index];
-                        if (key.currentContext != null) {
-                          Scrollable.ensureVisible(
-                            key.currentContext!,
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.easeInOut,
-                          );
-                        }
-                      });
-                    },
-                  ),
-                ),
-                SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                      final day = days[index];
-                      return Container(
-                        key: _dayKeys[index],
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                        child: _DayCard(
-                          day: day,
-                          isSelected: index == _vm.selectedDayIndex,
-                          onAddPlace: () async {
-                            final days = _vm.result.scheduledDays;
-                            if (days == null || index >= days.length) return;
-                            final updated =
-                            await Navigator.push<ScheduledDay>(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => AddPlaceScreen(
-                                  itineraryId: _vm.itineraryId ?? '',
-                                  dayIndex: index,
-                                  explorationTime: _vm.explorationTime,
-                                  workingDay: days[index],
-                                  itineraryUsedPlaceIds: _vm.allPlaceIds,
-                                  dayDate: days[index].date,
-                                  transportMode:
-                                  _vm.draft?.transportation ?? 'walking',
-                                  travelPace: _vm.draft?.pace ?? 'Standard',
-                                  interests:
-                                  _vm.draft?.interests.toList() ?? const [],
-                                  mustVisitPlaceIds: _vm.mustVisitPlaceIds,
-                                  destinationCenter:
-                                  _vm.destinationCenterForDay(index),
-                                ),
-                              ),
-                            );
-                            if (updated != null && mounted) {
-                              // Replace ONLY the selected day in the working
-                              // preview; every other day is preserved.
-                              _vm.applyDayUpdate(index, updated);
-                            }
-                          },
-                          onEditDay: () {
-                            Navigator.push<ItineraryResult>(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => EditItineraryScreen(
-                                  result: _vm.result,
-                                  title: _vm.title,
-                                  dayNumber: day.dayNumber,
-                                  tripStartDate: _vm.tripStartDate,
-                                  explorationTime: _vm.explorationTime,
-                                  mustVisitPlaceIds: _vm.mustVisitPlaceIds,
-                                  transportMode: _vm.draft?.transportation ??
-                                      'walking',
-                                  interests:
-                                  _vm.draft?.interests.toList() ??
-                                      const [],
-                                ),
-                              ),
-                            ).then((updated) {
-                              if (updated != null && mounted) {
-                                _vm.updateResult(updated);
-                              }
-                            });
-                          },
-                        ),
-                      );
-                    },
-                    childCount: days.length,
-                  ),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 140)),
-              ],
-            );
-          },
-        ),
-        bottomNavigationBar: _BottomActions(
-          onDiscard: _handleDiscard,
-
-          // ✅ UPDATE THIS: Route directly using the Final Screen's active context
-          onRegenerate: widget.draft != null
-              ? () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => GenerationScreen(draft: widget.draft!),
-              ),
-            );
-          }
-              : null,
-          isRegenerating: false,
-          onSave: _vm.canSave ? () => _handleSave() : null,
-          isSaving: _vm.isSaveInProgress,
-          saveMessage: _vm.saveMessage,
+            } : null,
+            isRegenerating: false,
+            onSave: _vm.canSave ? () => _handleSave() : null,
+            isSaving: _vm.isSaveInProgress,
+            saveMessage: _vm.saveMessage,
+          ),
         ),
       ),
     );
@@ -364,7 +394,7 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  SUB-WIDGETS (unchanged)
+//  SUB-WIDGETS
 // ═══════════════════════════════════════════════════════════════════
 
 class _HeroSection extends StatefulWidget {
@@ -397,12 +427,10 @@ class _HeroSectionState extends State<_HeroSection> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // If imageUrl is null or empty, show placeholder immediately
           if (widget.imageUrl == null || widget.imageUrl!.isEmpty)
             _placeholder()
           else
             _buildImageWithLoading(),
-          // Gradient overlay (unchanged)
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -417,7 +445,6 @@ class _HeroSectionState extends State<_HeroSection> {
               ),
             ),
           ),
-          // Title and badges (unchanged)
           Positioned(
             bottom: 24,
             left: 24,
@@ -427,9 +454,11 @@ class _HeroSectionState extends State<_HeroSection> {
               children: [
                 Row(
                   children: [
-                    _badge('Editable', Colors.white.withOpacity(0.2), Colors.white),
+                    _badge('Editable', Colors.white.withOpacity(0.2),
+                        Colors.white),
                     const SizedBox(width: 8),
-                    _badge('${widget.days} Days', AppColors.accent, Colors.white),
+                    _badge(
+                        '${widget.days} Days', AppColors.accent, Colors.white),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -446,11 +475,13 @@ class _HeroSectionState extends State<_HeroSection> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.calendar_today, size: 16, color: Colors.white70),
+                      const Icon(Icons.calendar_today, size: 16,
+                          color: Colors.white70),
                       const SizedBox(width: 6),
                       Text(
                         '${widget.dateRange} • ${widget.places} places',
-                        style: const TextStyle(fontSize: 13, color: Colors.white70),
+                        style: const TextStyle(
+                            fontSize: 13, color: Colors.white70),
                       ),
                     ],
                   ),
@@ -467,17 +498,14 @@ class _HeroSectionState extends State<_HeroSection> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Image
         Image.network(
           widget.imageUrl!,
           fit: BoxFit.cover,
           loadingBuilder: (context, child, loadingProgress) {
             if (loadingProgress == null) {
-              // Image loaded
               _isLoading = false;
               return child;
             }
-            // Still loading
             return _loadingPlaceholder();
           },
           errorBuilder: (context, error, stackTrace) {
@@ -486,7 +514,6 @@ class _HeroSectionState extends State<_HeroSection> {
             return _placeholder();
           },
         ),
-        // Show loading spinner if still loading
         if (_isLoading)
           Center(
             child: CircularProgressIndicator(
@@ -549,7 +576,8 @@ class _StatsBar extends StatelessWidget {
   final String transit;
   final int cities;
 
-  const _StatsBar({required this.places, required this.transit, required this.cities});
+  const _StatsBar(
+      {required this.places, required this.transit, required this.cities});
 
   @override
   Widget build(BuildContext context) {
@@ -560,7 +588,8 @@ class _StatsBar extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
         boxShadow: const [
-          BoxShadow(color: AppShadows.card, offset: Offset(0, 8), blurRadius: 24),
+          BoxShadow(
+              color: AppShadows.card, offset: Offset(0, 8), blurRadius: 24),
         ],
       ),
       child: Row(
@@ -636,20 +665,25 @@ class _DayPillsDelegate extends SliverPersistentHeaderDelegate {
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
                   onTap: () => onDaySelected(index),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
                       color: isSelected ? AppColors.primary : AppColors.surface,
                       borderRadius: BorderRadius.circular(AppRadius.pill),
                       border: Border.all(
                         color: isSelected ? AppColors.primary : AppColors.moduleBorder,
+                        width: isSelected ? 2 : 1,
                       ),
+                      boxShadow: isSelected
+                          ? [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))]
+                          : null,
                     ),
                     child: Text(
                       'Day ${day.dayNumber}${index == 0 ? ' • ${day.date}' : ''}',
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                         color: isSelected ? AppColors.surface : AppColors.inkFaint,
                       ),
                     ),
@@ -672,129 +706,145 @@ class _DayCard extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onAddPlace;
   final VoidCallback onEditDay;
+  final VoidCallback onTapDay;
 
   const _DayCard({
     required this.day,
     required this.isSelected,
     required this.onAddPlace,
     required this.onEditDay,
+    required this.onTapDay,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(
-          color: isSelected ? AppColors.primary : AppColors.moduleBorder.withOpacity(0.6),
-          width: isSelected ? 2 : 1,
-        ),
-        boxShadow: [
-          BoxShadow(color: AppShadows.card, offset: const Offset(0, 4), blurRadius: 20),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Day ${day.dayNumber}',
-                          style: GoogleFonts.playfairDisplay(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        if (isSelected) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'Selected',
-                              style: TextStyle(fontSize: 10, color: AppColors.surface, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    Text(
-                      day.date,
-                      style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
-                    ),
-                    if (day.timeRange != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        '${day.totalStops} stops • ${day.timeRange}',
-                        style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (isSelected)
-                GestureDetector(
-                  onTap: onEditDay,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface2,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.edit, color: AppColors.ink, size: 18),
-                  ),
-                ),
-            ],
+    return GestureDetector(
+      onTap: onTapDay,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withOpacity(0.05) : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.moduleBorder.withOpacity(0.6),
+            width: isSelected ? 2.5 : 1,
           ),
-          const SizedBox(height: 16),
-
-          // Stops
-          ..._buildStops(),
-
-          // Add button
-          if (isSelected) ...[
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: onAddPlace,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.moduleBorder, width: 1),
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.add, size: 16, color: AppColors.inkFaint),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Add a place to Day ${day.dayNumber}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.inkFaint,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected ? AppColors.primary.withOpacity(0.15) : AppShadows.card,
+              offset: const Offset(0, 4),
+              blurRadius: 20,
             ),
           ],
-        ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Day ${day.dayNumber}',
+                            style: GoogleFonts.playfairDisplay(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          if (isSelected) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'Selected',
+                                style: TextStyle(fontSize: 10,
+                                    color: AppColors.surface,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      Text(
+                        day.date,
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.inkFaint),
+                      ),
+                      if (day.timeRange != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '${day.totalStops} stops • ${day.timeRange}',
+                          style: TextStyle(fontSize: 12, color: AppColors
+                              .inkFaint),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (isSelected)
+                  GestureDetector(
+                    onTap: onEditDay,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.surface2,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.edit, color: AppColors.ink, size: 18),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Stops
+            ..._buildStops(),
+
+            // Add button
+            if (isSelected) ...[
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: onAddPlace,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppColors.moduleBorder, width: 1),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                          Icons.add, size: 16, color: AppColors.inkFaint),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Add a place to Day ${day.dayNumber}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.inkFaint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -818,7 +868,8 @@ class _DayCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                const Icon(Icons.directions_car, size: 14, color: AppColors.inkFaint),
+                const Icon(
+                    Icons.directions_car, size: 14, color: AppColors.inkFaint),
                 const SizedBox(width: 6),
                 Text(
                   transitText.isNotEmpty ? transitText : 'travel',
@@ -861,7 +912,9 @@ class _StopItem extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: isFirst ? AppColors.primary : AppColors.moduleBorder,
-                border: Border.all(color: isFirst ? Colors.transparent : AppColors.surface, width: 2),
+                border: Border.all(
+                    color: isFirst ? Colors.transparent : AppColors.surface,
+                    width: 2),
               ),
             ),
             if (!isLast)
@@ -898,7 +951,8 @@ class _StopItem extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isFirst ? AppColors.surface2 : Colors.transparent,
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: isFirst ? null : Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
+                    border: isFirst ? null : Border.all(
+                        color: AppColors.moduleBorder.withOpacity(0.6)),
                   ),
                   child: Row(
                     children: [
@@ -940,7 +994,8 @@ class _StopItem extends StatelessWidget {
                         ),
                       ),
                       if (isActive)
-                        Icon(Icons.drag_indicator, color: AppColors.inkFaint, size: 18),
+                        Icon(Icons.drag_indicator, color: AppColors.inkFaint,
+                            size: 18),
                     ],
                   ),
                 ),
@@ -953,10 +1008,6 @@ class _StopItem extends StatelessWidget {
     );
   }
 
-  /// Opens the existing ViewPlaceDetailScreen for this stop's place.
-  ///
-  /// Uses the current stop's actual Google place ID and the already-joined
-  /// [Place] (no new Google Places search, no direct Supabase access).
   void _openPlaceDetail(BuildContext context) {
     if (stop.placeId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -967,11 +1018,12 @@ class _StopItem extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ViewPlaceDetailScreen(
-          placeId: stop.placeId,
-          initialPlace: stop.place,
-          showStatusToggle: false,
-        ),
+        builder: (_) =>
+            ViewPlaceDetailScreen(
+              placeId: stop.placeId,
+              initialPlace: stop.place,
+              showStatusToggle: false,
+            ),
       ),
     );
   }
@@ -1012,7 +1064,8 @@ class _BottomActions extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.moduleBorder.withOpacity(0.6))),
+        border: Border(
+            top: BorderSide(color: AppColors.moduleBorder.withOpacity(0.6))),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0C000000),
@@ -1029,14 +1082,18 @@ class _BottomActions extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: onDiscard,
-                  icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.error),
+                  icon: const Icon(
+                      Icons.delete_outline, size: 16, color: AppColors.error),
                   label: const Text(
                     'Discard',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.error),
+                    style: TextStyle(fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.error),
                   ),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(color: AppColors.error.withOpacity(0.4)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.pill)),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
@@ -1044,11 +1101,14 @@ class _BottomActions extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: (onRegenerate == null || isRegenerating) ? null : onRegenerate,
+                  onPressed: (onRegenerate == null || isRegenerating)
+                      ? null
+                      : onRegenerate,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.ink,
                     side: BorderSide(color: AppColors.moduleBorder),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.pill)),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                   child: Row(
@@ -1060,13 +1120,17 @@ class _BottomActions extends StatelessWidget {
                           height: 14,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                      ] else ...[
-                        const Icon(Icons.refresh, size: 16, color: AppColors.ink),
-                      ],
+                      ] else
+                        ...[
+                          const Icon(
+                              Icons.refresh, size: 16, color: AppColors.ink),
+                        ],
                       const SizedBox(width: 6),
                       Text(
                         isRegenerating ? 'Generating...' : 'Regenerate',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink),
+                        style: const TextStyle(fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.ink),
                       ),
                     ],
                   ),
@@ -1101,15 +1165,18 @@ class _BottomActions extends StatelessWidget {
                   color: Color(0x80FFFFFF),
                 ),
               )
-                  : const Icon(Icons.check_circle, size: 18, color: AppColors.surface),
+                  : const Icon(
+                  Icons.check_circle, size: 18, color: AppColors.surface),
               label: Text(
                 isSaving ? 'Saving...' : 'Save Itinerary',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: AppColors.surface,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.pill)),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 elevation: 4,
                 shadowColor: AppColors.primary.withOpacity(0.25),

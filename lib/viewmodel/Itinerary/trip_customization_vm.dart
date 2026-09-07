@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import '../../core/config/itinerary_constants.dart';
 import '../../model/business_logic/itinerary_service/itinerary_validation_service.dart';
 import '../../model/entities/trip_draft.dart';
 

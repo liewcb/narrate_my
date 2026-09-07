@@ -129,6 +129,22 @@ class EditStopViewModel extends ChangeNotifier {
 
   bool get canCompleteNow => !DateTime.now().isBefore(scheduledStartDateTime);
 
+  bool get isToday {
+    final now = DateTime.now();
+    final dayStart = DateTime(now.year, now.month, now.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final stopDay = _itineraryStartDate.add(Duration(days: _stop.dayIndex - 1));
+    final stopDayStart = DateTime(stopDay.year, stopDay.month, stopDay.day);
+    return now.isAfter(stopDayStart) && now.isBefore(dayEnd);
+  }
+
+  /// Whether the stop can be edited (time, location, removal).
+  /// Editable only if not read-only AND status is PLANNED.
+  bool get isEditable => !_isReadOnly && _stop.stopStatus == planned && !isTimeOver;
+
+  /// Whether the stop can be reset to PLANNED (only if today and status not PLANNED).
+  bool get canReset => isToday && _stop.stopStatus != planned;
+
   bool canTransitionTo(String newStatus) {
     final current = _stop.stopStatus;
     switch (newStatus) {
@@ -146,19 +162,14 @@ class EditStopViewModel extends ChangeNotifier {
   // ─── Location change ─────────────────────────────────────────
 
   Future<bool> changePlace(Place newPlace) async {
-    if (_isReadOnly) {
-      _error = 'This itinerary is in the past and cannot be modified.';
+    if (!isEditable) {
+      _error = _buildLockedMessage();
       notifyListeners();
       return false;
     }
     if (newPlace.placeId == _stop.placeId) {
       _error = null;
       return true;
-    }
-    if (_stop.stopStatus == completed) {
-      _error = 'This stop has already been completed and cannot be modified.';
-      notifyListeners();
-      return false;
     }
 
     _isSaving = true;
@@ -246,8 +257,8 @@ class EditStopViewModel extends ChangeNotifier {
   /// Set a new temporary START time. The end time is recalculated
   /// based on the current duration. Validates the resulting day.
   Future<bool> setStartTime(DateTime newStart) async {
-    if (_isReadOnly) {
-      _error = 'This itinerary is in the past and cannot be modified.';
+    if (!isEditable) {
+      _error = _buildLockedMessage();
       notifyListeners();
       return false;
     }
@@ -322,8 +333,8 @@ class EditStopViewModel extends ChangeNotifier {
   /// Set a new temporary END time. The duration is recalculated
   /// as `end - start`. Validates the resulting day.
   Future<bool> setEndTime(DateTime newEnd) async {
-    if (_isReadOnly) {
-      _error = 'This itinerary is in the past and cannot be modified.';
+    if (!isEditable) {
+      _error = _buildLockedMessage();
       notifyListeners();
       return false;
     }
@@ -410,8 +421,8 @@ class EditStopViewModel extends ChangeNotifier {
 
   /// Set a new temporary DURATION. The end time is recalculated.
   Future<bool> setDuration(int newDurationMinutes) async {
-    if (_isReadOnly) {
-      _error = 'This itinerary is in the past and cannot be modified.';
+    if (!isEditable) {
+      _error = _buildLockedMessage();
       notifyListeners();
       return false;
     }
@@ -486,8 +497,8 @@ class EditStopViewModel extends ChangeNotifier {
   /// Persist the pending time changes (start/end/duration) in a single
   /// repository update.
   Future<bool> saveTimeChanges() async {
-    if (_isReadOnly) {
-      _error = 'This itinerary is in the past and cannot be modified.';
+    if (!isEditable) {
+      _error = _buildLockedMessage();
       notifyListeners();
       return false;
     }
@@ -567,6 +578,24 @@ class EditStopViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ✅ ADD THIS: Calculate the exact end time of the stop
+  DateTime get scheduledEndDateTime {
+    final dayDate = _itineraryStartDate.add(Duration(days: _stop.dayIndex - 1));
+    return DateTime(
+      dayDate.year,
+      dayDate.month,
+      dayDate.day,
+      _stop.endTime.hour,
+      _stop.endTime.minute,
+      _stop.endTime.second,
+    );
+  }
+
+  // ✅ ADD THIS: Check if the current time is past the stop's end time
+  bool get isTimeOver {
+    return DateTime.now().isAfter(scheduledEndDateTime);
+  }
+
   // ─── Status ─────────────────────────────────────────────────
 
   Future<bool> updateStatus(String newStatus, {String? skipReason}) async {
@@ -630,6 +659,42 @@ class EditStopViewModel extends ChangeNotifier {
     }
   }
 
+  /// Reset status to PLANNED – only allowed if the stop is today and status is not PLANNED.
+  Future<bool> resetStatus() async {
+    if (!canReset) {
+      _error = 'Status can only be reset on today\'s stops.';
+      notifyListeners();
+      return false;
+    }
+
+    _isSaving = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final updated = _buildUpdatedStop(
+        stopStatus: planned,
+        skipReason: null,
+        clearSkipReason: true,
+      );
+
+      final saved = await _repo.updateStop(updated);
+      _stop = saved.copyWith(place: _stop.place);
+      _error = null;
+      notifyListeners();
+      debugPrint('[EDIT STOP] Status reset to PLANNED');
+      return true;
+    } catch (e) {
+      _error = 'Unable to reset status. Please try again.';
+      debugPrint('[EditStopVM] Reset status failed: $e');
+      notifyListeners();
+      return false;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> saveSkipReason(String? reason) async {
     if (reason == _stop.skipReason) return true;
 
@@ -656,17 +721,12 @@ class EditStopViewModel extends ChangeNotifier {
   }
 
   Future<bool> deleteStop() async {
-    if (_isReadOnly) {
-      _error = 'This itinerary is in the past and cannot be modified.';
+    if (!isEditable) {
+      _error = _buildLockedMessage();
       notifyListeners();
       return false;
     }
     if (_stop.stopId == 0) return false;
-    if (_stop.stopStatus == completed) {
-      _error = 'This stop has already been completed and cannot be modified.';
-      notifyListeners();
-      return false;
-    }
 
     _isSaving = true;
     _error = null;
@@ -720,6 +780,18 @@ class EditStopViewModel extends ChangeNotifier {
   }
 
   // ─── Helpers ────────────────────────────────────────────────
+
+  String _buildLockedMessage() {
+    if (_stop.stopStatus == completed) {
+      return 'This stop has already been completed and cannot be modified.';
+    } else if (_stop.stopStatus == skipped) {
+      return 'This stop has been skipped and cannot be modified.';
+    } else if (isTimeOver) { // ✅ ADD THIS CONDITION
+      return 'The scheduled time for this stop has passed. You can no longer change its location or schedule, but you can still update its status.';
+    } else {
+      return 'This stop cannot be modified at this time.';
+    }
+  }
 
   Future<Itinerary> _loadItinerary() async {
     return _itinerary ??= await _itineraryRepo.getItinerary(_stop.itineraryId);

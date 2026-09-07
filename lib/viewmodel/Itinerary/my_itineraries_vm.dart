@@ -95,20 +95,17 @@ class MyItinerariesVM extends ChangeNotifier {
 
     try {
       // Local-first read: returns the local cache (which includes any
-      // itinerary just saved) and falls back to the remote source when
-      // the local cache is empty or unavailable.
+      // itinerary just saved) and falls back to the remote source when the
+      // local cache is empty or unavailable.
       final trips = await _repository.getUserItineraries(userId);
 
-      _allTrips = trips.map((itinerary) {
-        final resolvedStatus = ItineraryStatusResolver.resolve(
-          startDate: itinerary.startDate,
-          endDate: itinerary.endDate,
-        );
-
-        return itinerary.copyWith(
-          status: resolvedStatus.name.toUpperCase(),
-        );
-      }).toList();
+      // Recalculate each itinerary's status from the current date and persist
+      // it when outdated (single source of truth lives in the repository).
+      final synced = <Itinerary>[];
+      for (final trip in trips) {
+        synced.add(await _repository.refreshItineraryStatus(trip));
+      }
+      _allTrips = synced;
 
       _applyFilters();
     } catch (e) {

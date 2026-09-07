@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/destination.dart';
 import '../../viewmodel/Itinerary/destination_choice_vm.dart';
-import './trip_customization_screen.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
+import 'trip_customization_screen.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 
 class DestinationChoiceScreen extends StatefulWidget {
@@ -100,12 +101,16 @@ class _Step1WhereToBody extends StatelessWidget {
             label: 'Continue to Trip Dates',
             onContinue: () {
               try {
+                // ✅ 1. Build the initial draft from this screen's ViewModel
+                final initialDraft = vm.buildTripDraft();
+
+                // ✅ 2. Save it to the global shared Provider
+                context.read<TripDraftNotifier>().updateDraft(initialDraft);
+
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => TripCustomizationScreen(
-                      draft: vm.buildTripDraft(),
-                    ),
+                    builder: (_) => const TripCustomizationScreen(),
                   ),
                 );
               } catch (e) {

@@ -116,38 +116,11 @@ class ARStorytellingPanel extends StatelessWidget {
   /// Semi-transparent overlay prompt guiding the user to tap to place Manja and continue story
   Widget _buildReScanSurfacePrompt() {
     return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 24),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF142121).withValues(alpha: 0.88),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.8), width: 1.2),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.45),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.touch_app, color: Colors.amberAccent, size: 26),
-            const SizedBox(width: 12),
-            Flexible(
-              child: Text(
-                AppLocalizations.t('ar.tapGroundContinue'),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ),
-          ],
+      child: IgnorePointer(
+        child: Image.asset(
+          'assets/images/scanAR.webp',
+          width: 320,
+          fit: BoxFit.contain,
         ),
       ),
     );

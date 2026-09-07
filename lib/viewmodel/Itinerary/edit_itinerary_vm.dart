@@ -155,6 +155,57 @@ class EditItineraryViewModel extends ChangeNotifier {
     return now.isBefore(scheduledEnd);
   }
 
+  /// Set both start and end times for a stop.
+  /// The duration is derived from the difference.
+  /// Re‑chains the schedule and validates.
+  bool setTimeRange(int index, TimeOfDay start, TimeOfDay end) {
+    if (index < 0 || index >= _stops.length) return false;
+    if (!isStopEditable(index)) {
+      _error = stopLockedReason(index);
+      notifyListeners();
+      return false;
+    }
+
+    final startMin = start.hour * 60 + start.minute;
+    final endMin = end.hour * 60 + end.minute;
+    final duration = endMin - startMin;
+
+    if (duration < 15) {
+      _error = 'End time must be at least 15 minutes after start.';
+      notifyListeners();
+      return false;
+    }
+    if (duration > maxDurationMinutes) {
+      _error = 'Visit cannot exceed 2 hours.';
+      notifyListeners();
+      return false;
+    }
+
+    final snapshot = _snapshotStops();
+    final stop = _stops[index];
+    stop.startTime = DateTime(
+      stop.startTime.year,
+      stop.startTime.month,
+      stop.startTime.day,
+      start.hour,
+      start.minute,
+    );
+    stop.durationMinutes = duration;
+    stop.endTime = stop.startTime.add(Duration(minutes: duration));
+    _rechainSchedule();
+
+    final errors = validate();
+    if (errors.isNotEmpty) {
+      _restoreStops(snapshot);
+      _error = errors.first;
+      notifyListeners();
+      return false;
+    }
+    _error = null;
+    notifyListeners();
+    return true;
+  }
+
   /// Traveler-facing reason a stop is locked, or null when editable.
   String? stopLockedReason(int index) {
     if (isStopEditable(index)) return null;
