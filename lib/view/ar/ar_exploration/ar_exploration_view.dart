@@ -62,6 +62,48 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
   /// clients on the same hardware at once causes the freeze loop).
   bool _cameraActive = false;
 
+  // Tracks the last `ModalRoute.of(context)?.isCurrent` value seen for
+  // THIS screen, so we can pause/resume the GPS/compass/nearby-attractions
+  // polling (`ARExplorationViewModel._explorationService`) whenever a
+  // route is pushed on top of it — not just when the bottom-nav tab
+  // changes. `_activate`/`_deactivate` below only fire on tab switches
+  // (`widget.isActive`), which never changes when the global "Ask Manja"
+  // AI Assistant button pushes `TravelAssistantScreen`: that push happens
+  // on the SAME root Navigator that hosts `AppRoutes`, so this screen's
+  // tab stays "selected" (`isActive` stays true) the whole time it's
+  // merely covered. Without this, the exploration service kept polling
+  // location/nearby attractions for as long as the AI Assistant screen
+  // was open, and the camera (see `ARCameraView`) would only release —
+  // never reacquire — the hardware camera when returning.
+  bool? _lastRouteCurrent;
+
+  // Set for the duration of `_navigateToPlacement`'s own pause -> push ->
+  // (timed delay) -> resume dance, so THIS generic route-listener doesn't
+  // also fire `vm.resume()`/`_cameraActive = true` the instant the route
+  // becomes current again on pop — that would skip the deliberate 400ms
+  // wait for ARCore/Camera2 teardown and reintroduce the CAMERA_ERROR
+  // race that dance exists to prevent.
+  bool _manualTransition = false;
+
+  bool get _isRouteCurrent => ModalRoute.of(context)?.isCurrent ?? true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isCurrent = _isRouteCurrent;
+    final changed = _lastRouteCurrent != null && _lastRouteCurrent != isCurrent;
+    _lastRouteCurrent = isCurrent;
+    if (!_hasInitialized || !changed || _manualTransition) return;
+
+    if (!isCurrent) {
+      context.read<ARExplorationViewModel>().pause();
+      if (mounted) setState(() => _cameraActive = false);
+    } else if (widget.isActive) {
+      context.read<ARExplorationViewModel>().resume();
+      if (mounted) setState(() => _cameraActive = true);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -162,6 +204,11 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
     final vm = context.read<ARExplorationViewModel>();
     context.read<GlobalAiAssistantController>().selectArMarker(marker);
 
+    // See `_manualTransition`'s doc comment — this hands off pause/resume
+    // control to this method's own timed dance for the duration of the
+    // AR Placement round-trip.
+    _manualTransition = true;
+
     // Stop this screen's GPS/compass/accelerometer streams AND release
     // the physical camera before ARCore starts its own session on the
     // Placement screen — running both at once is what caused the
@@ -197,6 +244,7 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
       setState(() => _cameraActive = true);
       vm.resume();
     }
+    _manualTransition = false;
   }
 }
 

@@ -35,6 +35,10 @@ class _ARCameraViewState extends State<ARCameraView>
   bool _foreground = true;
   bool _disposed = false;
   bool _isRecovering = false;
+  // Tracks the last `_isRouteCurrent` value seen in `didChangeDependencies`
+  // so we can detect BOTH directions of a route-visibility change (see
+  // that method for why this matters).
+  bool? _lastRouteCurrent;
 
   bool get _isRouteCurrent => ModalRoute.of(context)?.isCurrent ?? true;
   bool get _shouldOpen => !_disposed && widget.active && _foreground && _isRouteCurrent;
@@ -51,8 +55,24 @@ class _ARCameraViewState extends State<ARCameraView>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // If another route (like ARPlacementScreen) is pushed on top, release camera immediately!
-    if (!_isRouteCurrent && _controller != null) {
+    final isCurrent = _isRouteCurrent;
+    // Only react to an actual flip, and skip the very first call (where
+    // `_lastRouteCurrent` is still null) since `initState` already kicked
+    // off the initial `_synchronize()`.
+    //
+    // BUG FIX: the old guard here only fired `_synchronize()` when going
+    // from current -> not-current (e.g. AR Placement or the global AI
+    // Assistant page being pushed on top), which correctly released the
+    // camera. But it never fired on the reverse transition (popping back
+    // to this screen), so `_controller` stayed null forever and this
+    // widget was stuck showing "Initializing camera..." indefinitely
+    // after returning from a covering route such as the AI Assistant
+    // screen (which is pushed on the SAME root navigator as AppRoutes,
+    // so `ModalRoute.of(context)?.isCurrent` toggles for this screen too,
+    // even though it's not a Navigator.push originating from this widget).
+    final changed = _lastRouteCurrent != null && _lastRouteCurrent != isCurrent;
+    _lastRouteCurrent = isCurrent;
+    if (changed) {
       _synchronize();
     }
   }
@@ -97,76 +117,76 @@ class _ARCameraViewState extends State<ARCameraView>
 
     _operations = _operations
         .then((_) async {
-          final previous = _controller;
-          _controller = null;
-          if (mounted && !_disposed) setState(() {});
-          await previous?.dispose();
+      final previous = _controller;
+      _controller = null;
+      if (mounted && !_disposed) setState(() {});
+      await previous?.dispose();
+
+      if (!_shouldOpen || generation != _generation) {
+        _isRecovering = false;
+        return;
+      }
+
+      CameraController? candidateController;
+      var retained = false;
+      int attempts = 0;
+      const maxAttempts = 3;
+
+      while (attempts < maxAttempts && _shouldOpen && generation == _generation) {
+        attempts++;
+        try {
+          final cameras = await availableCameras();
+          if (!_shouldOpen || generation != _generation || cameras.isEmpty) {
+            return;
+          }
+          final camera = cameras.firstWhere(
+                (c) => c.lensDirection == CameraLensDirection.back,
+            orElse: () => cameras.first,
+          );
+          candidateController = CameraController(
+            camera,
+            ResolutionPreset.high,
+            enableAudio: false,
+          );
+          await candidateController.initialize();
 
           if (!_shouldOpen || generation != _generation) {
-            _isRecovering = false;
+            await candidateController.dispose();
             return;
           }
 
-          CameraController? candidateController;
-          var retained = false;
-          int attempts = 0;
-          const maxAttempts = 3;
-
-          while (attempts < maxAttempts && _shouldOpen && generation == _generation) {
-            attempts++;
-            try {
-              final cameras = await availableCameras();
-              if (!_shouldOpen || generation != _generation || cameras.isEmpty) {
-                return;
-              }
-              final camera = cameras.firstWhere(
-                (c) => c.lensDirection == CameraLensDirection.back,
-                orElse: () => cameras.first,
-              );
-              candidateController = CameraController(
-                camera,
-                ResolutionPreset.high,
-                enableAudio: false,
-              );
-              await candidateController.initialize();
-
-              if (!_shouldOpen || generation != _generation) {
-                await candidateController.dispose();
-                return;
-              }
-
-              _controller = candidateController;
-              retained = true;
-              _isRecovering = false;
-              break;
-            } catch (e) {
-              debugPrint('Camera init attempt $attempts failed: $e');
-              await candidateController?.dispose();
-              candidateController = null;
-              if (attempts < maxAttempts && _shouldOpen && generation == _generation) {
-                await Future.delayed(Duration(milliseconds: 300 * attempts));
-              }
-            }
+          _controller = candidateController;
+          retained = true;
+          _isRecovering = false;
+          break;
+        } catch (e) {
+          debugPrint('Camera init attempt $attempts failed: $e');
+          await candidateController?.dispose();
+          candidateController = null;
+          if (attempts < maxAttempts && _shouldOpen && generation == _generation) {
+            await Future.delayed(Duration(milliseconds: 300 * attempts));
           }
+        }
+      }
 
-          if (!retained) {
-            await candidateController?.dispose();
-          }
+      if (!retained) {
+        await candidateController?.dispose();
+      }
 
-          if (mounted && !_disposed) {
-            setState(() {
-              _isRecovering = false;
-            });
-          }
-        })
-        .catchError((Object error, StackTrace stack) {
-          debugPrint('Camera lifecycle error: $error');
-          if (mounted && !_disposed) {
-            setState(() {
-              _isRecovering = false;
-            });
-          }
+      if (mounted && !_disposed) {
+        setState(() {
+          _isRecovering = false;
         });
+      }
+    })
+        .catchError((Object error, StackTrace stack) {
+      debugPrint('Camera lifecycle error: $error');
+      if (mounted && !_disposed) {
+        setState(() {
+          _isRecovering = false;
+        });
+      }
+    });
 
     _initFuture = _operations;
   }
