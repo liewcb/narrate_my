@@ -27,7 +27,20 @@ class OtpBoxRow extends StatefulWidget {
 class OtpBoxRowState extends State<OtpBoxRow> {
   static const _length = 6;
   final _controllers = List.generate(_length, (_) => TextEditingController());
-  final _focusNodes = List.generate(_length, (_) => FocusNode());
+
+  // `onKeyEvent` is wired directly on the FocusNode itself (not via a
+  // wrapping KeyboardListener) — see the note above `build()` for why.
+  late final _focusNodes = List.generate(
+    _length,
+    (i) => FocusNode(
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.backspace) {
+          _handleBackspace(i);
+        }
+        return KeyEventResult.ignored;
+      },
+    ),
+  );
 
   String get code => _controllers.map((c) => c.text).join();
 
@@ -74,6 +87,19 @@ class OtpBoxRowState extends State<OtpBoxRow> {
     }
   }
 
+  // No KeyboardListener wrapper — it used to wrap each TextField with the
+  // SAME FocusNode also passed to that TextField. TextField's own
+  // EditableText attaches its own Focus to that node internally, so the
+  // node ended up attached at two different depths in the same branch of
+  // the widget tree (KeyboardListener's Focus, then TextField's, both
+  // pointed at one FocusNode). When Flutter's FocusManager tried to
+  // reparent the focus tree from that, it found the node's computed parent
+  // was really one of its own descendants — the exact "Tried to make a
+  // child into a parent of itself" assertion (with focus_manager.dart in
+  // the trace) seen on the OTP screen. Backspace handling is now wired
+  // directly on the FocusNode's own `onKeyEvent` (see its constructor
+  // above) instead of a wrapping widget, so there's only ever one Focus
+  // attachment per node.
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -82,44 +108,35 @@ class OtpBoxRowState extends State<OtpBoxRow> {
         return SizedBox(
           width: 44,
           height: 52,
-          child: KeyboardListener(
+          child: TextField(
+            controller: _controllers[i],
             focusNode: _focusNodes[i],
-            onKeyEvent: (event) {
-              if (event is KeyDownEvent &&
-                  event.logicalKey == LogicalKeyboardKey.backspace) {
-                _handleBackspace(i);
-              }
-            },
-            child: TextField(
-              controller: _controllers[i],
-              focusNode: _focusNodes[i],
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              maxLength: 1,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: InputDecoration(
-                counterText: '',
-                filled: true,
-                fillColor: AppColors.surface,
-                contentPadding: EdgeInsets.zero,
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(
-                    color: widget.hasError ? AppColors.error : AppColors.moduleBorder,
-                    width: 1.5,
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(
-                    color: widget.hasError ? AppColors.error : AppColors.accent,
-                    width: 1.5,
-                  ),
+            textAlign: TextAlign.center,
+            keyboardType: TextInputType.number,
+            maxLength: 1,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: InputDecoration(
+              counterText: '',
+              filled: true,
+              fillColor: AppColors.surface,
+              contentPadding: EdgeInsets.zero,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: widget.hasError ? AppColors.error : AppColors.moduleBorder,
+                  width: 1.5,
                 ),
               ),
-              onChanged: (value) => _handleChange(i, value),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: widget.hasError ? AppColors.error : AppColors.accent,
+                  width: 1.5,
+                ),
+              ),
             ),
+            onChanged: (value) => _handleChange(i, value),
           ),
         );
       }),

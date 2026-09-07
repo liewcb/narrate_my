@@ -31,11 +31,19 @@
 /// "I have a nut allergy" reads as the same kind of tag when they aren't.
 ///
 /// REQ_503_6 Accessibility Preferences: a free-text "other" field was tried
-/// and explicitly rejected — a fixed 4-option toggle list only
-/// (Wheelchair Accessible / Mobility Assistance / Visual Assistance /
-/// Hearing Assistance), each with a leading emoji shown in the UI
-/// ([kAccessibilityEmoji]) — no [Preferences.accessibilityNotes] field
-/// exists any more.
+/// and explicitly rejected — a fixed toggle list only (Wheelchair
+/// Accessible / Mobility Assistance / Visual Assistance), each with a
+/// leading emoji shown in the UI ([kAccessibilityEmoji]) — no
+/// [Preferences.accessibilityNotes] field exists any more. "Hearing
+/// Assistance" was removed 6 Sep at Foo's request.
+///
+/// Category Exclusions ([kAttractionCategories]-based) was ALSO removed
+/// entirely from both Preferences screens 6 Sep at Foo's request — same
+/// "which is exclude which is include" confusion the REQ_503_7 rework
+/// below already flagged for the attraction-category version of this idea.
+/// `Preferences.categoryExclusions` stays in the entity/DB (untouched,
+/// never overwritten by either screen now) in case it's revisited, but
+/// nothing in the UI reads or writes it any more.
 ///
 /// ASSUMPTION carried forward: "Food & Cuisine Interests"
 /// ([kFoodCuisineOptions], REQ_503_8) is kept even though it's periodically
@@ -106,15 +114,14 @@ const List<String> kDietaryRestrictionOptions = [
   'Dairy-Free / Lactose Intolerant',
 ];
 
-/// REQ_503_6 — a fixed 4-option toggle list. Deliberately no open-ended
-/// "other" option/free-text field (tried once, explicitly rejected — a
-/// catch-all text box doesn't behave like the rest of the toggles and can't
-/// be filtered on).
+/// REQ_503_6 — a fixed toggle list. Deliberately no open-ended "other"
+/// option/free-text field (tried once, explicitly rejected — a catch-all
+/// text box doesn't behave like the rest of the toggles and can't be
+/// filtered on). "Hearing Assistance" removed 6 Sep at Foo's request.
 const List<String> kAccessibilityOptions = [
   'Wheelchair Accessible',
   'Mobility Assistance',
   'Visual Assistance',
-  'Hearing Assistance',
 ];
 
 /// Leading emoji shown on each accessibility toggle row.
@@ -122,7 +129,6 @@ const Map<String, String> kAccessibilityEmoji = {
   'Wheelchair Accessible': '♿',
   'Mobility Assistance': '🦯',
   'Visual Assistance': '👁️',
-  'Hearing Assistance': '👂',
 };
 
 /// One-line subtitle shown under each accessibility option's toggle switch
@@ -131,5 +137,4 @@ const Map<String, String> kAccessibilityDescriptions = {
   'Wheelchair Accessible': 'Prioritize ramps, lifts, and step-free routes',
   'Mobility Assistance': 'Favor shorter routes and seating along the way',
   'Visual Assistance': 'Highlight audio guides and tactile cues',
-  'Hearing Assistance': 'Highlight captions and visual signage',
 };

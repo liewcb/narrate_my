@@ -70,6 +70,7 @@ class AppLocalizations {
     'register.m12': 'Please select your date of birth.',
     'register.m13': 'Date of birth cannot be in the future.',
     'register.m14': 'Unable to save your details. Please try again.',
+    'register.m15': 'Please enter a valid username (3–20 letters, numbers, or underscores, starting with a letter).',
 
     // login_messages.dart
     'login.m1': 'Login successful. Start enjoying your trip with NarrateMy.',
@@ -86,6 +87,7 @@ class AppLocalizations {
             'Please try again later or reset your password.',
     'login.m8':
         'Too many OTP requests or verification attempts have been made. Please try again later.',
+    'login.m9': 'Please enter your username and password.',
 
     // password_reset_messages.dart
     'passwordReset.m1': 'Enter your registered phone number to reset your password.',
@@ -129,15 +131,19 @@ class AppLocalizations {
     'profile.m20': 'Your Google account has been unlinked.',
     'profile.m21': 'You must verify a phone number before unlinking your Google account.',
     'profile.m22':
-        'Delete your account? This permanently removes your profile, '
-            'preferences, and bookmarks, and cannot be undone.',
-    'profile.m23': 'Your account has been deleted.',
+        'Delete your account? Your profile, preferences, and bookmarks will '
+            'be deactivated immediately and permanently removed after 30 '
+            'days. Logging back in before then restores your account.',
+    'profile.m23':
+        'Your account has been deactivated. It will be permanently deleted '
+            'in 30 days unless you log back in.',
     'profile.m24': 'Unable to delete your account. Please try again.',
     'profile.m25': 'Unable to update your profile picture. Please try again.',
 
     // ui.* — literal strings inside Module 5's screens
     'ui.save': 'Save',
     'ui.cancel': 'Cancel',
+    'ui.edit': 'Edit',
     'ui.login': 'Log In',
     'ui.createAccount': 'Create Account',
     'ui.logout': 'Log Out',
@@ -206,6 +212,7 @@ class AppLocalizations {
     'register.m12': '请选择您的出生日期。',
     'register.m13': '出生日期不能是将来的日期。',
     'register.m14': '无法保存您的详细信息。请重试。',
+    'register.m15': '请输入有效的用户名（3-20个字母、数字或下划线，且必须以字母开头）。',
 
     'login.m1': '登录成功。开始使用 NarrateMy 享受您的旅行吧。',
     'login.m2': '一次性密码 (OTP) 已发送到您的手机号码。请在5分钟内输入。',
@@ -215,6 +222,7 @@ class AppLocalizations {
     'login.m6': '输入的用户名或密码不正确。',
     'login.m7': '登录失败次数过多。您的账户已被锁定30分钟。请稍后再试或重置密码。',
     'login.m8': 'OTP请求或验证尝试次数过多。请稍后再试。',
+    'login.m9': '请输入您的用户名和密码。',
 
     'passwordReset.m1': '请输入您注册的电话号码以重置密码。',
     'passwordReset.m2': '一次性密码 (OTP) 已发送到您的手机号码。请在5分钟内输入。',
@@ -246,13 +254,14 @@ class AppLocalizations {
     'profile.m19': '您确定要取消关联您的 Google 账户吗？取消后您将无法再使用 Google 登录。',
     'profile.m20': '您的 Google 账户已取消关联。',
     'profile.m21': '在取消关联 Google 账户之前，您必须先验证电话号码。',
-    'profile.m22': '删除您的账户？此操作将永久删除您的个人资料、偏好设置和收藏夹，且无法撤销。',
-    'profile.m23': '您的账户已被删除。',
+    'profile.m22': '删除您的账户？您的个人资料、偏好设置和收藏夹将立即停用，并在30天后永久删除。在此之前重新登录可恢复您的账户。',
+    'profile.m23': '您的账户已停用，30天后将被永久删除，除非您重新登录。',
     'profile.m24': '无法删除您的账户。请重试。',
     'profile.m25': '无法更新您的头像。请重试。',
 
     'ui.save': '保存',
     'ui.cancel': '取消',
+    'ui.edit': '编辑',
     'ui.login': '登录',
     'ui.createAccount': '创建账户',
     'ui.logout': '登出',
@@ -325,6 +334,7 @@ class AppLocalizations {
     'register.m12': 'Sila pilih tarikh lahir anda.',
     'register.m13': 'Tarikh lahir tidak boleh pada masa hadapan.',
     'register.m14': 'Tidak dapat menyimpan butiran anda. Sila cuba lagi.',
+    'register.m15': 'Sila masukkan nama pengguna yang sah (3–20 huruf, nombor, atau garis bawah, bermula dengan huruf).',
 
     'login.m1': 'Log masuk berjaya. Mulakan perjalanan anda bersama NarrateMy.',
     'login.m2':
@@ -340,6 +350,7 @@ class AppLocalizations {
             'Sila cuba lagi kemudian atau tetapkan semula kata laluan anda.',
     'login.m8':
         'Terlalu banyak permintaan OTP atau percubaan pengesahan telah dibuat. Sila cuba lagi kemudian.',
+    'login.m9': 'Sila masukkan nama pengguna dan kata laluan anda.',
 
     'passwordReset.m1': 'Masukkan nombor telefon berdaftar anda untuk menetapkan semula kata laluan anda.',
     'passwordReset.m2':
@@ -382,14 +393,18 @@ class AppLocalizations {
     'profile.m20': 'Akaun Google anda telah dinyahpautkan.',
     'profile.m21': 'Anda mesti mengesahkan nombor telefon sebelum menyahpautkan akaun Google anda.',
     'profile.m22':
-        'Padam akaun anda? Ini akan mengalih keluar profil, keutamaan, dan penanda halaman anda '
-            'secara kekal, dan tidak boleh dibatalkan.',
-    'profile.m23': 'Akaun anda telah dipadamkan.',
+        'Padam akaun anda? Profil, keutamaan, dan penanda halaman anda akan '
+            'dinyahaktifkan serta-merta dan dipadamkan secara kekal selepas '
+            '30 hari. Log masuk semula sebelum itu akan memulihkan akaun anda.',
+    'profile.m23':
+        'Akaun anda telah dinyahaktifkan. Ia akan dipadamkan secara kekal '
+            'dalam masa 30 hari melainkan anda log masuk semula.',
     'profile.m24': 'Tidak dapat memadamkan akaun anda. Sila cuba lagi.',
     'profile.m25': 'Tidak dapat mengemas kini gambar profil anda. Sila cuba lagi.',
 
     'ui.save': 'Simpan',
     'ui.cancel': 'Batal',
+    'ui.edit': 'Edit',
     'ui.login': 'Log Masuk',
     'ui.createAccount': 'Cipta Akaun',
     'ui.logout': 'Log Keluar',
@@ -463,6 +478,7 @@ class AppLocalizations {
     'register.m12': 'Seleccione su fecha de nacimiento.',
     'register.m13': 'La fecha de nacimiento no puede ser en el futuro.',
     'register.m14': 'No se pudieron guardar sus datos. Inténtelo de nuevo.',
+    'register.m15': 'Introduzca un nombre de usuario válido (3–20 letras, números o guiones bajos, comenzando con una letra).',
 
     'login.m1': 'Inicio de sesión exitoso. Comience a disfrutar de su viaje con NarrateMy.',
     'login.m2':
@@ -478,6 +494,7 @@ class AppLocalizations {
             'Inténtelo de nuevo más tarde o restablezca su contraseña.',
     'login.m8':
         'Se han realizado demasiadas solicitudes de OTP o intentos de verificación. Inténtelo de nuevo más tarde.',
+    'login.m9': 'Introduzca su nombre de usuario y contraseña.',
 
     'passwordReset.m1': 'Introduzca su número de teléfono registrado para restablecer su contraseña.',
     'passwordReset.m2':
@@ -519,14 +536,19 @@ class AppLocalizations {
     'profile.m20': 'Su cuenta de Google ha sido desvinculada.',
     'profile.m21': 'Debe verificar un número de teléfono antes de desvincular su cuenta de Google.',
     'profile.m22':
-        '¿Eliminar su cuenta? Esto elimina permanentemente su perfil, preferencias y marcadores, '
-            'y no se puede deshacer.',
-    'profile.m23': 'Su cuenta ha sido eliminada.',
+        '¿Eliminar su cuenta? Su perfil, preferencias y marcadores se '
+            'desactivarán de inmediato y se eliminarán permanentemente '
+            'después de 30 días. Iniciar sesión antes de ese plazo restaura '
+            'su cuenta.',
+    'profile.m23':
+        'Su cuenta ha sido desactivada. Se eliminará permanentemente en 30 '
+            'días a menos que vuelva a iniciar sesión.',
     'profile.m24': 'No se pudo eliminar su cuenta. Inténtelo de nuevo.',
     'profile.m25': 'No se pudo actualizar su foto de perfil. Inténtelo de nuevo.',
 
     'ui.save': 'Guardar',
     'ui.cancel': 'Cancelar',
+    'ui.edit': 'Editar',
     'ui.login': 'Iniciar Sesión',
     'ui.createAccount': 'Crear Cuenta',
     'ui.logout': 'Cerrar Sesión',
@@ -595,6 +617,7 @@ class AppLocalizations {
     'register.m12': 'कृपया अपनी जन्म तिथि चुनें।',
     'register.m13': 'जन्म तिथि भविष्य में नहीं हो सकती।',
     'register.m14': 'आपका विवरण सहेजने में असमर्थ। कृपया पुनः प्रयास करें।',
+    'register.m15': 'कृपया एक मान्य उपयोगकर्ता नाम दर्ज करें (3–20 अक्षर, संख्याएँ, या अंडरस्कोर, अक्षर से शुरू होना चाहिए)।',
 
     'login.m1': 'लॉगिन सफल रहा। NarrateMy के साथ अपनी यात्रा का आनंद लेना शुरू करें।',
     'login.m2': 'आपके फ़ोन नंबर पर एक वन-टाइम पासवर्ड (OTP) भेजा गया है। कृपया इसे 5 मिनट के भीतर दर्ज करें।',
@@ -606,6 +629,7 @@ class AppLocalizations {
         'बहुत अधिक असफल लॉगिन प्रयास। आपका खाता 30 मिनट के लिए लॉक कर दिया गया है। '
             'कृपया बाद में पुनः प्रयास करें या अपना पासवर्ड रीसेट करें।',
     'login.m8': 'बहुत अधिक OTP अनुरोध या सत्यापन प्रयास किए गए हैं। कृपया बाद में पुनः प्रयास करें।',
+    'login.m9': 'कृपया अपना उपयोगकर्ता नाम और पासवर्ड दर्ज करें।',
 
     'passwordReset.m1': 'अपना पासवर्ड रीसेट करने के लिए अपना पंजीकृत फ़ोन नंबर दर्ज करें।',
     'passwordReset.m2': 'आपके फ़ोन नंबर पर एक वन-टाइम पासवर्ड (OTP) भेजा गया है। कृपया इसे 5 मिनट के भीतर दर्ज करें।',
@@ -639,14 +663,18 @@ class AppLocalizations {
     'profile.m20': 'आपका Google खाता अनलिंक कर दिया गया है।',
     'profile.m21': 'अपना Google खाता अनलिंक करने से पहले आपको एक फ़ोन नंबर सत्यापित करना होगा।',
     'profile.m22':
-        'अपना खाता हटाएं? यह आपकी प्रोफ़ाइल, प्राथमिकताएँ और बुकमार्क को स्थायी रूप से हटा देगा, '
-            'और इसे पूर्ववत नहीं किया जा सकता।',
-    'profile.m23': 'आपका खाता हटा दिया गया है।',
+        'अपना खाता हटाएं? आपकी प्रोफ़ाइल, प्राथमिकताएँ और बुकमार्क तुरंत निष्क्रिय कर दिए '
+            'जाएंगे और 30 दिनों बाद स्थायी रूप से हटा दिए जाएंगे। इससे पहले फिर से लॉग इन '
+            'करने पर आपका खाता पुनर्स्थापित हो जाएगा।',
+    'profile.m23':
+        'आपका खाता निष्क्रिय कर दिया गया है। जब तक आप फिर से लॉग इन नहीं करते, यह 30 '
+            'दिनों में स्थायी रूप से हटा दिया जाएगा।',
     'profile.m24': 'आपका खाता हटाने में असमर्थ। कृपया पुनः प्रयास करें।',
     'profile.m25': 'आपकी प्रोफ़ाइल तस्वीर अपडेट करने में असमर्थ। कृपया पुनः प्रयास करें।',
 
     'ui.save': 'सहेजें',
     'ui.cancel': 'रद्द करें',
+    'ui.edit': 'संपादित करें',
     'ui.login': 'लॉग इन करें',
     'ui.createAccount': 'खाता बनाएं',
     'ui.logout': 'लॉग आउट करें',

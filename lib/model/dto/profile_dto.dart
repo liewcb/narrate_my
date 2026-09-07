@@ -6,7 +6,6 @@ class ProfileDto {
   final String id;
   final String? username;
   final String? fullName;
-  final String? bio;
   final String? avatarUrl;
   final String preferredLanguage;
   final bool hasPassword;
@@ -18,7 +17,6 @@ class ProfileDto {
     required this.id,
     this.username,
     this.fullName,
-    this.bio,
     this.avatarUrl,
     required this.preferredLanguage,
     required this.hasPassword,
@@ -30,7 +28,6 @@ class ProfileDto {
       id: json['id'] as String,
       username: json['username'] as String?,
       fullName: json['full_name'] as String?,
-      bio: json['bio'] as String?,
       avatarUrl: json['avatar_url'] as String?,
       preferredLanguage: json['preferred_language'] as String? ?? 'en',
       hasPassword: json['has_password'] as bool? ?? false,
@@ -55,7 +52,6 @@ class ProfileDto {
       id: id,
       username: username,
       fullName: fullName,
-      bio: bio,
       avatarUrl: avatarUrl,
       phone: phone,
       preferredLanguage: preferredLanguage,

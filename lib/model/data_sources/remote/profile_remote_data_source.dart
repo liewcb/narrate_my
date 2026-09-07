@@ -25,15 +25,16 @@ class ProfileRemoteDataSource {
   }
 
   /// REQ_503_3/11: Personal Info's own atomic UPDATE — only touches
-  /// full_name/bio, never any other column.
+  /// full_name, never any other column. (Used to also write `bio` —
+  /// removed 6 Sep at Foo's request; the `profiles.bio` column is no
+  /// longer written by the app.)
   Future<ProfileDto> updatePersonalInfo(
     String userId, {
     String? fullName,
-    String? bio,
   }) async {
     final row = await _client
         .from('profiles')
-        .update({'full_name': fullName, 'bio': bio})
+        .update({'full_name': fullName})
         .eq('id', userId)
         .select()
         .single();
@@ -161,4 +162,21 @@ class ProfileRemoteDataSource {
 
   /// See `AuthRemoteDataSource.deleteOwnAccount` — account deletion itself
   /// lives there (it's an `auth.users` operation via RPC), not here.
+
+  /// Fills `full_name`/`avatar_url` from a signed-in Google identity's
+  /// claims. Only writes the columns actually passed (each null-checked by
+  /// the caller before calling this), so it never clobbers a name the
+  /// tourist edited or a photo they uploaded themselves.
+  Future<void> backfillOAuthProfile(
+    String userId, {
+    String? fullName,
+    String? avatarUrl,
+  }) async {
+    final updates = <String, dynamic>{
+      if (fullName != null) 'full_name': fullName,
+      if (avatarUrl != null) 'avatar_url': avatarUrl,
+    };
+    if (updates.isEmpty) return;
+    await _client.from('profiles').update(updates).eq('id', userId).select().single();
+  }
 }

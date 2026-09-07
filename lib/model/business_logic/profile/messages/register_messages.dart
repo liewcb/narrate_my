@@ -50,4 +50,10 @@ class RegisterMessages {
   static String get m13DobInFuture => AppLocalizations.t('register.m13');
 
   static String get m14UnableToSaveDetails => AppLocalizations.t('register.m14');
+
+  // Added 6 Sep at Foo's request — local pre-network validation on the
+  // Username tab was missing entirely, so an empty/invalid username or
+  // password silently skipped past to whatever the phone field's state
+  // happened to be. Not part of the spec's verbatim M1–M14.
+  static String get m15UsernameRequired => AppLocalizations.t('register.m15');
 }

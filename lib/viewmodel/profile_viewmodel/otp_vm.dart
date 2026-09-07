@@ -23,10 +23,23 @@ enum OtpFlow { registerPhone, registerUsername, loginPhone, resetPassword, chang
 /// CAPTCHA at 5 attempts (REQ_501_12/REQ_502_21 — the counter is
 /// deliberately client-side/ephemeral per the spec's own framing).
 ///
-/// NOTE: [showCaptcha] going true is currently a dead end — Phase 5 wires
-/// an actual hCaptcha widget + `verify-captcha` Edge Function call in here
-/// (gating [resend] on a solve). Until then this VM just stops offering
-/// resend and leaves [showCaptcha] for the screen to render a placeholder.
+/// FIXED (Foo: "after 5 attempts also will not block if the user keys in
+/// the correct OTP"). Two separate bugs were behind that:
+///
+///  1. [showCaptcha] only ever gated [resend]. Nothing consulted it before
+///     verifying, so the Verify button happily accepted a correct code
+///     after any number of failures. [canAttempt] now gates [verify]
+///     itself, and the screen disables the button on the same signal.
+///  2. The counter was a plain instance field, so backing out of the OTP
+///     screen and re-entering it built a fresh `OtpVm` with the count back
+///     at zero — five failures could be reset by pressing Back. The count
+///     now lives in [_failedByPhone], keyed by phone number and shared by
+///     every `OtpVm` in the process.
+///
+/// Scope, stated honestly: [_failedByPhone] is in-memory, so a full app
+/// restart still clears it — that's a deliberate client-side abuse brake
+/// per the spec's own framing, not an account-level lock like the
+/// password lockout (which is server-side and restart-proof).
 class OtpVm extends ChangeNotifier {
   final ProfileRepository _profileRepository;
 
@@ -54,8 +67,29 @@ class OtpVm extends ChangeNotifier {
   bool isResending = false;
   String? errorMessage;
 
-  int failedAttempts = 0;
+  /// Failed-OTP counts keyed by E.164 phone number, shared across every
+  /// [OtpVm] built during this app run — so leaving and re-entering the
+  /// OTP screen for the SAME number resumes the same count instead of
+  /// starting over.
+  static final Map<String, int> _failedByPhone = <String, int>{};
+
+  /// Test-only: lets a widget test start from a known state.
+  @visibleForTesting
+  static void resetAllAttemptCounters() => _failedByPhone.clear();
+
+  int get failedAttempts => _failedByPhone[e164Phone] ?? 0;
+
+  /// How many more incorrect codes are allowed before the CAPTCHA gate
+  /// trips — added 6 Sep at Foo's request so a wrong entry tells the
+  /// tourist how many tries they have left, not just "incorrect code".
+  int get remainingAttempts =>
+      (Module5Constants.maxFailedOtpAttempts - failedAttempts).clamp(0, Module5Constants.maxFailedOtpAttempts);
+
   bool get showCaptcha => failedAttempts >= Module5Constants.maxFailedOtpAttempts;
+
+  /// False once the gate has tripped: [verify] refuses and the screen's
+  /// Verify button goes dead until a CAPTCHA solve clears the count.
+  bool get canAttempt => !showCaptcha;
 
   int resendCooldownSeconds = Module5Constants.otpResendCooldownMinutes * 60;
   bool get canResend => resendCooldownSeconds <= 0 && !showCaptcha;
@@ -87,6 +121,15 @@ class OtpVm extends ChangeNotifier {
   /// (still null) to distinguish "resetPassword succeeded" from a real
   /// failure.
   Future<Profile?> verify(String code) async {
+    // REQ_501_12 / REQ_502_21: once five attempts have failed, no further
+    // attempt is accepted until the CAPTCHA is solved — including a
+    // CORRECT code. The screen also disables its Verify button on
+    // [canAttempt], so reaching this guard means something bypassed the UI.
+    if (!canAttempt) {
+      errorMessage = _captchaRequiredMessage;
+      notifyListeners();
+      throw OtpFailure(_captchaRequiredMessage);
+    }
     isVerifying = true;
     errorMessage = null;
     notifyListeners();
@@ -121,13 +164,22 @@ class OtpVm extends ChangeNotifier {
           result = null;
           break;
       }
+      // A correct code clears the strike count for this number.
+      _failedByPhone.remove(e164Phone);
       isVerifying = false;
       notifyListeners();
       return result;
     } on OtpFailure catch (e) {
-      failedAttempts++;
+      _failedByPhone[e164Phone] = failedAttempts + 1;
       isVerifying = false;
-      errorMessage = e.message;
+      // Append the remaining-attempts count (6 Sep, Foo's request) — but
+      // only while there's still at least one try left; once the count
+      // hits 0 `showCaptcha` takes over and the screen's own "too many
+      // failed attempts" message covers it instead.
+      errorMessage = remainingAttempts > 0
+          ? '${e.message} $remainingAttempts attempt'
+              '${remainingAttempts == 1 ? '' : 's'} remaining.'
+          : e.message;
       notifyListeners();
       rethrow;
     } on AuthFailure catch (e) {
@@ -137,6 +189,10 @@ class OtpVm extends ChangeNotifier {
       rethrow;
     }
   }
+
+  /// Shown when an attempt is made while the CAPTCHA gate is up.
+  static const String _captchaRequiredMessage =
+      'Too many incorrect codes. Complete the verification below before trying again.';
 
   /// C3 / REQ_501_9: re-issues the OTP once the cooldown has elapsed.
   Future<bool> resend() async {
@@ -166,7 +222,7 @@ class OtpVm extends ChangeNotifier {
   Future<bool> verifyCaptcha(String token) async {
     try {
       await _profileRepository.verifyCaptcha(token);
-      failedAttempts = 0;
+      _failedByPhone.remove(e164Phone);
       errorMessage = null;
       notifyListeners();
       return true;

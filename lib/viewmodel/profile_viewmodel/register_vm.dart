@@ -89,9 +89,31 @@ class RegisterVm extends ChangeNotifier {
     required String e164Phone,
   }) async {
     _startSubmit();
-    if (!Validators.passwordsMatch(password, confirmPassword)) {
+    // BUG FIX (6 Sep, Foo: "username password field will not show error
+    // message ... will skip until phone number even if ... empty"): this
+    // method used to go straight to the network with whatever was typed —
+    // an empty/invalid username or a weak password never got its own
+    // local check, the way the Phone tab and the Confirm Password match
+    // below already did. Order matches the form's field order.
+    if (!Validators.isNotEmpty(username) || !Validators.isValidUsernameFormat(username)) {
       _finishWithError(
-        ValidationFailure(RegisterMessages.m10PasswordsDoNotMatch, field: 'confirmPassword'),
+        ValidationFailure(RegisterMessages.m15UsernameRequired, field: 'username'),
+      );
+      return false;
+    }
+    if (!Validators.isValidPassword(password)) {
+      _finishWithError(
+        ValidationFailure(RegisterMessages.m8InvalidPassword, field: 'username'),
+      );
+      return false;
+    }
+    if (!Validators.passwordsMatch(password, confirmPassword)) {
+      // BUG FIX: was `field: 'confirmPassword'`, but the screen only shows
+      // this tab's error when `fieldError == 'username'` (see the doc
+      // comment on the catch block below) — so this message never
+      // actually rendered anywhere before.
+      _finishWithError(
+        ValidationFailure(RegisterMessages.m10PasswordsDoNotMatch, field: 'username'),
       );
       return false;
     }
@@ -105,7 +127,13 @@ class RegisterVm extends ChangeNotifier {
       notifyListeners();
       return true;
     } on AuthFailure catch (e) {
-      _finishWithError(e);
+      // Force field: 'username' here rather than whatever sub-field the
+      // repository tagged (it tags this tab's OWN phone input 'phone'
+      // too, same as the separate Phone tab's sendPhoneOtp does) — the
+      // screen only uses fieldError to pick which TAB shows the error,
+      // not to highlight one input inside it, so a shared 'phone' tag
+      // from two different tabs would be ambiguous.
+      _finishWithError(e, field: 'username');
       return false;
     }
   }

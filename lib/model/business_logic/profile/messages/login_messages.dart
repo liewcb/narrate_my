@@ -30,4 +30,10 @@ class LoginMessages {
   static String get m7AccountLocked => AppLocalizations.t('login.m7');
 
   static String get m8TooManyOtpRequests => AppLocalizations.t('login.m8');
+
+  // Added 6 Sep at Foo's request — submitting the Username & Password tab
+  // with either field empty used to skip straight to a network call and
+  // come back as "incorrect" (m6), which read as if a real account lookup
+  // had failed rather than "you didn't type anything."
+  static String get m9UsernameAndPasswordRequired => AppLocalizations.t('login.m9');
 }

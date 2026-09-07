@@ -116,10 +116,12 @@ abstract class ProfileRepository {
   /// session (A8).
   Future<Profile> fetchProfile();
 
-  /// UC402 A2 steps 3–8 (REQ_503_3): saves full name + bio as their own
-  /// atomic update. Does NOT touch phone/password/Google linking — see
-  /// the Personal Info sub-flows below.
-  Future<Profile> updatePersonalInfo({String? fullName, String? bio});
+  /// UC402 A2 steps 3–8 (REQ_503_3): saves full name as its own atomic
+  /// update. Does NOT touch phone/password/Google linking — see the
+  /// Personal Info sub-flows below. (Used to also carry `bio` — removed
+  /// 6 Sep at Foo's request along with the `profiles.bio` column; bio
+  /// wasn't used anywhere in the app.)
+  Future<Profile> updatePersonalInfo({String? fullName});
 
   /// UC402 A3 step 1: loads the current preference values, pre-filled.
   Future<Preferences> fetchPreferences();

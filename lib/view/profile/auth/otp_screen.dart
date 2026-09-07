@@ -171,15 +171,18 @@ class _OtpViewState extends State<_OtpView> {
               PrimaryButton(
                 label: AppLocalizations.t('ui.verify'),
                 isLoading: vm.isVerifying,
-                onPressed: _code.length == 6 ? () => _submit(vm) : null,
+                // BUG FIX: this only checked `_code.length == 6`, so once 5
+                // failed attempts tripped `vm.showCaptcha`, the Verify
+                // button stayed fully clickable and a correct code still
+                // sailed through — the CAPTCHA gate never actually blocked
+                // further verification attempts. Now dead until
+                // `vm.canAttempt` (solving the CAPTCHA below resets the
+                // failure count in OtpVm, which flips this back on).
+                onPressed: (_code.length == 6 && vm.canAttempt) ? () => _submit(vm) : null,
               ),
               const SizedBox(height: 20),
-              // REQ_501_12 / REQ_502_21: after 5 failed attempts, gate
-              // BOTH re-entry and resend behind a solved CAPTCHA — re-entry
-              // is already blocked by `vm.showCaptcha` disabling nothing on
-              // the Verify button itself (the spec only gates *further*
-              // attempts, and a 6th wrong entry just fails normally), so
-              // this section's job is specifically the resend gate.
+              // REQ_501_12 / REQ_502_21: after 5 failed attempts, BOTH
+              // re-entry and resend are gated behind a solved CAPTCHA.
               if (vm.showCaptcha)
                 Column(
                   children: [
