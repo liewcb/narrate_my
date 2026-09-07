@@ -5,7 +5,6 @@ class Profile {
   final String id;
   final String? username; // null for Google/phone-only accounts (C3: immutable once set)
   final String? fullName;
-  final String? bio;
   final String? avatarUrl;
   final String? phone; // E.164, from Supabase Auth (auth.users.phone), not the profiles table
   final String preferredLanguage; // ISO 639-1 code, see Module5Constants.supportedLanguages
@@ -25,7 +24,6 @@ class Profile {
     required this.id,
     this.username,
     this.fullName,
-    this.bio,
     this.avatarUrl,
     this.phone,
     this.preferredLanguage = 'en',
@@ -38,7 +36,6 @@ class Profile {
   Profile copyWith({
     String? username,
     String? fullName,
-    String? bio,
     String? avatarUrl,
     String? phone,
     String? preferredLanguage,
@@ -50,7 +47,6 @@ class Profile {
       id: id,
       username: username ?? this.username,
       fullName: fullName ?? this.fullName,
-      bio: bio ?? this.bio,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       phone: phone ?? this.phone,
       preferredLanguage: preferredLanguage ?? this.preferredLanguage,

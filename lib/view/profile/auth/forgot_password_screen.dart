@@ -9,7 +9,7 @@ import '../../../viewmodel/profile_viewmodel/otp_vm.dart';
 import '../../../viewmodel/profile_viewmodel/reset_password_vm.dart';
 import '../widgets/phone_field.dart';
 import '../widgets/primary_button.dart';
-import 'otp_screen.dart';
+import './otp_screen.dart';
 
 /// UC403 Reset Password, Basic Flow steps 1–6 (A1). Collects the phone
 /// number, sends the OTP, and hands off to the shared [OtpScreen].

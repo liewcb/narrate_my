@@ -7,7 +7,7 @@ import '../../model/business_logic/itinerary_service/schedule_construction_servi
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
-import '../../model/repositories/interfaces/itinerary_stop_repository.dart';
+import '../../model/repositories/interfaces/itinerary/itinerary_stop_repository.dart';
 
 /// A candidate place the user can add to a day of a generated itinerary.
 class AddPlaceOption {

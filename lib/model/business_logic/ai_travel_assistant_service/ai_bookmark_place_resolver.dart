@@ -3,7 +3,7 @@ import '../../data_sources/remote/ai_nearby_place_remote_data_source.dart';
 import '../../data_sources/remote/ai_bookmark_place_remote_data_source.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
-import 'ai_chat_action_policy.dart';
+import './ai_chat_action_policy.dart';
 
 /// Resolves a general AI-chat question to canonical bookmark candidates.
 ///

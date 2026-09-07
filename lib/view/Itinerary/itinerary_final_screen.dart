@@ -9,11 +9,11 @@ import '../../model/business_logic/itinerary_service/schedule_construction_servi
 import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_final_vm.dart';
-import 'add_place_screen.dart';
-import 'edit_itinerary_screen.dart';
-import 'generation_screen.dart';
-import 'my_itineraries_screen.dart';
-import 'widgets/view_place_detail_screen.dart';
+import './add_place_screen.dart';
+import './edit_itinerary_screen.dart';
+import './generation_screen.dart';
+import './my_itineraries_screen.dart';
+import './widgets/view_place_detail_screen.dart';
 
 class ItineraryFinalScreen extends StatefulWidget {
   final ItineraryResult result;

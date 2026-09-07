@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:narrate_my/model/business_logic/ai_travel_assistant_service/ai_travel_assistant_service.dart';
 import 'package:narrate_my/model/entities/ai_attraction_context.dart';
 import 'package:narrate_my/model/entities/ai_chat_message.dart';
-import 'package:narrate_my/model/repositories/interfaces/ai_travel_assistant_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/ai_assist/ai_travel_assistant_repository.dart';
 
 class _FakeRepository implements AiTravelAssistantRepository {
   @override

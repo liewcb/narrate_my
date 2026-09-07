@@ -30,12 +30,12 @@ import '../../../core/services/google_maps_service.dart';
 import '../../entities/itinerary.dart';
 import '../../entities/itinerary_stop.dart';
 import '../../entities/place.dart';
-import '../../repositories/adapters/itinerary_repository_adapter.dart';
-import '../../repositories/adapters/itinerary_stop_repository_adapter.dart';
-import '../../repositories/adapters/place_repository_adapter.dart';
+import '../../repositories/adapters/itinerary/itinerary_repository_adapter.dart';
+import '../../repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
+import '../../repositories/adapters/itinerary/place_repository_adapter.dart';
 import '../../../view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
-import 'itinerary_validator.dart';
-import 'scoring_service.dart';
+import './itinerary_validator.dart';
+import './scoring_service.dart';
 
 // ============================================================
 // RESULT TYPES

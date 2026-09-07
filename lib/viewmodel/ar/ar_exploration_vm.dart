@@ -5,8 +5,8 @@ import '../../model/business_logic/ar_exploration_service/ar_exploration_service
 import '../../model/business_logic/shared_services/location_service.dart';
 import '../../core/services/orientation_service.dart';
 import '../../model/entities/ar_object.dart';
-import '../../model/repositories/adapters/ar_repository_adapter.dart';
-import '../../model/repositories/interfaces/ar_repository.dart';
+import '../../model/repositories/adapters/ar_exploration/ar_repository_adapter.dart';
+import '../../model/repositories/interfaces/ar_exploration/ar_repository.dart';
 
 enum ARViewState { idle, checkingPermissions, permissionDenied, loading, ready, error }
 

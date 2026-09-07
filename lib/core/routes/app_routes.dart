@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../view/Itinerary/my_itineraries_screen.dart';
 import '../../view/ar/ar_exploration/ar_exploration_view.dart';
 import '../../view/recommendation/nearby_recommendation_screen.dart';
-import '../../view/profile_screen.dart';
+import '../../view/profile/profile_home_screen.dart';
 import '../ai_assistant/global_ai_assistant.dart';
 import '../widgets/app_bottom_navigation.dart';
 
@@ -31,7 +31,7 @@ class _AppRoutesState extends State<AppRoutes> {
       0 => ARExplorationView(isActive: _index == 0),
       1 => const MyItinerariesScreen(),
       2 => NearbyRecommendationScreen(onOpenAr: () => _selectTab(0)),
-      3 => const ProfileScreen(),
+      3 => const ProfileHomeScreen(),
       _ => const SizedBox.shrink(),
     };
   }

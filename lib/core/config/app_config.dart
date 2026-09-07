@@ -44,7 +44,14 @@ class AppConfig {
   /// not render a real challenge until you replace this with your own
   /// hCaptcha site key (https://dashboard.hcaptcha.com → your site →
   /// "Sitekey"). Free tier is enough for this.
-  static const String hcaptchaSiteKey = 'YOUR_HCAPTCHA_SITE_KEY_HERE';
+  // hCaptcha's OFFICIAL TEST SITE KEY — always renders a solvable challenge
+  // and always issues a token, no account/hostname allow-listing needed.
+  // MUST be paired with hCaptcha's matching test SECRET server-side (see
+  // supabase/functions/verify-captcha/index.ts). Replace both with a real
+  // site + secret pair before shipping: register at
+  // https://dashboard.hcaptcha.com, then `supabase secrets set
+  // HCAPTCHA_SECRET=0x...`.
+  static const String hcaptchaSiteKey = '10000000-ffff-ffff-ffff-000000000001';
 
   /// Max device pitch (degrees, 0 = held level/upright pointing at the
   /// horizon) before markers are hidden. Beyond this the tourist is

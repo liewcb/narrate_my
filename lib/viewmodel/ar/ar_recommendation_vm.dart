@@ -4,8 +4,8 @@ import '../../model/business_logic/shared_services/location_service.dart';
 import '../../model/data_sources/remote/ar_recommendation_remote_data_source.dart';
 import '../../model/entities/ar_object.dart';
 import '../../model/entities/ar_recommendation.dart';
-import '../../model/repositories/adapters/ar_recommendation_repository_adapter.dart';
-import '../../model/repositories/interfaces/ar_recommendation_repository.dart';
+import '../../model/repositories/adapters/recommendation/ar_recommendation_repository_adapter.dart';
+import '../../model/repositories/interfaces/recommendation/ar_recommendation_repository.dart';
 
 class ARRecommendationVm extends ChangeNotifier {
   final ARRecommendationRepository _repository;

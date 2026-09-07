@@ -30,13 +30,13 @@ import '../../../core/services/ai_service.dart';
 import '../../entities/place.dart';
 import '../../entities/trip_draft.dart';
 import '../../entities/weather.dart';
-import 'ai_schedule_validator.dart';
-import 'candidate_retrieval_service.dart';
-import 'clustering_service.dart';
-import 'generation_pipeline_service.dart';
-import 'place_registry.dart';
-import 'schedule_construction_service.dart';
-import 'scoring_service.dart';
+import './ai_schedule_validator.dart';
+import './candidate_retrieval_service.dart';
+import './clustering_service.dart';
+import './generation_pipeline_service.dart';
+import './place_registry.dart';
+import './schedule_construction_service.dart';
+import './scoring_service.dart';
 
 /// Service responsible for regenerating a valid itinerary using FRESH
 /// candidate planning while respecting the same traveler requirements.

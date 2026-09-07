@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../../model/dto/bookmark_with_place_dto.dart';
-import '../../model/repositories/adapters/bookmark_repository_adapter.dart';
-import '../../model/repositories/interfaces/bookmark_repository.dart';
+import '../../model/repositories/adapters/bookmark/bookmark_repository_adapter.dart';
+import '../../model/repositories/interfaces/bookmark/bookmark_repository.dart';
 
 /// Backs UC402 A22 (View and Delete Bookmarks, REQ_503_21/22).
 class BookmarksVm extends ChangeNotifier {

@@ -11,7 +11,7 @@ import 'dart:convert';
 
 import '../../../core/config/itinerary_constants.dart';
 import '../../entities/trip_draft.dart';
-import 'clustering_service.dart';
+import './clustering_service.dart';
 
 /// Structured context for a single candidate place.
 class AiCandidateContext {

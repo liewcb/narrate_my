@@ -6,8 +6,8 @@ import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../viewmodel/profile_viewmodel/change_password_vm.dart';
-import 'widgets/primary_button.dart';
-import 'widgets/underline_field.dart';
+import './widgets/primary_button.dart';
+import './widgets/underline_field.dart';
 
 /// UC402 A16–A18 (C6).
 class ChangePasswordScreen extends StatelessWidget {

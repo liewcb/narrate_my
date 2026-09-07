@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/errors/failures.dart';
 import '../../model/entities/preferences.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
 
 /// Backs UC402 A3 (Manage Preferences). All five categories save together
 /// as one atomic update (REQ_503_11 scopes atomicity to the section) — the

@@ -11,12 +11,12 @@ import '../../model/entities/itinerary_destination.dart';
 import '../../model/entities/itinerary_must_visit.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../model/repositories/adapters/destination_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary_destination_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary_must_visit_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary_stop_repository_adapter.dart';
-import '../../model/repositories/adapters/place_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/destination_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/itinerary_destination_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/itinerary_must_visit_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/itinerary_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/place_repository_adapter.dart';
 
 /// ViewModel for Step 5 (Generate My Itinerary).
 ///

@@ -4,7 +4,7 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../../core/config/app_config.dart';
 import '../../entities/ar_object.dart';
-import '../../repositories/interfaces/ar_repository.dart';
+import '../../repositories/interfaces/ar_exploration/ar_repository.dart';
 import '../shared_services/location_service.dart';
 import '../../../core/services/orientation_service.dart';
 

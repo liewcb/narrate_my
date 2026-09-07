@@ -7,7 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../viewmodel/profile_viewmodel/mandatory_details_vm.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/underline_field.dart';
-import 'initial_preferences_screen.dart';
+import './initial_preferences_screen.dart';
 
 /// Added at Foo's request — NOT part of the written spec. Shown exactly
 /// once, immediately after registration succeeds (phone, username, or

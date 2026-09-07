@@ -8,11 +8,11 @@ import '../../../core/widgets/app_bottom_navigation.dart';
 import '../../../model/entities/ar_object.dart';
 import '../../../viewmodel/ar/ar_placement_vm.dart';
 import '../../../viewmodel/ar/ar_recommendation_vm.dart';
-import 'widgets/ar_placement_top_bar.dart';
-import 'widgets/ar_scanning_guide.dart';
-import 'widgets/ar_storytelling_panel.dart';
-import 'widgets/ar_action_menu.dart';
-import 'widgets/ar_recommendation_overlay.dart';
+import './widgets/ar_placement_top_bar.dart';
+import './widgets/ar_scanning_guide.dart';
+import './widgets/ar_storytelling_panel.dart';
+import './widgets/ar_action_menu.dart';
+import './widgets/ar_recommendation_overlay.dart';
 
 /// Screen corresponding to `AR Placement Screen` in the architecture diagram.
 /// Pure View layer with strict MVVM adherence.
@@ -55,6 +55,8 @@ class _ARPlacementContent extends StatefulWidget {
 
 class _ARPlacementContentState extends State<_ARPlacementContent>
     with WidgetsBindingObserver {
+  GlobalAiAssistantController? _assistantController;
+
   static const _navItems = [
     BottomNavItem(
       icon: Icons.camera_alt_outlined,
@@ -85,7 +87,18 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_assistantController != null) return;
+    _assistantController = context.read<GlobalAiAssistantController>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _assistantController?.setArPlacementActive(true);
+    });
+  }
+
+  @override
   void dispose() {
+    _assistantController?.setArPlacementActive(false);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

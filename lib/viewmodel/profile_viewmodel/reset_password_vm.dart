@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import '../../core/errors/failures.dart';
 import '../../model/business_logic/profile/messages/password_reset_messages.dart';
 import '../../model/business_logic/profile/validators.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
 
 /// Backs UC403 Reset Password. Two stages, split across two screens
 /// (Forgot Password → phone entry, Reset Password → new password), each

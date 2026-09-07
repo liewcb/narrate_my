@@ -14,7 +14,7 @@ import '../onboarding/mandatory_details_screen.dart';
 import '../widgets/hcaptcha_widget.dart';
 import '../widgets/otp_box_row.dart';
 import '../widgets/primary_button.dart';
-import 'reset_password_screen.dart';
+import './reset_password_screen.dart';
 
 /// Shared OTP-verification screen for UC400 A2/A3, UC401 A2, and the
 /// middle step of UC403 — which flow it's serving (and what happens after
@@ -171,15 +171,18 @@ class _OtpViewState extends State<_OtpView> {
               PrimaryButton(
                 label: AppLocalizations.t('ui.verify'),
                 isLoading: vm.isVerifying,
-                onPressed: _code.length == 6 ? () => _submit(vm) : null,
+                // BUG FIX: this only checked `_code.length == 6`, so once 5
+                // failed attempts tripped `vm.showCaptcha`, the Verify
+                // button stayed fully clickable and a correct code still
+                // sailed through — the CAPTCHA gate never actually blocked
+                // further verification attempts. Now dead until
+                // `vm.canAttempt` (solving the CAPTCHA below resets the
+                // failure count in OtpVm, which flips this back on).
+                onPressed: (_code.length == 6 && vm.canAttempt) ? () => _submit(vm) : null,
               ),
               const SizedBox(height: 20),
-              // REQ_501_12 / REQ_502_21: after 5 failed attempts, gate
-              // BOTH re-entry and resend behind a solved CAPTCHA — re-entry
-              // is already blocked by `vm.showCaptcha` disabling nothing on
-              // the Verify button itself (the spec only gates *further*
-              // attempts, and a 6th wrong entry just fails normally), so
-              // this section's job is specifically the resend gate.
+              // REQ_501_12 / REQ_502_21: after 5 failed attempts, BOTH
+              // re-entry and resend are gated behind a solved CAPTCHA.
               if (vm.showCaptcha)
                 Column(
                   children: [

@@ -21,12 +21,12 @@ import '../../../core/services/google_maps_service.dart';
 import '../../data_sources/remote/places_remote_data_source.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
-import 'anchor_selection_service.dart';
-import 'place_registry.dart';
-import 'route_optimization_service.dart';
-import 'schedule_construction_service.dart';
-import 'scoring_service.dart';
-import 'validation_service.dart';
+import './anchor_selection_service.dart';
+import './place_registry.dart';
+import './route_optimization_service.dart';
+import './schedule_construction_service.dart';
+import './scoring_service.dart';
+import './validation_service.dart';
 
 /// The spatial anchors around an insertion position.
 ///

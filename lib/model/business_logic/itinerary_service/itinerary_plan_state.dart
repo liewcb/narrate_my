@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../../entities/place.dart';
-import 'candidate_retrieval_service.dart';
-import 'clustering_service.dart'; // <-- IMPORT CLUSTERING
+import './candidate_retrieval_service.dart';
+import './clustering_service.dart'; // <-- IMPORT CLUSTERING
 import '../../../core/services/ai_service.dart'; // <-- IMPORT AI SERVICE (for AIDaySchedule)
 
 /// Runtime state retained after itinerary generation.

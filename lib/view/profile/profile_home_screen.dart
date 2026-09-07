@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,17 +7,61 @@ import '../../core/localization/app_localizations.dart';
 import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../model/business_logic/profile/messages/profile_messages.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
 import '../../viewmodel/profile_viewmodel/profile_vm.dart';
-import 'bookmarks_screen.dart';
-import 'language_screen.dart';
-import 'personal_info_screen.dart';
-import 'preferences_screen.dart';
+import './bookmarks_screen.dart';
+import './guest_profile_screen.dart';
+import './language_screen.dart';
+import './personal_info_screen.dart';
+import './preferences_screen.dart';
+
+/// The Profile tab's entry point in `AppRoutes`'s `IndexedStack`.
+///
+/// MERGED 6 Sep at Foo's request from the former `lib/view/profile_screen.dart`
+/// (a thin delegator one level up) — that file's whole job was this
+/// auth-gating: guests can browse AR/Itinerary/Nearby freely, but the
+/// Profile tab shows [GuestProfileScreen] when logged out and the real
+/// UC402 flow (below) when logged in. Keeping that logic here, next to the
+/// screen it gates, means one less file and one less indirection; see
+/// `lib/view/profile_screen.dart` for the now-retired stub.
+class ProfileHomeScreen extends StatefulWidget {
+  const ProfileHomeScreen({super.key});
+
+  @override
+  State<ProfileHomeScreen> createState() => _ProfileHomeScreenState();
+}
+
+class _ProfileHomeScreenState extends State<ProfileHomeScreen> {
+  final _profileRepository = SupabaseProfileRepositoryAdapter();
+  StreamSubscription<bool>? _subscription;
+  bool _isLoggedIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isLoggedIn = _profileRepository.isLoggedIn;
+    _subscription = _profileRepository.authStateChanges.listen((loggedIn) {
+      if (mounted) setState(() => _isLoggedIn = loggedIn);
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _isLoggedIn ? const _LoggedInProfileHome() : const GuestProfileScreen();
+  }
+}
 
 /// UC402 Basic Flow step 2–3: the Profile Screen itself — a summary +
 /// entry points into the four manageable sections, plus logout. Shown only
-/// when logged in; `lib/view/profile_screen.dart` is what decides that.
-class ProfileHomeScreen extends StatelessWidget {
-  const ProfileHomeScreen({super.key});
+/// when [ProfileHomeScreen] above has confirmed the tourist is logged in.
+class _LoggedInProfileHome extends StatelessWidget {
+  const _LoggedInProfileHome();
 
   @override
   Widget build(BuildContext context) {
@@ -54,8 +100,9 @@ class _ProfileHomeView extends StatelessWidget {
   }
 
   void _afterLogout(BuildContext context) {
-    // No explicit navigation needed: `ProfileScreen` (the Profile tab's
-    // entry point) listens to `authStateChanges` and swaps itself to
+    // No explicit navigation needed: `ProfileHomeScreen` (the Profile
+    // tab's entry point, above) listens to `authStateChanges` and swaps
+    // itself to
     // `GuestProfileScreen` — which already offers Log In / Create Account
     // — the instant the session clears. The bottom nav (and its AR/
     // Itinerary/Nearby tabs) stays exactly where it was, so "skipping"
@@ -81,38 +128,9 @@ class _ProfileHomeView extends StatelessWidget {
     }
   }
 
-  Future<void> _deleteAccount(BuildContext context, ProfileVm vm) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(AppLocalizations.t('ui.deleteAccount')),
-        content: Text(ProfileMessages.m22ConfirmDeleteAccount),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(AppLocalizations.t('ui.cancel')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete', style: TextStyle(color: AppColors.error)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-    final ok = await vm.deleteAccount();
-    if (!context.mounted) return;
-    if (ok) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(ProfileMessages.m23AccountDeleted)));
-      // Same auth-gate mechanism as logout: `ProfileScreen` listens for the
-      // (now-invalidated) session to clear and swaps itself to
-      // `GuestProfileScreen` on its own.
-    } else if (vm.deleteAccountErrorMessage != null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(vm.deleteAccountErrorMessage!)));
-    }
-  }
+  // Delete Account moved to the Personal Info screen (6 Sep, Foo's
+  // request) — it doesn't belong next to Logout. See
+  // `personal_info_screen.dart`'s "Danger Zone" section.
 
   @override
   Widget build(BuildContext context) {
@@ -200,12 +218,6 @@ class _ProfileHomeView extends StatelessWidget {
                           label: AppLocalizations.t('ui.logout'),
                           color: AppColors.error,
                           onTap: () => _logout(context, vm),
-                        ),
-                        _SectionTile(
-                          icon: Icons.delete_outline,
-                          label: AppLocalizations.t('ui.deleteAccount'),
-                          color: AppColors.error,
-                          onTap: () => _deleteAccount(context, vm),
                         ),
                       ],
                     ),

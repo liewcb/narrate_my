@@ -13,8 +13,8 @@ import '../../model/business_logic/itinerary_service/schedule_construction_servi
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../viewmodel/Itinerary/edit_itinerary_vm.dart';
-import 'recommended_places_screen.dart';
-import 'widgets/change_location_picker_sheet.dart';
+import './recommended_places_screen.dart';
+import './widgets/change_location_picker_sheet.dart';
 
 /// Edits a single day of the generated itinerary during preview/review.
 /// Supports switching between days via a day selector + an "All" overview mode.

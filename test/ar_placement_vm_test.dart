@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:narrate_my/model/entities/ar_object.dart';
 import 'package:narrate_my/model/entities/ar_placement.dart';
-import 'package:narrate_my/model/repositories/interfaces/ar_heritage_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/ar_heritage/ar_heritage_repository.dart';
 import 'package:narrate_my/model/data_sources/remote/auth_remote_data_source.dart';
 import 'package:narrate_my/model/business_logic/ar_placement_service/play_narration_service.dart';
 

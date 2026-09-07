@@ -9,8 +9,8 @@ import '../../model/entities/ai_attraction_context.dart';
 import '../../model/entities/ai_chat_message.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/place.dart';
-import '../../model/repositories/adapters/ai_travel_assistant_repository_adapter.dart';
-import '../../model/repositories/interfaces/ai_travel_assistant_repository.dart';
+import '../../model/repositories/adapters/ai_assist/ai_travel_assistant_repository_adapter.dart';
+import '../../model/repositories/interfaces/ai_assist/ai_travel_assistant_repository.dart';
 
 /// ChangeNotifier for UC500's chat state and Gemini requests.
 class AiTravelAssistantViewModel extends ChangeNotifier {

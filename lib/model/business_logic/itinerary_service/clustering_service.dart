@@ -1,7 +1,7 @@
 import 'dart:math';
 import '../../../core/config/itinerary_constants.dart';
 import '../../entities/coordinates.dart';
-import 'scoring_service.dart';
+import './scoring_service.dart';
 
 class Cluster {
   final List<ScoredAttraction> attractions;

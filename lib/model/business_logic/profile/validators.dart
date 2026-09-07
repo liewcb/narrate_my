@@ -7,10 +7,18 @@ class Validators {
   Validators._();
 
   /// C1 (UC400): phone numbers must follow E.164 — a leading `+`, country
-  /// code, then 1–14 more digits, no spaces/dashes/parens. The Register
-  /// screen's country-code chip + local-number field should be concatenated
-  /// into one E.164 string (e.g. `+60123456789`) before calling this.
-  static final RegExp _e164 = RegExp(r'^\+[1-9]\d{1,14}$');
+  /// code, then more digits, no spaces/dashes/parens. The Register screen's
+  /// country-code chip + local-number field should be concatenated into one
+  /// E.164 string (e.g. `+60123456789`) before calling this.
+  ///
+  /// BUG FIX (6 Sep, Foo: "why 456 also can accept as a number"): the
+  /// original `\d{1,14}` let through anything with as few as 2 total
+  /// digits after the `+` — e.g. `+60456` (country code + 3 junk digits)
+  /// matched. No real E.164 number is that short; requiring at least 8
+  /// digits total after the `+` (still capped at the E.164 max of 15)
+  /// rejects obviously-fake short input while still accepting every real
+  /// country's numbers.
+  static final RegExp _e164 = RegExp(r'^\+[1-9]\d{7,14}$');
 
   static bool isValidPhone(String phone) => _e164.hasMatch(phone.trim());
 

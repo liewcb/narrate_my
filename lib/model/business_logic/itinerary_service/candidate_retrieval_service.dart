@@ -8,9 +8,9 @@ import '../../data_sources/remote/places_remote_data_source.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/destination_hotspot.dart';
 import '../../entities/place.dart';
-import '../../repositories/interfaces/destination_hotspot_repository.dart';
-import '../../repositories/interfaces/destination_repository.dart';
-import '../../repositories/interfaces/place_repository.dart';
+import '../../repositories/interfaces/itinerary/destination_hotspot_repository.dart';
+import '../../repositories/interfaces/itinerary/destination_repository.dart';
+import '../../repositories/interfaces/itinerary/place_repository.dart';
 
 /// A resolved coordinate anchor for a Google Places search.
 class HotspotAnchor {

@@ -9,9 +9,9 @@ import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../model/business_logic/profile/preference_options.dart';
 import '../../model/entities/preferences.dart';
 import '../../viewmodel/profile_viewmodel/preferences_vm.dart';
-import 'widgets/attraction_tile.dart';
-import 'widgets/primary_button.dart';
-import 'widgets/toggle_preference_tile.dart';
+import './widgets/attraction_tile.dart';
+import './widgets/primary_button.dart';
+import './widgets/toggle_preference_tile.dart';
 
 /// UC402 A3 (Manage Preferences). All categories are staged locally in
 /// this screen's own state and saved together, in one call, as the
@@ -42,8 +42,11 @@ class _PreferencesViewState extends State<_PreferencesView> {
   Set<String> _dietary = {};
   Set<String> _dietaryRestrictions = {};
   Set<String> _accessibility = {};
-  Set<String> _exclusions = {};
   bool _synced = false;
+
+  // Added 6 Sep at Foo's request, matching Personal Info/Language: all
+  // chips/toggles are read-only until Edit is tapped.
+  bool _editing = false;
 
   void _syncFrom(Preferences p) {
     if (_synced) return;
@@ -52,18 +55,20 @@ class _PreferencesViewState extends State<_PreferencesView> {
     _dietary = p.dietaryPreferences.toSet();
     _dietaryRestrictions = p.dietaryRestrictions.toSet();
     _accessibility = p.accessibilityPreferences.toSet();
-    _exclusions = p.categoryExclusions.toSet();
     _synced = true;
   }
 
   Future<void> _save(PreferencesVm vm) async {
+    // Category Exclusions removed from the UI 6 Sep at Foo's request —
+    // preserve whatever was already stored rather than silently wiping it
+    // (nothing on this screen edits it any more).
     final updated = Preferences(
       attractionInterests: _attraction.toList(),
       foodCuisineInterests: _food.toList(),
       dietaryPreferences: _dietary.toList(),
       dietaryRestrictions: _dietaryRestrictions.toList(),
       accessibilityPreferences: _accessibility.toList(),
-      categoryExclusions: _exclusions.toList(),
+      categoryExclusions: vm.preferences?.categoryExclusions ?? const [],
     );
     final ok = await vm.save(updated);
     if (ok && mounted) {
@@ -71,6 +76,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
       // immediately, without waiting for the next login.
       await context.read<AccessibilityVm>().refresh();
       if (!mounted) return;
+      setState(() => _editing = false);
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
     }
@@ -84,7 +90,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
       _dietary = saved.dietaryPreferences.toSet();
       _dietaryRestrictions = saved.dietaryRestrictions.toSet();
       _accessibility = saved.accessibilityPreferences.toSet();
-      _exclusions = saved.categoryExclusions.toSet();
+      _editing = false;
     });
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(ProfileMessages.m5ChangesDiscarded)));
@@ -96,7 +102,16 @@ class _PreferencesViewState extends State<_PreferencesView> {
     context.watch<LocaleVm>();
     if (vm.preferences != null) _syncFrom(vm.preferences!);
     return Scaffold(
-      appBar: AppBar(title: Text(AppLocalizations.t('ui.preferences'))),
+      appBar: AppBar(
+        title: Text(AppLocalizations.t('ui.preferences')),
+        actions: [
+          if (!_editing)
+            TextButton(
+              onPressed: () => setState(() => _editing = true),
+              child: Text(AppLocalizations.t('ui.edit')),
+            ),
+        ],
+      ),
       body: SafeArea(
         child: vm.isLoading && vm.preferences == null
             ? const Center(child: CircularProgressIndicator())
@@ -105,70 +120,90 @@ class _PreferencesViewState extends State<_PreferencesView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _SectionLabel(AppLocalizations.t('ui.attractionInterests')),
-                    const SizedBox(height: 10),
-                    AttractionTileGrid(
-                      options: kAttractionCategories,
-                      selected: _attraction,
-                      crossAxisCount: 3,
-                      onToggle: (v) => setState(() => _toggle(_attraction, v)),
-                    ),
-                    const SizedBox(height: 22),
-                    _ChipSection(
-                      title: AppLocalizations.t('ui.foodCuisine'),
-                      options: kFoodCuisineOptions,
-                      selected: _food,
-                      onToggle: (v) => setState(() => _toggle(_food, v)),
-                    ),
-                    _ChipSection(
-                      title: AppLocalizations.t('ui.dietaryPreferences'),
-                      options: kDietaryOptions,
-                      selected: _dietary,
-                      onToggle: (v) => setState(() => _toggle(_dietary, v)),
-                    ),
-                    _ChipSection(
-                      title: 'Dietary Restrictions & Allergies',
-                      options: kDietaryRestrictionOptions,
-                      selected: _dietaryRestrictions,
-                      onToggle: (v) => setState(() => _toggle(_dietaryRestrictions, v)),
-                    ),
-                    _SectionLabel(AppLocalizations.t('ui.accessibilityPreferences')),
-                    const SizedBox(height: 10),
-                    ...kAccessibilityOptions.map(
-                      (option) => TogglePreferenceTile(
-                        title: option,
-                        subtitle: kAccessibilityDescriptions[option],
-                        emoji: kAccessibilityEmoji[option],
-                        value: _accessibility.contains(option),
-                        onChanged: (_) => setState(() => _toggle(_accessibility, option)),
+                    IgnorePointer(
+                      ignoring: !_editing,
+                      child: Opacity(
+                        opacity: _editing ? 1 : 0.6,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _SectionLabel(AppLocalizations.t('ui.attractionInterests')),
+                            const SizedBox(height: 10),
+                            AttractionTileGrid(
+                              options: kAttractionCategories,
+                              selected: _attraction,
+                              crossAxisCount: 3,
+                              onToggle: (v) => setState(() => _toggle(_attraction, v)),
+                            ),
+                            const SizedBox(height: 22),
+                            _ChipSection(
+                              title: AppLocalizations.t('ui.foodCuisine'),
+                              options: kFoodCuisineOptions,
+                              selected: _food,
+                              onToggle: (v) => setState(() => _toggle(_food, v)),
+                            ),
+                            _ChipSection(
+                              title: AppLocalizations.t('ui.dietaryPreferences'),
+                              options: kDietaryOptions,
+                              selected: _dietary,
+                              onToggle: (v) => setState(() => _toggle(_dietary, v)),
+                            ),
+                            _ChipSection(
+                              title: 'Dietary Restrictions & Allergies',
+                              options: kDietaryRestrictionOptions,
+                              selected: _dietaryRestrictions,
+                              onToggle: (v) => setState(() => _toggle(_dietaryRestrictions, v)),
+                            ),
+                            _SectionLabel(AppLocalizations.t('ui.accessibilityPreferences')),
+                            const SizedBox(height: 10),
+                            ...kAccessibilityOptions.map(
+                              (option) => TogglePreferenceTile(
+                                title: option,
+                                subtitle: kAccessibilityDescriptions[option],
+                                emoji: kAccessibilityEmoji[option],
+                                value: _accessibility.contains(option),
+                                onChanged: (_) => setState(() => _toggle(_accessibility, option)),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 22),
-                    _ChipSection(
-                      title: AppLocalizations.t('ui.categoryExclusions'),
-                      options: kAttractionCategories,
-                      selected: _exclusions,
-                      onToggle: (v) => setState(() => _toggle(_exclusions, v)),
-                      chipColor: AppColors.error,
                     ),
                     if (vm.errorMessage != null) ...[
                       const SizedBox(height: 8),
                       Text(vm.errorMessage!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
                     ],
-                    const SizedBox(height: 12),
-                    PrimaryButton(
-                        label: AppLocalizations.t('ui.save'),
-                        isLoading: vm.isSaving,
-                        onPressed: () => _save(vm)),
-                    const SizedBox(height: 10),
-                    OutlinedButton(
-                      onPressed: () => _cancel(vm.preferences),
-                      child: Text(AppLocalizations.t('ui.cancel')),
-                    ),
+                    // Save/Cancel moved out of this scroll view into a
+                    // persistent bottom bar (6 Sep, Foo's request) — they
+                    // used to sit after every section, so changing just the
+                    // top Attraction Interests meant scrolling all the way
+                    // down to reach them.
                   ],
                 ),
               ),
       ),
+      bottomNavigationBar: _editing
+          ? SafeArea(
+              minimum: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _cancel(vm.preferences),
+                      child: Text(AppLocalizations.t('ui.cancel')),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: PrimaryButton(
+                        label: AppLocalizations.t('ui.save'),
+                        isLoading: vm.isSaving,
+                        onPressed: () => _save(vm)),
+                  ),
+                ],
+              ),
+            )
+          : null,
     );
   }
 

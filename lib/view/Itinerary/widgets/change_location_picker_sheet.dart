@@ -21,7 +21,7 @@ import '../../../model/business_logic/itinerary_service/change_location_service.
 import '../../../model/entities/itinerary_stop.dart';
 import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/change_location_vm.dart';
-import 'view_place_detail_screen.dart';
+import './view_place_detail_screen.dart';
 
 class ChangeLocationPickerSheet extends StatefulWidget {
   /// The stop currently being replaced (provides itineraryId + stopId).

@@ -14,8 +14,8 @@ import '../../model/entities/destination.dart';
 import '../../model/entities/destination_hotspot.dart';
 import '../../model/entities/place.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../model/repositories/interfaces/bookmark_repository.dart';
-import '../../model/repositories/interfaces/destination_repository.dart';
+import '../../model/repositories/interfaces/bookmark/bookmark_repository.dart';
+import '../../model/repositories/interfaces/itinerary/destination_repository.dart';
 
 /// Outcome of a must-visit selection attempt. The UI only displays the
 /// result — every validation rule lives in this ViewModel.

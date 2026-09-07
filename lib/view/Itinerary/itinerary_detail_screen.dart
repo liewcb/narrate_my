@@ -1,7 +1,7 @@
 ﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'add_place_screen.dart';
+import './add_place_screen.dart';
 import '../../core/theme/colors.dart';
 
 class StopData {

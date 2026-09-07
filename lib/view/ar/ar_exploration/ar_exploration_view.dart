@@ -5,9 +5,9 @@ import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../viewmodel/ar/ar_exploration_vm.dart';
 import '../../../model/entities/ar_object.dart';
 import '../ar_placement/ar_placement_view.dart';
-import 'widgets/ar_camera_view.dart';
-import 'widgets/ar_marker_overlay.dart';
-import 'widgets/ar_notification_banner.dart';
+import './widgets/ar_camera_view.dart';
+import './widgets/ar_marker_overlay.dart';
+import './widgets/ar_notification_banner.dart';
 
 /// UC100 — AR Exploration Module (BF-1 through BF-7).
 /// Notification banner intentionally omitted for now per current scope;

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'stop_item.dart';
+import './stop_item.dart';
 
 class DaySection extends StatelessWidget {
   final String dayTitle;

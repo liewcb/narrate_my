@@ -4,8 +4,8 @@ import '../../core/errors/failures.dart';
 import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../model/business_logic/profile/validators.dart';
 import '../../model/entities/profile.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
 
 /// Backs UC402 A2 (Manage Personal Information). Phone-change (A9–A12) and
 /// password-change (A16–A18) are separate sub-flows this VM triggers but

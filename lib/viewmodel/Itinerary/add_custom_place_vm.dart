@@ -7,9 +7,9 @@ import '../../model/business_logic/itinerary_service/custom_place_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
-import '../../model/repositories/adapters/bookmark_repository_adapter.dart';
-import '../../model/repositories/adapters/place_repository_adapter.dart';
-import '../../model/repositories/interfaces/bookmark_repository.dart';
+import '../../model/repositories/adapters/bookmark/bookmark_repository_adapter.dart';
+import '../../model/repositories/adapters/itinerary/place_repository_adapter.dart';
+import '../../model/repositories/interfaces/bookmark/bookmark_repository.dart';
 
 /// ViewModel for the "Add Location" workflow (Manage Itinerary).
 ///

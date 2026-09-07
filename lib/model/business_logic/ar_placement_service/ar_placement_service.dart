@@ -4,8 +4,8 @@ import 'package:ar_flutter_plugin_plus/models/ar_hittest_result.dart';
 import 'package:ar_flutter_plugin_plus/datatypes/hittest_result_types.dart';
 import 'package:vector_math/vector_math_64.dart' as vector;
 import '../../entities/ar_placement.dart';
-import 'ar_model_service.dart';
-import 'play_narration_service.dart';
+import './ar_model_service.dart';
+import './play_narration_service.dart';
 
 /// Business logic service coordinating AR Placement calculations and model creation
 class ARPlacementService {

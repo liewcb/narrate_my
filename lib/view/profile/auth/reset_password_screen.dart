@@ -5,11 +5,11 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/locale_vm.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/business_logic/profile/messages/password_reset_messages.dart';
-import '../../../model/repositories/adapters/profile_adapter.dart';
+import '../../../model/repositories/adapters/profile/profile_adapter.dart';
 import '../../../viewmodel/profile_viewmodel/reset_password_vm.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/underline_field.dart';
-import 'login_screen.dart';
+import './login_screen.dart';
 
 /// UC403 Reset Password, Basic Flow steps 11–13. Reached only after the
 /// OTP screen has verified phone ownership (`OtpFlow.resetPassword`) — the

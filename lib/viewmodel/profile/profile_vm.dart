@@ -4,8 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/errors/failures.dart';
 import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../model/entities/profile.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
 
 /// Backs the logged-in Profile home screen: loads the summary shown at the
 /// top (avatar/name/username) and owns logout. Section-specific editing

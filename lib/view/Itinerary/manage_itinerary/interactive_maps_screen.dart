@@ -12,7 +12,7 @@ import 'package:intl/intl.dart';
 import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../viewmodel/Itinerary/interactive_maps_vm.dart';
-import 'manage_edit_itinerary_screen.dart';
+import './manage_edit_itinerary_screen.dart';
 import '../widgets/view_place_detail_screen.dart';
 
 class InteractiveMapsScreen extends StatefulWidget {

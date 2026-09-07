@@ -4,8 +4,8 @@ import '../../core/errors/failures.dart';
 import '../../model/business_logic/profile/messages/profile_messages.dart';
 import '../../model/business_logic/profile/validators.dart';
 import '../../model/entities/profile.dart';
-import '../../model/repositories/adapters/profile_adapter.dart';
-import '../../model/repositories/interfaces/profile_repository.dart';
+import '../../model/repositories/adapters/profile/profile_adapter.dart';
+import '../../model/repositories/interfaces/profile/profile_repository.dart';
 
 /// Backs UC402 A2 (Manage Personal Information). Phone-change (A9–A12) and
 /// password-change (A16–A18) are separate sub-flows this VM triggers but
@@ -29,6 +29,26 @@ class PersonalInfoVm extends ChangeNotifier {
   String? errorMessage;
   String? fieldError;
 
+  /// Own error slot for the phone-change bottom sheet — kept separate from
+  /// [errorMessage] (used by Save/Google link/unlink) so a Google-link
+  /// failure never shows inside the phone-change sheet, and a failed phone
+  /// change never shows on the main screen's banner. Previously both
+  /// actions shared [errorMessage], which meant whichever failed last would
+  /// incorrectly render in the OTHER action's UI too.
+  String? phoneChangeErrorMessage;
+
+  void clearPhoneChangeError() {
+    if (phoneChangeErrorMessage == null) return;
+    phoneChangeErrorMessage = null;
+    notifyListeners();
+  }
+
+  // Separate from [errorMessage] for the same reason as
+  // [phoneChangeErrorMessage] — a failed delete shouldn't surface inside
+  // any other action's error slot on this screen.
+  bool isDeletingAccount = false;
+  String? deleteAccountErrorMessage;
+
   Future<void> load() async {
     isLoading = true;
     errorMessage = null;
@@ -43,10 +63,9 @@ class PersonalInfoVm extends ChangeNotifier {
     }
   }
 
-  /// UC402 A2 steps 3–8. [fullName]/[bio] are always sent together — the
-  /// whole Personal Info section is one atomic save (REQ_503_11 scopes the
-  /// atomicity to the SECTION, not the individual field).
-  Future<bool> save({required String fullName, required String bio}) async {
+  /// UC402 A2 steps 3–8. Bio removed 6 Sep at Foo's request — it wasn't
+  /// used anywhere in the app — so this now only saves [fullName].
+  Future<bool> save({required String fullName}) async {
     if (!Validators.isNotEmpty(fullName)) {
       // A5: highlight-and-retry, not a full section reset.
       errorMessage = ProfileMessages.m4CorrectHighlighted;
@@ -61,7 +80,6 @@ class PersonalInfoVm extends ChangeNotifier {
     try {
       profile = await _profileRepository.updatePersonalInfo(
         fullName: fullName.trim(),
-        bio: bio.trim(),
       );
       isSaving = false;
       notifyListeners();
@@ -87,7 +105,7 @@ class PersonalInfoVm extends ChangeNotifier {
   /// pick up the committed phone number.
   Future<bool> sendPhoneChangeOtp(String newE164Phone) async {
     isSaving = true;
-    errorMessage = null;
+    phoneChangeErrorMessage = null;
     notifyListeners();
     try {
       await _profileRepository.sendPhoneChangeOtp(newE164Phone);
@@ -96,7 +114,7 @@ class PersonalInfoVm extends ChangeNotifier {
       return true;
     } on AuthFailure catch (e) {
       isSaving = false;
-      errorMessage = e.message;
+      phoneChangeErrorMessage = e.message;
       notifyListeners();
       return false;
     }
@@ -107,6 +125,15 @@ class PersonalInfoVm extends ChangeNotifier {
   Future<bool> linkGoogleAccount() async {
     isSaving = true;
     errorMessage = null;
+    // BUG FIX (6 Sep, Foo: "google link error can go to the name field"):
+    // this never reset `fieldError`, so if the Full Name save had failed
+    // earlier and left `fieldError == 'fullName'` sitting there, a LATER
+    // Google-link failure would set `errorMessage` but leave that stale
+    // `fieldError` in place — and since the screen shows the Full Name
+    // field's error text whenever `fieldError == 'fullName'`, the Google
+    // error would render inside the Full Name field instead of the
+    // banner below the Google row. Same fix applied to unlinkGoogleAccount.
+    fieldError = null;
     notifyListeners();
     try {
       profile = await _profileRepository.linkGoogleAccount();
@@ -126,6 +153,7 @@ class PersonalInfoVm extends ChangeNotifier {
   Future<bool> unlinkGoogleAccount() async {
     isSaving = true;
     errorMessage = null;
+    fieldError = null; // see the comment in linkGoogleAccount() above
     notifyListeners();
     try {
       await _profileRepository.unlinkGoogleAccount();
@@ -135,6 +163,31 @@ class PersonalInfoVm extends ChangeNotifier {
     } on AuthFailure catch (e) {
       isSaving = false;
       errorMessage = e.message;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // --- Added at Foo's request — NOT in the written spec ----------------------
+
+  /// Moved here (off the Profile home screen, away from Logout) 6 Sep at
+  /// Foo's request — deleting the account doesn't belong next to logging
+  /// out of it. Irreversible-reading, though the account is actually
+  /// soft-deleted server-side; the caller must confirm with the tourist
+  /// before calling this. Returns true on success; the caller should then
+  /// navigate away (there is no profile left to show).
+  Future<bool> deleteAccount() async {
+    isDeletingAccount = true;
+    deleteAccountErrorMessage = null;
+    notifyListeners();
+    try {
+      await _profileRepository.deleteAccount();
+      isDeletingAccount = false;
+      notifyListeners();
+      return true;
+    } on AuthFailure catch (e) {
+      isDeletingAccount = false;
+      deleteAccountErrorMessage = e.message;
       notifyListeners();
       return false;
     }

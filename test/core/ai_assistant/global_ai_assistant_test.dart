@@ -115,6 +115,19 @@ void main() {
     expect(controller.conversationSummary, isNull);
   });
 
+  test('AI button moves above the AR action panel', () {
+    final controller = GlobalAiAssistantController();
+    addTearDown(controller.dispose);
+
+    expect(controller.assistantBottomOffset, 84);
+
+    controller.setArPlacementActive(true);
+    expect(controller.assistantBottomOffset, 200);
+
+    controller.setArPlacementActive(false);
+    expect(controller.assistantBottomOffset, 84);
+  });
+
   testWidgets('global AI button follows storytelling visibility', (
     tester,
   ) async {

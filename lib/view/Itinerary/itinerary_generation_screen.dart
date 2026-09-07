@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_generation_vm.dart';
-import 'itinerary_final_screen.dart';
+import './itinerary_final_screen.dart';
 
 
 class GenerationScreen extends StatefulWidget {

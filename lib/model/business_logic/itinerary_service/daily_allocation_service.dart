@@ -2,8 +2,8 @@ import '../../../core/config/interest_mapping.dart';
 import '../../../core/config/itinerary_constants.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
-import 'clustering_service.dart';
-import 'scoring_service.dart';
+import './clustering_service.dart';
+import './scoring_service.dart';
 
 /// Represents a full day's itinerary with activities.
 class AllocatedDay {

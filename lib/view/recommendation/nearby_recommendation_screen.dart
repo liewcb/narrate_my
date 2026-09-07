@@ -10,11 +10,11 @@ import '../../model/data_sources/remote/recommendation_data_source.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/recommendation.dart';
-import '../../model/repositories/adapters/ar_site_repository_adapter.dart';
-import '../../model/repositories/adapters/recommendation_repository_adapter.dart';
+import '../../model/repositories/adapters/ar_exploration/ar_site_repository_adapter.dart';
+import '../../model/repositories/adapters/recommendation/recommendation_repository_adapter.dart';
 import '../../viewmodel/recommendation/nearby_recommendation_vm.dart';
-import 'nearby_ar_site_details_screen.dart';
-import 'nearby_recommendation_details_screen.dart';
+import './nearby_ar_site_details_screen.dart';
+import './nearby_recommendation_details_screen.dart';
 
 class NearbyRecommendationScreen extends StatelessWidget {
   final VoidCallback? onOpenAr;

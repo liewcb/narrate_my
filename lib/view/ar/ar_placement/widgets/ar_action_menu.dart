@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../viewmodel/ar/ar_placement_vm.dart';
 import '../../../../viewmodel/ar/ar_recommendation_vm.dart';
-import 'video_player_overlay.dart';
+import './video_player_overlay.dart';
 
 /// Action Menu shown after Avatar is placed on plane
 class ARActionMenu extends StatelessWidget {
@@ -121,10 +121,6 @@ class ARActionMenu extends StatelessWidget {
                   // Secondary action buttons (Watch Video, Recommend)
                   Row(
                     children: [
-                      // The global AI button occupies the lower-left corner.
-                      // Keep its footprint outside the Watch Video hit area.
-                      const SizedBox(width: 64),
-                      const SizedBox(width: 10),
                       Expanded(
                         child: SizedBox(
                           height: 44,

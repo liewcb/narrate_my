@@ -5,7 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import '../../model/entities/destination.dart';
 import '../../model/entities/trip_draft.dart';
-import 'generation_screen.dart';
+import './generation_screen.dart';
 
 class DestinationWithDays {
   final String id;
