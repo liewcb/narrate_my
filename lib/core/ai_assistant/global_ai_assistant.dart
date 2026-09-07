@@ -16,6 +16,7 @@ class GlobalAiAssistantController extends ChangeNotifier {
   bool _assistantOpen = false;
   bool _storytellingActive = false;
   bool _profileActive = false;
+  bool _arPlacementActive = false;
   AiAttractionContext? _attractionContext;
   Place? _bookmarkPlace;
   String? _conversationSummary;
@@ -24,6 +25,7 @@ class GlobalAiAssistantController extends ChangeNotifier {
 
   bool get shouldShowButton =>
       !_assistantOpen && !_storytellingActive && !_profileActive;
+  double get assistantBottomOffset => _arPlacementActive ? 200 : 84;
   AiAttractionContext? get attractionContext => _attractionContext;
   Place? get bookmarkPlace => _bookmarkPlace;
   String? get conversationSummary => _conversationSummary;
@@ -174,6 +176,12 @@ class GlobalAiAssistantController extends ChangeNotifier {
     _profileActive = value;
     notifyListeners();
   }
+
+  void setArPlacementActive(bool value) {
+    if (_arPlacementActive == value) return;
+    _arPlacementActive = value;
+    notifyListeners();
+  }
 }
 
 /// Places one AI entry point above the root Navigator so pushed itinerary,
@@ -218,6 +226,9 @@ class GlobalAiAssistantHost extends StatelessWidget {
     final showButton = context.select<GlobalAiAssistantController, bool>(
       (controller) => controller.shouldShowButton,
     );
+    final bottomOffset = context.select<GlobalAiAssistantController, double>(
+      (controller) => controller.assistantBottomOffset,
+    );
 
     return Stack(
       fit: StackFit.expand,
@@ -226,7 +237,7 @@ class GlobalAiAssistantHost extends StatelessWidget {
         if (showButton)
           Positioned(
             left: 20,
-            bottom: 84,
+            bottom: bottomOffset,
             child: SafeArea(
               top: false,
               child: Semantics(

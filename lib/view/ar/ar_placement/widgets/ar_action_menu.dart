@@ -121,10 +121,6 @@ class ARActionMenu extends StatelessWidget {
                   // Secondary action buttons (Watch Video, Recommend)
                   Row(
                     children: [
-                      // The global AI button occupies the lower-left corner.
-                      // Keep its footprint outside the Watch Video hit area.
-                      const SizedBox(width: 64),
-                      const SizedBox(width: 10),
                       Expanded(
                         child: SizedBox(
                           height: 44,

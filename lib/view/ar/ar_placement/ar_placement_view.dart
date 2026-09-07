@@ -55,6 +55,8 @@ class _ARPlacementContent extends StatefulWidget {
 
 class _ARPlacementContentState extends State<_ARPlacementContent>
     with WidgetsBindingObserver {
+  GlobalAiAssistantController? _assistantController;
+
   static const _navItems = [
     BottomNavItem(
       icon: Icons.camera_alt_outlined,
@@ -85,7 +87,18 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_assistantController != null) return;
+    _assistantController = context.read<GlobalAiAssistantController>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _assistantController?.setArPlacementActive(true);
+    });
+  }
+
+  @override
   void dispose() {
+    _assistantController?.setArPlacementActive(false);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
