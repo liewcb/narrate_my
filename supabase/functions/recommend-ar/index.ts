@@ -6,9 +6,10 @@ const PRIMARY_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_MODEL") ??
   "gemini-3.5-flash-lite";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_FALLBACK_MODEL") ??
   "gemini-3.6-flash";
-const PROMPT_VERSION = "ar-context-v1";
+const PROMPT_VERSION = "ar-context-v2";
 const DEFAULT_RADIUS_KM = 30;
 const CACHE_TTL_HOURS = 24;
+const MAX_PLACE_MATCH_DISTANCE_KM = 3;
 const DAILY_CALL_BUDGET = numberFromEnv("GEMINI_DAILY_CALL_BUDGET", 15);
 
 interface Preferences {
@@ -166,7 +167,15 @@ Deno.serve(async (req) => {
     const preferenceHash = await sha256(stablePreferences(preferences));
     const candidateHash = await sha256(
       candidates.map((item) =>
-        `${item.attractionId}:${item.updatedAt}:${item.distanceKm.toFixed(2)}`
+        [
+          item.attractionId,
+          item.siteId ?? "no-site",
+          item.name,
+          item.latitude.toFixed(5),
+          item.longitude.toFixed(5),
+          item.updatedAt,
+          item.distanceKm.toFixed(2),
+        ].join(":")
       ).sort().join("|"),
     );
     const cacheKey = await sha256([
@@ -182,6 +191,19 @@ Deno.serve(async (req) => {
 
     const cached = await findCachedRecommendations(supabase, cacheKey);
     if (cached) {
+      await saveRecommendationLog({
+        supabase,
+        userId,
+        latitude,
+        longitude,
+        currentAttractionId: current.attractionId,
+        preferences,
+        prompt: "Reused a verified cached AR recommendation response.",
+        recommendations: cached.recommendations,
+        cacheKey,
+        modelName: cached.modelName,
+        latencyMs: Date.now() - startedAt,
+      });
       return await recommendationResponse(
         cached.recommendations,
         {
@@ -450,6 +472,9 @@ function buildCandidates({
     const item: Candidate = {
       ...row,
       name: site?.displayName ?? row.name,
+      summary: site && normaliseName(site.displayName) !== normaliseName(row.name)
+        ? `${row.name}: ${row.summary}`
+        : row.summary,
       category,
       latitude: candidateLatitude,
       longitude: candidateLongitude,
@@ -770,7 +795,23 @@ async function resolveRecommendations({
           radiusKm,
           apiKey,
         );
-      if (!place) return null;
+      const placeDistanceFromMarkerKm = place == null
+        ? Number.POSITIVE_INFINITY
+        : haversineKm(
+          item.latitude,
+          item.longitude,
+          place.latitude,
+          place.longitude,
+        );
+      if (!place || placeDistanceFromMarkerKm > MAX_PLACE_MATCH_DISTANCE_KM) {
+        if (place) {
+          console.error(
+            `Rejected Places match for ${item.name}: ` +
+              `${placeDistanceFromMarkerKm.toFixed(1)} km from its AR marker.`,
+          );
+        }
+        return trustedMarkerFallback(item, latitude, longitude);
+      }
       return {
         ...item,
         placeId: place.id,
@@ -790,12 +831,35 @@ async function resolveRecommendations({
       } satisfies RecommendationItem;
     } catch (error) {
       console.error(`Unable to resolve ${item.name} with Places:`, error);
-      return null;
+      return trustedMarkerFallback(item, latitude, longitude);
     }
   }));
   return resolved
     .filter((item): item is RecommendationItem => item != null)
     .map((item, index) => ({ ...item, rank: index + 1 }));
+}
+
+function trustedMarkerFallback(
+  item: RankedCandidate,
+  userLatitude: number,
+  userLongitude: number,
+): RecommendationItem {
+  return {
+    ...item,
+    placeId: `narratemy-ar-${item.attractionId}`,
+    resolvedName: item.name,
+    resolvedAddress: item.address ?? "Address unavailable",
+    resolvedLatitude: item.latitude,
+    resolvedLongitude: item.longitude,
+    distanceKm: haversineKm(
+      userLatitude,
+      userLongitude,
+      item.latitude,
+      item.longitude,
+    ),
+    rating: null,
+    photoReference: null,
+  };
 }
 
 interface PlaceResult {
@@ -855,8 +919,14 @@ async function searchPlace(
   );
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error?.message ?? "Places search failed.");
-  const places = Array.isArray(data?.places) ? data.places : [];
-  return places.length === 0 ? null : parsePlace(places[0]);
+  const places = (Array.isArray(data?.places) ? data.places : [])
+    .map((place: Record<string, any>) => parsePlace(place))
+    .filter((place: PlaceResult | null): place is PlaceResult => place != null)
+    .sort((a: PlaceResult, b: PlaceResult) =>
+      haversineKm(latitude, longitude, a.latitude, a.longitude) -
+      haversineKm(latitude, longitude, b.latitude, b.longitude)
+    );
+  return places[0] ?? null;
 }
 
 function parsePlace(value: Record<string, any>): PlaceResult | null {

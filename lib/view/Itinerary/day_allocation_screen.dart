@@ -1,6 +1,4 @@
-﻿import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
-import '../../model/entities/destination.dart';
+import 'package:flutter/material.dart';
 import '../../model/entities/trip_draft.dart';
 import 'split_days_screen.dart';
 
@@ -40,6 +38,7 @@ class AddAllocationScreen extends StatelessWidget {
     }
 
     return SplitDaysScreen(
+      draft: draft,
       destinations: destinationsWithDays,
       totalPlannedDays: totalDays,
     );

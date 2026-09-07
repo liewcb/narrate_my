@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import '../../core/theme/app_theme.dart';
+import '../../model/entities/destination.dart';
+import '../../model/entities/trip_draft.dart';
+import 'generation_screen.dart';
 
-// ──────────────────────────────────────────────────────────────
-// Simple wrapper: Destination + mutable days
-// ──────────────────────────────────────────────────────────────
 class DestinationWithDays {
   final String id;
   final String name;
   final String imageUrl;
-  int days; // mutable – user adjusts this
+  int days;
 
   DestinationWithDays({
     required this.id,
@@ -18,15 +19,14 @@ class DestinationWithDays {
   }) : days = initialDays;
 }
 
-// ──────────────────────────────────────────────────────────────
-// The SplitDaysScreen UI
-// ──────────────────────────────────────────────────────────────
 class SplitDaysScreen extends StatefulWidget {
+  final TripDraft draft; // Added field
   final List<DestinationWithDays> destinations;
   final int totalPlannedDays;
 
   const SplitDaysScreen({
     Key? key,
+    required this.draft, // Required parameter
     required this.destinations,
     required this.totalPlannedDays,
   }) : super(key: key);
@@ -36,21 +36,18 @@ class SplitDaysScreen extends StatefulWidget {
 }
 
 class _SplitDaysScreenState extends State<SplitDaysScreen> {
-  // ─── Color Palette (using tokens from app_theme.dart) ──────
   final List<Color> _colorPalette = [
-    AppColors.green,      // teal-green
-    AppColors.accent,     // terracotta
-    AppColors.teal,       // deep teal
-    AppColors.gold,       // gold
-    AppColors.primary,    // brand green
-    AppColors.accentDark, // dark terracotta
-    AppColors.inkSoft,    // muted brown
+    AppColors.green,
+    AppColors.accent,
+    AppColors.teal,
+    AppColors.gold,
+    AppColors.primary,
+    AppColors.accentDark,
+    AppColors.inkSoft,
   ];
 
-  // ─── Map each destination ID to a color ──────────────────────
   late final Map<String, Color> _destinationColors;
 
-  // ─── Design colours (using app_theme tokens) ────────────────
   final Color _bgColor = AppColors.bg;
   final Color _subtitleColor = AppColors.inkFaint;
   final Color _textColor = AppColors.ink;
@@ -74,11 +71,9 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     return _destinationColors[id] ?? _colorPalette.first;
   }
 
-  // ─── Computed total allocated days ──────────────────────────
   int get _totalAllocated =>
       widget.destinations.fold(0, (sum, d) => sum + d.days);
 
-  // ─── Update days for a specific destination ──────────────────
   void _updateDays(int index, int change) {
     setState(() {
       int newDays = widget.destinations[index].days + change;
@@ -92,7 +87,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     });
   }
 
-  // ─── Build date range string ──────────────────────────────────
   String _buildDateRange(int index) {
     int startDay = 1;
     for (int i = 0; i < index; i++) {
@@ -103,16 +97,22 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     return "Day $startDay – Day $endDay";
   }
 
-  // ──────────────────────────────────────────────────────────────
-  // Build
-  // ──────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bgColor,
-      appBar: _buildAppBar(),
+      appBar: const WizardAppBar(
+        step: 4,
+        totalSteps: 5,
+      ),
       body: Stack(
         children: [
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child:WizardProgressBar(activeSteps: 4),
+          ),
+          const SizedBox(height: 24),
           SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
             child: Column(
@@ -127,7 +127,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                   style: AppTextStyles.sectionLabel,
                 ),
                 const SizedBox(height: 16),
-                // ─── Build cards dynamically ──────────────────
                 for (int i = 0; i < widget.destinations.length; i++)
                   _buildDestinationCard(
                     index: i,
@@ -142,7 +141,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
               ],
             ),
           ),
-          // ─── Sticky footer ──────────────────────────────────
           Positioned(
             bottom: 0,
             left: 0,
@@ -154,33 +152,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     );
   }
 
-  // ─── AppBar ───────────────────────────────────────────────────
-  PreferredSizeWidget _buildAppBar() {
-    final primaryColor = widget.destinations.isNotEmpty
-        ? _getColorForDestination(widget.destinations.first.id)
-        : AppColors.primary;
-
-    return AppBar(
-      backgroundColor: _bgColor.withOpacity(0.9),
-      elevation: 0,
-      centerTitle: true,
-      leading: IconButton(
-        icon: Icon(Icons.arrow_back, color: primaryColor),
-        onPressed: () => Navigator.maybePop(context),
-      ),
-      title: Text(
-        "STEP 4 OF 5",
-        style: AppTextStyles.labelSm.copyWith(
-          fontWeight: FontWeight.bold,
-          letterSpacing: 1.5,
-          color: _subtitleColor,
-        ),
-      ),
-      actions: const [SizedBox(width: 48)],
-    );
-  }
-
-  // ─── Header ───────────────────────────────────────────────────
   Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,7 +178,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     );
   }
 
-  // ─── Summary Card (progress bar + legend) ────────────────────
   Widget _buildSummaryCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -250,7 +220,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          // ─── Progress Bar ──────────────────────────────────
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
             child: SizedBox(
@@ -281,7 +250,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          // ─── Legend ────────────────────────────────────────
           Wrap(
             spacing: 16,
             runSpacing: 8,
@@ -332,7 +300,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     );
   }
 
-  // ─── Individual Destination Card ──────────────────────────────
   Widget _buildDestinationCard({
     required int index,
     required String title,
@@ -360,7 +327,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
         borderRadius: BorderRadius.circular(AppRadius.card),
         child: Row(
           children: [
-            // ─── Left colour strip ────────────────────────
             Container(
               width: 6,
               height: 112,
@@ -371,7 +337,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    // ─── Image ──────────────────────────────
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: SizedBox(
@@ -393,13 +358,10 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                       ),
                     ),
                     const SizedBox(width: 16),
-
-                    // ─── Info + Stepper ──────────────────────
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // ─── Destination number + name ──
                           Row(
                             children: [
                               Container(
@@ -433,8 +395,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                             ],
                           ),
                           const SizedBox(height: 6),
-
-                          // ─── Date range ───────────────────
                           Row(
                             children: [
                               Icon(
@@ -456,8 +416,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
-
-                          // ─── Day Stepper ──────────────────
                           Row(
                             children: [
                               _buildStepperBtn(
@@ -538,7 +496,49 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     );
   }
 
-  // ─── Sticky Footer ────────────────────────────────────────────
+  /// Navigates to the next screen with the updated day allocation.
+  void _onContinue() {
+    // Build a new mutable map from the current allocations
+    final allocatedDays = <String, int>{};
+    for (final dest in widget.destinations) {
+      allocatedDays[dest.name] = dest.days;
+    }
+
+    // If the draft is available (passed via widget.draft), copy it with new daySplit.
+    // Otherwise, construct a minimal draft from the available data.
+    final TripDraft updatedDraft;
+    if (widget.draft != null) {
+      // Use copyWith (immutable update) to create a new draft with the new daySplit.
+      updatedDraft = widget.draft!.copyWith(daySplit: allocatedDays);
+    } else {
+      // Fallback: build a new draft from destinations (if full Destination objects are stored)
+      // Here we assume we can reconstruct from what we have.
+      updatedDraft = TripDraft(
+        destinations: widget.destinations.map((d) {
+          // Re‑create Destination objects – you may have a better way to get them.
+          return Destination(
+            destinationId: d.id,
+            destinationName: d.name,
+            imageUrl: d.imageUrl,
+          );
+        }).toList(),
+        daySplit: allocatedDays,
+        // Copy other fields from original draft if needed; otherwise defaults.
+      );
+    }
+
+    // Navigate to the next screen (e.g., ItineraryGenerationScreen or whatever comes after split days)
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GenerationScreen(
+          draft: updatedDraft,
+          //userId: 'current_user_id_here', // replace with actual userId
+        ),
+      ),
+    );
+  }
+
   Widget _buildStickyFooter() {
     bool isComplete = _totalAllocated == widget.totalPlannedDays;
     Color accentColor = widget.destinations.isNotEmpty
@@ -570,15 +570,22 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
           shadowColor: accentColor.withOpacity(0.5),
           textStyle: AppTextStyles.button,
         ),
-        onPressed: isComplete
-            ? () {
-          // ─── Navigate to the next screen ─────────────
-          // Navigator.push(context, ...);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('All days allocated! ✅')),
-          );
-        }
-            : null,
+        onPressed: () {
+          if (!isComplete) {
+            final diff = widget.totalPlannedDays - _totalAllocated;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  diff > 0
+                      ? 'Please allocate $diff more day(s).'
+                      : 'Please remove ${diff.abs()} allocated day(s).',
+                ),
+              ),
+            );
+            return;
+          }
+          _onContinue(); // ✅ Call the new method
+        },
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

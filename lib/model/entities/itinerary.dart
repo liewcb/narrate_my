@@ -75,8 +75,7 @@ class Itinerary {
       explorationTime: explorationTime ?? this.explorationTime,
       travelPace: travelPace ?? this.travelPace,
       travelType: travelType ?? this.travelType,
-      transportationMode:
-          transportationMode ?? this.transportationMode,
+      transportationMode: transportationMode ?? this.transportationMode,
       interests: interests ?? this.interests,
       coverImageUrl: coverImageUrl ?? this.coverImageUrl,
       status: status ?? this.status,

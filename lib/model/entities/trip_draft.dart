@@ -2,6 +2,29 @@ import 'dart:math';
 import 'destination.dart';
 import 'coordinates.dart';
 
+/// Validated must-visit metadata preserved across the wizard.
+///
+/// Keyed by the stable Google `place_id` so the AI generation context and the
+/// saved `itinerary_must_visits` rows receive the real place identity (never
+/// only a name) together with its destination association and source.
+class MustVisitPlaceInfo {
+  final String placeId;
+  final String placeName;
+  final String? destinationId;
+  final String source; // 'BOOKMARK' | 'GOOGLE_SEARCH'
+  final double? latitude;
+  final double? longitude;
+
+  const MustVisitPlaceInfo({
+    required this.placeId,
+    required this.placeName,
+    this.destinationId,
+    this.source = 'GOOGLE_SEARCH',
+    this.latitude,
+    this.longitude,
+  });
+}
+
 /// Domain model for the trip-building wizard.
 ///
 /// This is the single source of truth for all user inputs across the wizard.
@@ -24,6 +47,10 @@ class TripDraft {
   // ─── Step 3: Must-visit places ───────────────────────────
   final List<String> bookmarkedPlaceIds; // from DB (public.bookmarks)
   final List<String> mustVisitPlaceIds;  // selected by user in Step 3
+
+  /// Validated must-visit metadata keyed by stable place_id (place name,
+  /// destination association, source, coordinates).
+  final Map<String, MustVisitPlaceInfo> mustVisitPlaceInfo;
 
   // ─── Step 4: Day allocations ─────────────────────────────
   final Map<String, int> daySplit; // destination name -> days allocated
@@ -50,6 +77,7 @@ class TripDraft {
     this.additionalNotes = '',
     this.bookmarkedPlaceIds = const [],
     this.mustVisitPlaceIds = const [],
+    this.mustVisitPlaceInfo = const {},
     this.daySplit = const {},
     this.destinationCoordinates = const {},
     this.tripLocation,
@@ -109,6 +137,7 @@ class TripDraft {
     String? additionalNotes,
     List<String>? bookmarkedPlaceIds,
     List<String>? mustVisitPlaceIds,
+    Map<String, MustVisitPlaceInfo>? mustVisitPlaceInfo,
     Map<String, int>? daySplit,
     Map<String, Coordinates>? destinationCoordinates,
     Coordinates? tripLocation,
@@ -126,6 +155,7 @@ class TripDraft {
       additionalNotes: additionalNotes ?? this.additionalNotes,
       bookmarkedPlaceIds: bookmarkedPlaceIds ?? this.bookmarkedPlaceIds,
       mustVisitPlaceIds: mustVisitPlaceIds ?? this.mustVisitPlaceIds,
+      mustVisitPlaceInfo: mustVisitPlaceInfo ?? this.mustVisitPlaceInfo,
       daySplit: daySplit ?? this.daySplit,
       destinationCoordinates:
           destinationCoordinates ?? this.destinationCoordinates,

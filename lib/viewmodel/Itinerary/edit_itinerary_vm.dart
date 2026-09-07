@@ -3,9 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show TimeOfDay;
 import '../../core/config/itinerary_constants.dart';
 import '../../core/services/ai_service.dart';
+import '../../core/services/google_maps_service.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/business_logic/itinerary_service/scoring_service.dart';
+import '../../model/entities/coordinates.dart';
 import '../../model/entities/place.dart';
 import '../../model/entities/weather.dart';
 import '../../view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
@@ -64,9 +66,16 @@ class EditItineraryViewModel extends ChangeNotifier {
   final String _explorationTime;
   final List<String> _mustVisitPlaceIds;
   final String _title;
+  final String _transportMode;
+  final GoogleMapsService _mapsService;
 
   List<EditableStop> _stops = [];
   String? _error;
+
+  /// Must-visit place ids that belong to THIS day (from the original schedule).
+  /// The must-visit guard is day-scoped so editing one day is never falsely
+  /// blocked by a must-visit that lives on a different day.
+  Set<String> _dayMustVisitIds = const {};
 
   EditItineraryViewModel({
     required ItineraryResult result,
@@ -75,13 +84,21 @@ class EditItineraryViewModel extends ChangeNotifier {
     required String explorationTime,
     required List<String> mustVisitPlaceIds,
     required String title,
+    String transportMode = 'walking',
+    GoogleMapsService? mapsService,
   })  : _originalResult = result,
         _dayIndex = dayIndex,
         _tripStartDate = tripStartDate,
         _explorationTime = explorationTime,
         _mustVisitPlaceIds = mustVisitPlaceIds,
-        _title = title {
+        _title = title,
+        _transportMode = transportMode,
+        _mapsService = mapsService ?? GoogleMapsService() {
     _stops = _buildStops();
+    _dayMustVisitIds = _stops
+        .where((s) => s.isMustVisit)
+        .map((s) => s.placeId)
+        .toSet();
   }
 
   // ─── Getters ────────────────────────────────────────────────
@@ -343,10 +360,46 @@ class EditItineraryViewModel extends ChangeNotifier {
     return true;
   }
 
-  bool removeStop(int index) {
-    if (index < 0 || index >= _stops.length) return false;
+  /// Removes a normal stop identified by its STABLE placeId (never by list
+  /// position alone). Returns `true` only when the removal succeeded and the
+  /// recalculated day passed validation; on any failure the previous valid
+  /// working state is restored and [error] carries a user-friendly reason.
+  ///
+  /// This is the authoritative business-rule gate — every Remove Place code
+  /// path funnels through here, so must-visit / last-stop protection cannot be
+  /// bypassed by another UI action.
+  Future<bool> removeStopByPlaceId(String placeId) async {
+    final index = _stops.indexWhere((s) => s.placeId == placeId);
+    if (index == -1) {
+      _error = 'This stop can no longer be changed. Please try again.';
+      notifyListeners();
+      return false;
+    }
+    return _removeAt(index);
+  }
+
+  /// Index-based entry point retained for compatibility; delegates to the same
+  /// guarded logic so no path skips the rules.
+  Future<bool> removeStop(int index) => _removeAt(index);
+
+  Future<bool> _removeAt(int index) async {
+    if (index < 0 || index >= _stops.length) {
+      _error = 'This stop can no longer be changed. Please try again.';
+      notifyListeners();
+      return false;
+    }
+    debugPrint('[REMOVE] day=${_dayIndex + 1} '
+        'placeId=${_stops[index].placeId} '
+        'stopsBefore=${_stops.length}');
+    // BR-REMOVE-02 — a must-visit place can never be removed.
     if (_stops[index].isMustVisit) {
-      _error = 'This place is a must-visit and cannot be removed.';
+      _error = 'Cannot remove a must-visit place';
+      notifyListeners();
+      return false;
+    }
+    // BR-REMOVE-03 — a day must keep at least one stop.
+    if (_stops.length <= 1) {
+      _error = 'Cannot remove the last stop from a day';
       notifyListeners();
       return false;
     }
@@ -357,11 +410,67 @@ class EditItineraryViewModel extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+
+    // §8 — preserve the previous valid working state before mutating.
+    final snapshot = _snapshotStops();
     _stops.removeAt(index);
+
+    // §9 — recalculate the travel time of the leg that now points into the
+    // removed stop's former successor (the only newly-adjacent pair).
+    await _recalculateTravelAround(index);
+
+    // §9 — recalculate start/end times for the selected day only.
     _rechainSchedule();
+
+    // §10 — deterministic validation; restore on failure (no partial state).
+    final errors = validate();
+    if (errors.isNotEmpty) {
+      _restoreStops(snapshot);
+      _error = errors.first;
+      notifyListeners();
+      return false;
+    }
     _error = null;
+    debugPrint('[REMOVE] committed — stopsAfter=${_stops.length} '
+        'day=${_dayIndex + 1}');
     notifyListeners();
     return true;
+  }
+
+  /// Re-routes the single affected inbound leg after a removal. The stop that
+  /// followed the removed one (now at [removedIndex]) gets a fresh travel time
+  /// from its new predecessor; if the removed stop was first, the new first
+  /// stop has no inbound travel. Uses the existing travel-time service.
+  Future<void> _recalculateTravelAround(int removedIndex) async {
+    if (_stops.isEmpty) return;
+    if (removedIndex == 0) {
+      _stops.first.travelFromPrevMinutes = 0;
+      return;
+    }
+    if (removedIndex < _stops.length) {
+      final prev = _stops[removedIndex - 1];
+      final cur = _stops[removedIndex];
+      final minutes =
+          await _travelMinutes(prev.place.coordinates, cur.place.coordinates);
+      if (minutes != null) cur.travelFromPrevMinutes = minutes;
+    }
+  }
+
+  /// Actual travel time (minutes) between two coordinates via the existing
+  /// Google Maps service. Returns null on failure so the caller keeps the
+  /// previous value rather than assuming 0.
+  Future<int?> _travelMinutes(Coordinates a, Coordinates b) async {
+    try {
+      final info = await _mapsService.getTravelTime(
+        origin: a,
+        destination: b,
+        mode: _transportMode,
+      );
+      return info.durationMinutes.ceil().clamp(0, 120);
+    } catch (e) {
+      debugPrint('[EDIT] travel recalculation failed: $e');
+      return null;
+    }
   }
 
   bool canAddCandidate(Place candidate) {
@@ -487,8 +596,8 @@ class EditItineraryViewModel extends ChangeNotifier {
     final errors = <String>[];
     debugPrint('[EDIT VALIDATION] Started');
 
-    // 1. Must-visits all present.
-    for (final mvId in _mustVisitPlaceIds) {
+    // 1. This day's must-visits all present (day-scoped guard).
+    for (final mvId in _dayMustVisitIds) {
       if (!_stops.any((s) => s.placeId == mvId)) {
         errors.add('This change removes a required must-visit place.');
         break;
@@ -605,6 +714,8 @@ class EditItineraryViewModel extends ChangeNotifier {
       clusters: _originalResult.clusters,
       unretrievableMustVisits: _originalResult.unretrievableMustVisits,
     );
+    debugPrint('[APPLY] appliedResult built — day=${_dayIndex + 1} '
+        'stops=${_stops.length} totalDays=${newDays.length}');
     _error = null;
     notifyListeners();
   }

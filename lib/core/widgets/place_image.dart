@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
-
 /// Displays a remote place photo with one consistent, reusable fallback.
 class PlaceImage extends StatelessWidget {
   static const fallbackAsset =
@@ -25,18 +23,12 @@ class PlaceImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = imageUrl?.trim();
-    final placeholder = Container(
+    final placeholder = Image.asset(
+      fallbackAsset,
       width: width,
       height: height,
-      color: const Color(0xFFF2EEE7),
-      alignment: Alignment.center,
-      child: Image.asset(
-        fallbackAsset,
-        width: 54,
-        height: 54,
-        color: AppColors.inkFaint,
-        semanticLabel: 'No image available',
-      ),
+      fit: BoxFit.cover,
+      semanticLabel: 'Sorry, no image available',
     );
 
     final image = url == null || url.isEmpty

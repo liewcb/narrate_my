@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/ai_assistant/global_ai_assistant.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/google_maps_directions_button.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
 
@@ -72,8 +73,43 @@ Future<void> showNearbyArSiteDetails(
                   color: AppColors.ink,
                   fontWeight: FontWeight.w800,
                   height: 1.12,
+                  fontSize: site.experiences.length > 1 ? 21 : null,
                 ),
               ),
+              if (site.experiences.length > 1) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 11,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF2E8),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.layers_outlined,
+                        size: 16,
+                        color: AppColors.accent,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          '${site.experiences.length} AR attractions share this exact location',
+                          style: const TextStyle(
+                            color: AppColors.accentDark,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               const ARAvailableBadge(),
               if (site.address != null) ...[
@@ -84,6 +120,15 @@ Future<void> showNearbyArSiteDetails(
                 ),
               ],
               const SizedBox(height: 22),
+              GoogleMapsDirectionsButton(
+                destinationName: site.name,
+                latitude: site.latitude,
+                longitude: site.longitude,
+                googlePlaceId: site.googlePlaceIds.isEmpty
+                    ? null
+                    : site.googlePlaceIds.first,
+              ),
+              const SizedBox(height: 16),
               ARAvailabilityPanel(
                 site: site,
                 userLocation: userLocation,

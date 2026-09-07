@@ -2,18 +2,23 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/config/api_keys.dart';
+import '../../core/services/ai_service.dart';
 import '../../core/services/database_manager.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/business_logic/itinerary_service/itinerary_generation_status.dart';
+import '../../model/business_logic/itinerary_service/itinerary_regeneration_service.dart';
+import '../../model/entities/coordinates.dart';
 import '../../model/entities/itinerary.dart';
 import '../../model/entities/itinerary_destination.dart';
 import '../../model/entities/itinerary_must_visit.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
 import '../../model/entities/trip_draft.dart';
+import '../../model/entities/weather.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 
 class ItineraryFinalViewModel extends ChangeNotifier {
-  final ItineraryResult _result;
+  ItineraryResult _result;
   final String _title;
   final String? _itineraryId;
   final String _explorationTime;
@@ -22,7 +27,7 @@ class ItineraryFinalViewModel extends ChangeNotifier {
   final Future<void> Function()? _regenerateRequest;
   final Future<ItineraryResult> Function()? _regenerateAlternatives;
   final String _userId;
-  final TripDraft? _draft;
+  final TripDraft? _draft;  // final – cannot be reassigned
 
   String? _savedItineraryId;
 
@@ -35,6 +40,10 @@ class ItineraryFinalViewModel extends ChangeNotifier {
   String? _saveMessage;
   int _selectedDayIndex = 0;
 
+  // NEW: track unsaved changes
+  bool _hasUnsavedChanges = false;
+  final ItineraryRegenerationService _regenerationService;
+
   ItineraryFinalViewModel({
     required ItineraryResult result,
     required String title,
@@ -44,8 +53,9 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     required DateTime tripStartDate,
     Future<void> Function()? regenerateRequest,
     Future<ItineraryResult> Function()? regenerateAlternatives,
-    String userId = '',
+    String userId = '252f0924-192c-42fe-8643-881da7bbf285',
     TripDraft? draft,
+    ItineraryRegenerationService? regenerationService, // 👈 Optional parameter for dependency injection
   })  : _result = result,
         _title = title,
         _itineraryId = itineraryId,
@@ -56,7 +66,7 @@ class ItineraryFinalViewModel extends ChangeNotifier {
         _regenerateAlternatives = regenerateAlternatives,
         _userId = userId,
         _draft = draft,
-        _savedItineraryId = null;
+        _regenerationService = regenerationService ?? ItineraryRegenerationService();
 
   // ─── Getters ────────────────────────────────────────────────
 
@@ -77,6 +87,22 @@ class ItineraryFinalViewModel extends ChangeNotifier {
   String? get saveMessage => _saveMessage;
   int get selectedDayIndex => _selectedDayIndex;
   bool get isSaveInProgress => _isSaving;
+
+  bool _isProcessing = false;
+  bool get isProcessing => _isProcessing;
+  set isProcessing(bool value) {
+    _isProcessing = value;
+    notifyListeners();
+  }
+
+  // Determine if there are unsaved changes (compare draft with saved version)
+  bool get hasUnsavedChanges {
+    // If there's no saved itineraryId, we treat it as "unsaved draft"
+    if (itineraryId == null) return true;
+
+    // Otherwise, use the flag set on edits
+    return _hasUnsavedChanges;
+  }
 
   /// The ID of the persisted itinerary (available after a successful save).
   String? get savedItineraryId => _savedItineraryId;
@@ -170,18 +196,24 @@ class ItineraryFinalViewModel extends ChangeNotifier {
   }
 
   Future<void> regenerate() async {
-    if (_regenerateRequest == null || _isRegenerating) return;
     _isRegenerating = true;
-    _errorMessage = null;
+    _saveMessage = null; // Clear previous messages
     notifyListeners();
 
     try {
-      await _regenerateRequest!();
-      // After regeneration, the parent should rebuild with new result.
-      // We assume the parent screen updates the result via callback.
+      final result = await _regenerationService.regenerate(
+        current: _result,
+        request: _draft!,
+      );
+
+      if (identical(result, _result) || result == _result) {
+        _saveMessage = "Could not generate a better alternative. Retained original plan.";
+      } else {
+        _result = result;
+        _saveMessage = "Itinerary updated with new places!";
+      }
     } catch (e) {
-      _errorMessage = 'Regeneration failed. Please try again.';
-      debugPrint('[Regeneration] Error: $e');
+      _saveMessage = "Regeneration failed: ${e.toString()}";
     } finally {
       _isRegenerating = false;
       notifyListeners();
@@ -209,12 +241,15 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     try {
       await _persistResult(_result);
       _isSaved = true;
+      _hasUnsavedChanges = false;
       _saveMessage = 'Itinerary saved successfully!';
+      debugPrint('[FINAL] database save SUCCESS — itineraryId=$_savedItineraryId');
       _isSaving = false;
       notifyListeners();
       return true;
     } catch (e) {
       debugPrint('[Save] Exception: $e');
+      debugPrint('[FINAL] database save FAILED — working state preserved');
       _isSaved = false;
       _saveMessage = 'Unable to save itinerary. Please try again.';
       _isSaving = false;
@@ -223,18 +258,104 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     }
   }
 
-  /// The wizard draft is tracked in-memory by the wizard ViewModels; there
-  /// is nothing left to clear here. Kept as a no-op so existing save/discard
-  /// flows are unchanged.
-  Future<void> clearDraft() async {}
+  /// Clears the draft state (memory only). Since _draft is final,
+  /// we simply reset the unsaved changes flag.
+  Future<void> clearDraft() async {
+    // Reset the unsaved changes flag; the draft reference will be
+    // released when the ViewModel is disposed (screen is popped).
+    _hasUnsavedChanges = false;
+    notifyListeners();
+    debugPrint('Draft cleared from memory.');
+  }
 
-  /// Called when the user edits the itinerary from the edit screen.
+  /// Called when the user edits the itinerary from the edit screen
+  /// (Remove / Reorder / Duration / Replace). The edit screen returns a full
+  /// [ItineraryResult] whose selected day already reflects the change; we must
+  /// adopt it as the new working state so the later Save persists the edit
+  /// (e.g. a removed stop actually disappears from itinerary_stops).
   void updateResult(ItineraryResult newResult) {
-    // Since the result is final, we can't reassign it. Instead we notify
-    // the parent screen to rebuild with new result. The parent screen
-    // should pass the new result back via a callback or route result.
-    // For simplicity, we just notify that the result changed; the parent
-    // screen will handle it via the Navigator result.
+    final beforeDays = _result.scheduledDays?.length ?? 0;
+    final beforeStops = _result.scheduledDays
+            ?.fold<int>(0, (sum, d) => sum + d.stops.length) ??
+        0;
+    _result = newResult;
+    _hasUnsavedChanges = true; // mark that we have unsaved edits
+
+    final afterDays = _result.scheduledDays?.length ?? 0;
+    final afterStops = _result.scheduledDays
+            ?.fold<int>(0, (sum, d) => sum + d.stops.length) ??
+        0;
+    debugPrint('[WORKING STATE] updateResult applied — '
+        'days $beforeDays→$afterDays, stops $beforeStops→$afterStops');
+    notifyListeners();
+  }
+
+  // ─── Add Place (preview working state) ───────────────────────
+
+  /// Every place_id currently scheduled across ALL days — used by Add Place
+  /// for whole-itinerary duplicate detection.
+  Set<String> get allPlaceIds {
+    final ids = <String>{};
+    for (final day in (_result.scheduledDays ?? const <ScheduledDay>[])) {
+      for (final stop in day.stops) {
+        ids.add(stop.attraction.place.placeId);
+      }
+    }
+    return ids;
+  }
+
+  /// Geographic centre of a day (centroid of its stops), falling back to the
+  /// draft's primary coordinates. Used as the Add Place destination reference.
+  Coordinates? destinationCenterForDay(int dayIndex) {
+    final days = _result.scheduledDays;
+    if (days != null && dayIndex >= 0 && dayIndex < days.length) {
+      final stops = days[dayIndex].stops;
+      if (stops.isNotEmpty) {
+        double lat = 0, lng = 0;
+        for (final s in stops) {
+          lat += s.attraction.place.placeLatitude;
+          lng += s.attraction.place.placeLongitude;
+        }
+        return Coordinates(
+          latitude: lat / stops.length,
+          longitude: lng / stops.length,
+        );
+      }
+    }
+    return _draft?.primaryCoordinates;
+  }
+
+  /// Replaces ONLY the selected day in the working itinerary with the
+  /// validated, AI-positioned [updatedDay]. Every other day, the candidate
+  /// pool, registry, clusters and must-visits are preserved untouched. The
+  /// database is NOT modified — persistence still happens on Save.
+  void applyDayUpdate(int dayIndex, ScheduledDay updatedDay) {
+    _hasUnsavedChanges = true; // mark that we have unsaved edits
+    final days = _result.scheduledDays;
+    if (days == null || dayIndex < 0 || dayIndex >= days.length) return;
+
+    final newDays = List<ScheduledDay>.from(days);
+    newDays[dayIndex] = updatedDay;
+
+    _result = ItineraryResult.success(
+      scheduledDays: newDays,
+      weather: _result.weather ?? WeatherForecast(daily: []),
+      criticFeedback: _result.criticFeedback ??
+          const CriticResult(
+            overallSuitable: true,
+            score: 0,
+            issues: [],
+            recommendations: [],
+            summary: '',
+          ),
+      status: _result.status ?? ItineraryGenerationStatus.success,
+      warnings: _result.warnings,
+      candidatePool: _result.candidatePool,
+      placeRegistry: _result.placeRegistry,
+      scoredCandidates: _result.scoredCandidates,
+      clusters: _result.clusters,
+      unretrievableMustVisits: _result.unretrievableMustVisits,
+    );
     notifyListeners();
   }
 
@@ -302,9 +423,9 @@ class ItineraryFinalViewModel extends ChangeNotifier {
           durationMinutes: scheduledStop.durationMinutes,
           travelFromPrevMinutes: i > 0
               ? scheduledStop.startTime
-                  .difference(day.stops[i - 1].endTime)
-                  .inMinutes
-                  .abs()
+              .difference(day.stops[i - 1].endTime)
+              .inMinutes
+              .abs()
               : 0,
           stopStatus: 'PLANNED',
           createdAt: now,
@@ -314,6 +435,9 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     }
 
     await stopRepo.saveStops(stops);
+    debugPrint('[PERSISTENCE] itineraryId=${saved.itineraryId} '
+        'inserting ${stops.length} stops '
+        '(per-day: ${scheduledDays.map((d) => 'D${d.dayIndex + 1}=${d.stops.length}').join(', ')})');
     debugPrint('[FINAL SAVE] Saved ${stops.length} stops for '
         '${saved.itineraryId}');
 
@@ -323,7 +447,7 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     final destIdByName = <String, String>{};
     try {
       final allDest =
-          await DatabaseManager().destinationRepository.getAllDestinations();
+      await DatabaseManager().destinationRepository.getAllDestinations();
       for (final d in allDest) {
         destIdByName[d.destinationName.trim().toLowerCase()] = d.destinationId;
       }
@@ -334,9 +458,9 @@ class ItineraryFinalViewModel extends ChangeNotifier {
       final destId = destIdByName[destName.trim().toLowerCase()] ?? destName;
       final allocated = _draft?.daySplit[destName] ??
           (scheduledDays.length /
-                  (_draft?.destinations.isEmpty ?? true
-                      ? 1
-                      : _draft!.destinations.length))
+              (_draft?.destinations.isEmpty ?? true
+                  ? 1
+                  : _draft!.destinations.length))
               .ceil();
       try {
         await destRepo.addDestination(ItineraryDestination(
@@ -351,10 +475,14 @@ class ItineraryFinalViewModel extends ChangeNotifier {
       }
     }
 
-    // Persist must-visits (itinerary_must_visits).
+    // Persist must-visits (itinerary_must_visits). Each row keeps the
+    // validated place identity (stable place_id), display name, destination
+    // association and selection source preserved by Step 3.
     final mustVisitRepo = DatabaseManager().itineraryMustVisitRepository;
     for (final mvId in _mustVisitPlaceIds) {
-      final mvName = generated.placeRegistry?.byId(mvId)?.placeName ??
+      final meta = _draft?.mustVisitPlaceInfo[mvId];
+      final mvName = meta?.placeName ??
+          generated.placeRegistry?.byId(mvId)?.placeName ??
           'Must visit $mvId';
       try {
         await mustVisitRepo.addMustVisit(ItineraryMustVisit(
@@ -362,7 +490,8 @@ class ItineraryFinalViewModel extends ChangeNotifier {
           itineraryId: saved.itineraryId,
           placeId: mvId,
           placeName: mvName,
-          source: 'GOOGLE_SEARCH',
+          destinationId: meta?.destinationId,
+          source: meta?.source ?? 'GOOGLE_SEARCH',
           isVerified: true,
           createdAt: now,
         ));

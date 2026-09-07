@@ -19,7 +19,7 @@ class ManageDisplayPlanScreen extends StatefulWidget {
   final String itineraryId;
 
   const ManageDisplayPlanScreen({Key? key, required this.itineraryId})
-      : super(key: key);
+    : super(key: key);
 
   @override
   State<ManageDisplayPlanScreen> createState() =>
@@ -120,11 +120,8 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     final itinerary = _viewModel.itinerary;
     if (itinerary == null) return;
 
-    final availableDays = _viewModel.stops
-        .map((s) => s.dayIndex)
-        .toSet()
-        .toList()
-      ..sort();
+    final availableDays =
+        _viewModel.stops.map((s) => s.dayIndex).toSet().toList()..sort();
 
     final changed = await Navigator.push<bool>(
       context,
@@ -153,9 +150,8 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     final selectedIds = await Navigator.push<List<String>>(
       context,
       MaterialPageRoute(
-        builder: (_) => AddFromBookmarksScreen(
-          userId: _viewModel.itinerary?.userId ?? '',
-        ),
+        builder: (_) =>
+            AddFromBookmarksScreen(userId: _viewModel.itinerary?.userId ?? ''),
       ),
     );
 
@@ -165,9 +161,9 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
         placeIds: selectedIds,
       );
       if (added > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added $added bookmark(s).')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Added $added bookmark(s).')));
         await _viewModel.load();
       }
     }
@@ -195,7 +191,8 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
 
   WizardPlace _toWizardPlace(ItineraryStop stop) {
     final place = stop.place ?? Place.empty(stop.placeId);
-    final type = place.placeCategory ??
+    final type =
+        place.placeCategory ??
         (place.placeTypes.isNotEmpty ? place.placeTypes.first : 'Attraction');
     final travelMinutes = stop.travelFromPrevMinutes;
 
@@ -262,7 +259,8 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
 
         // Update available days and selected day
         _availableDays = stops.map((s) => s.dayIndex).toSet().toList()..sort();
-        if (_availableDays.isNotEmpty && !_availableDays.contains(_selectedMapDayIndex)) {
+        if (_availableDays.isNotEmpty &&
+            !_availableDays.contains(_selectedMapDayIndex)) {
           _selectedMapDayIndex = _availableDays.first;
         }
 
@@ -356,7 +354,8 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     final cards = <Widget>[];
 
     for (final dayIndex in days) {
-      final stops = grouped[dayIndex]!..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+      final stops = grouped[dayIndex]!
+        ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
       final date = itinerary?.startDate.add(Duration(days: dayIndex - 1));
       final dayTitle = 'Day $dayIndex';
       final dayMeta = date != null
@@ -419,12 +418,7 @@ class _HeroSection extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                title,
-                style: AppTextStyles.pageTitle,
-              ),
-            ),
+            Expanded(child: Text(title, style: AppTextStyles.pageTitle)),
             const SizedBox(width: 8.0),
             _StatusBadge(status: status),
           ],
@@ -455,18 +449,22 @@ class _StatusBadge extends StatelessWidget {
 
     switch (status) {
       case ItineraryTemporalStatus.past:
-        bgColor = AppColors.surface2;
-        fgColor = AppColors.inkFaint;
+        bgColor = Colors.orange.shade100;
+        fgColor = Colors.deepOrange.shade900;
         icon = Icons.history;
         label = 'Past';
         break;
       case ItineraryTemporalStatus.ongoing:
-        label = 'Ongoing';
+        bgColor = Colors.green.shade600;
+        fgColor = Colors.white;
         icon = Icons.play_circle_outline;
+        label = 'Ongoing';
         break;
       case ItineraryTemporalStatus.upcoming:
-        label = 'Upcoming';
+        bgColor = Colors.yellow.shade400;
+        fgColor = Colors.red.shade800;
         icon = Icons.event_available;
+        label = 'Upcoming';
         break;
     }
 
@@ -566,28 +564,39 @@ class _MapCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stopsForDay = stops
-        .where((s) => s.dayIndex == dayIndex)
-        .toList()
+    final stopsForDay = stops.where((s) => s.dayIndex == dayIndex).toList()
       ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
 
     final validStops = _MappableStop.fromStops(stopsForDay);
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppRadius.card),
-      child: Container(
-        height: 180,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
-        ),
+    // Grab the screen height to make the map responsive
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Container(
+      // ✅ INCREASED HEIGHT: Uses 35% of the screen height, with a minimum of 280 pixels
+      height: (screenHeight * 0.35).clamp(280.0, 400.0),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
+        // Added a subtle shadow to make the map stand out from the background
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            offset: Offset(0, 4),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.card),
         child: validStops.isEmpty
             ? _EmptyMapState(dayIndex: dayIndex)
             : _DayMapWidget(
-          stops: validStops,
-          dayIndex: dayIndex,
-          onStopTap: onStopTap,
-        ),
+                stops: validStops,
+                dayIndex: dayIndex,
+                onStopTap: onStopTap,
+              ),
       ),
     );
   }
@@ -688,10 +697,7 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
 
   maps.CameraPosition _initialCameraPosition() {
     if (widget.stops.isEmpty) {
-      return const maps.CameraPosition(
-        target: maps.LatLng(0, 0),
-        zoom: 1,
-      );
+      return const maps.CameraPosition(target: maps.LatLng(0, 0), zoom: 1);
     }
     return maps.CameraPosition(
       target: maps.LatLng(
@@ -713,7 +719,7 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
         infoWindow: maps.InfoWindow(
           title: item.stop.place?.name ?? item.stop.placeId,
           snippet:
-          'Day ${widget.dayIndex} • Stop ${item.stop.stopOrder}\n${_formattedTime(item.stop)}',
+              'Day ${widget.dayIndex} • Stop ${item.stop.stopOrder}\n${_formattedTime(item.stop)}',
         ),
         onTap: () => widget.onStopTap(item.stop),
       );
@@ -741,7 +747,10 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
     if (widget.stops.length == 1) {
       controller.animateCamera(
         maps.CameraUpdate.newLatLngZoom(
-          maps.LatLng(widget.stops.first.latitude, widget.stops.first.longitude),
+          maps.LatLng(
+            widget.stops.first.latitude,
+            widget.stops.first.longitude,
+          ),
           14,
         ),
       );
@@ -773,7 +782,7 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
 
   String _formattedTime(ItineraryStop stop) =>
       '${DateFormat('HH:mm').format(stop.startTime)} – '
-          '${DateFormat('HH:mm').format(stop.endTime)}';
+      '${DateFormat('HH:mm').format(stop.endTime)}';
 }
 
 /// A stop with valid, mappable coordinates.
@@ -796,11 +805,7 @@ class _MappableStop {
       final lat = place.placeLatitude;
       final lng = place.placeLongitude;
       if (lat == 0 && lng == 0) continue; // Place.empty placeholder
-      result.add(_MappableStop(
-        stop: stop,
-        latitude: lat,
-        longitude: lng,
-      ));
+      result.add(_MappableStop(stop: stop, latitude: lat, longitude: lng));
     }
     return result;
   }
@@ -893,22 +898,22 @@ class _DayCard extends StatelessWidget {
             ],
           ),
         ),
-        if (canEdit)
-          OutlinedButton.icon(
-            onPressed: onEditDay,
-            icon: const Icon(Icons.edit_outlined, size: 16),
-            label: const Text('Edit Plan'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.accent,
-              side: BorderSide(color: AppColors.accent.withOpacity(0.5)),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-              ),
-            ),
-          ),
+        // if (canEdit)
+        // OutlinedButton.icon(
+        //   onPressed: onEditDay,
+        //   icon: const Icon(Icons.edit_outlined, size: 16),
+        //   label: const Text('Edit Plan'),
+        //   style: OutlinedButton.styleFrom(
+        //     foregroundColor: AppColors.accent,
+        //     side: BorderSide(color: AppColors.accent.withOpacity(0.5)),
+        //     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        //     minimumSize: Size.zero,
+        //     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        //     shape: RoundedRectangleBorder(
+        //       borderRadius: BorderRadius.circular(AppRadius.pill),
+        //     ),
+        //   ),
+        // ),
       ],
     );
   }
@@ -963,7 +968,11 @@ class _DayCard extends StatelessWidget {
                     border: Border.all(color: AppColors.accent, width: 2),
                     color: AppColors.surface,
                   ),
-                  child: const Icon(Icons.add, size: 18, color: AppColors.accent),
+                  child: const Icon(
+                    Icons.add,
+                    size: 18,
+                    color: AppColors.accent,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -972,36 +981,6 @@ class _DayCard extends StatelessWidget {
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: AppColors.accent,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 6.0),
-        GestureDetector(
-          onTap: () => onAddBookmarks(dayIndex),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6.0),
-            child: Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.green, width: 2),
-                    color: AppColors.surface,
-                  ),
-                  child: const Icon(Icons.bookmark_add_outlined, size: 16, color: AppColors.green),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Add from bookmarks to ${dayTitle.toLowerCase()}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.green,
                   ),
                 ),
               ],
@@ -1053,7 +1032,9 @@ class _StopItem extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.moduleBorder.withOpacity(0.8)),
+                    border: Border.all(
+                      color: AppColors.moduleBorder.withOpacity(0.8),
+                    ),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x08000000),

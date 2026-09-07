@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/config/app_config.dart';
@@ -12,6 +15,10 @@ import '../../model/repositories/interfaces/ar_site_repository.dart';
 import '../../model/repositories/interfaces/recommendation_repository.dart';
 
 class NearbyRecommendationVm extends ChangeNotifier {
+  /// REQ_401_9: moving farther than this from the location used for the
+  /// current recommendation set triggers a fresh remote recommendation.
+  static const double automaticRefreshDistanceKm = 0.5;
+
   final RecommendationRepository _repository;
   final ARSiteRepository _arSiteRepository;
   final LocationService _locationService;
@@ -34,6 +41,10 @@ class NearbyRecommendationVm extends ChangeNotifier {
   Coordinates? _currentLocation;
   bool _hasLocationPermission = false;
   String? _arSitesErrorMessage;
+  Coordinates? _recommendationsLocation;
+  Coordinates? _queuedMovedLocation;
+  StreamSubscription<Position>? _positionSubscription;
+  bool _isDisposed = false;
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -44,7 +55,15 @@ class NearbyRecommendationVm extends ChangeNotifier {
   bool get hasLocationPermission => _hasLocationPermission;
   String? get arSitesErrorMessage => _arSitesErrorMessage;
 
-  Future<void> loadRecommendations({bool forceRefresh = false}) async {
+  Future<void> loadRecommendations({bool forceRefresh = false}) {
+    return _loadRecommendations(forceRefresh: forceRefresh);
+  }
+
+  Future<void> _loadRecommendations({
+    required bool forceRefresh,
+    Coordinates? locationOverride,
+  }) async {
+    if (_isLoading) return;
     _isLoading = true;
     _errorMessage = null;
     _arSitesErrorMessage = null;
@@ -68,22 +87,32 @@ class NearbyRecommendationVm extends ChangeNotifier {
         );
       }
 
-      final position = await _locationService.getCurrentPosition();
-      _currentLocation = Coordinates(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
+      final Coordinates location;
+      if (locationOverride != null) {
+        location = locationOverride;
+      } else {
+        final position = await _locationService.getCurrentPosition();
+        location = Coordinates(
+          latitude: position.latitude,
+          longitude: position.longitude,
+        );
+      }
+      _currentLocation = location;
+      _startLocationMonitoring();
 
       _recommendations = await _repository.getNearbyRecommendations(
-        latitude: position.latitude,
-        longitude: position.longitude,
+        latitude: location.latitude,
+        longitude: location.longitude,
         forceRefresh: forceRefresh,
       );
+      // The movement threshold is always measured from the position that
+      // produced the latest successful recommendation list.
+      _recommendationsLocation = location;
 
       try {
         _arSites = await _arSiteRepository.getNearbySites(
-          latitude: position.latitude,
-          longitude: position.longitude,
+          latitude: location.latitude,
+          longitude: location.longitude,
           radiusMeters: AppConfig.nearbyArSiteRadiusMeters,
         );
       } catch (error) {
@@ -104,12 +133,85 @@ class NearbyRecommendationVm extends ChangeNotifier {
           : 'Unable to load nearby attractions. Please try again.';
     } finally {
       _isLoading = false;
-      notifyListeners();
+      _notifyIfActive();
+
+      final queuedLocation = _queuedMovedLocation;
+      _queuedMovedLocation = null;
+      final baseline = _recommendationsLocation;
+      if (!_isDisposed &&
+          queuedLocation != null &&
+          baseline != null &&
+          movedBeyondRefreshThreshold(baseline, queuedLocation)) {
+        unawaited(
+          _loadRecommendations(
+            forceRefresh: true,
+            locationOverride: queuedLocation,
+          ),
+        );
+      }
     }
   }
 
   Future<void> refreshRecommendations() =>
       loadRecommendations(forceRefresh: true);
+
+  void _startLocationMonitoring() {
+    if (_positionSubscription != null || _isDisposed) return;
+    _positionSubscription = _locationService
+        .watchPosition(distanceFilterMeters: 100)
+        .listen(_handlePositionUpdate, onError: _handlePositionStreamError);
+  }
+
+  void _handlePositionUpdate(Position position) {
+    if (_isDisposed) return;
+    final nextLocation = Coordinates(
+      latitude: position.latitude,
+      longitude: position.longitude,
+    );
+    _currentLocation = nextLocation;
+    _notifyIfActive();
+
+    final baseline = _recommendationsLocation;
+    if (baseline == null ||
+        !movedBeyondRefreshThreshold(baseline, nextLocation)) {
+      return;
+    }
+
+    if (_isLoading) {
+      _queuedMovedLocation = nextLocation;
+      return;
+    }
+
+    unawaited(
+      _loadRecommendations(forceRefresh: true, locationOverride: nextLocation),
+    );
+  }
+
+  void _handlePositionStreamError(Object error, StackTrace stackTrace) {
+    // A temporary live-location failure should not hide recommendations that
+    // were already loaded. Manual refresh remains available.
+    debugPrint('Unable to monitor recommendation location changes: $error');
+  }
+
+  @visibleForTesting
+  static bool movedBeyondRefreshThreshold(
+    Coordinates previous,
+    Coordinates current,
+  ) {
+    return previous.distanceTo(current) > automaticRefreshDistanceKm;
+  }
+
+  void _notifyIfActive() {
+    if (!_isDisposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    unawaited(_positionSubscription?.cancel());
+    _positionSubscription = null;
+    super.dispose();
+  }
 }
 
 class _NearbyLocationException implements Exception {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/ai_assistant/global_ai_assistant.dart';
+import '../../../../core/widgets/google_maps_directions_button.dart';
 import '../../../../core/widgets/place_image.dart';
 import '../../../../model/entities/ar_recommendation.dart';
 import '../../../../viewmodel/ar/ar_recommendation_vm.dart';
@@ -270,9 +271,9 @@ class _ARRecommendationCardState extends State<_ARRecommendationCard> {
   }
 
   void _selectAndToggle() {
-    context
-        .read<GlobalAiAssistantController>()
-        .selectArRecommendation(widget.recommendation);
+    context.read<GlobalAiAssistantController>().selectArRecommendation(
+      widget.recommendation,
+    );
     widget.onToggle();
   }
 
@@ -304,17 +305,11 @@ class _ARRecommendationCardState extends State<_ARRecommendationCard> {
               padding: const EdgeInsets.all(13),
               child: Row(
                 children: [
-                  Container(
+                  PlaceImage(
+                    imageUrl: recommendation.imageUrl,
                     width: 50,
                     height: 50,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1D4B8),
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: const Icon(
-                      Icons.shield_outlined,
-                      color: Color(0xFFD56E2E),
-                    ),
+                    borderRadius: BorderRadius.circular(13),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -462,6 +457,13 @@ class _ExpandedRecommendation extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
+          GoogleMapsDirectionsButton(
+            destinationName: recommendation.name,
+            latitude: recommendation.latitude,
+            longitude: recommendation.longitude,
+            googlePlaceId: recommendation.googleMapsPlaceId,
+          ),
+          const SizedBox(height: 10),
           ListenableBuilder(
             listenable: bookmarkVm,
             builder: (context, _) {

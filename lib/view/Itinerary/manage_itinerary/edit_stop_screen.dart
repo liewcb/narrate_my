@@ -9,6 +9,8 @@ import '../../../core/config/api_keys.dart';
 import '../../../core/services/google_maps_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_confirmation_dialog.dart';
+// ✅ ADDED: Database Manager import for fetching bookmarks
+import '../../../core/services/database_manager.dart';
 import '../../../model/business_logic/itinerary_service/change_location_service.dart';
 import '../../../model/entities/itinerary_stop.dart';
 import '../../../model/entities/place.dart';
@@ -26,12 +28,15 @@ class EditStopScreen extends StatefulWidget {
   final ItineraryStop stop;
   final DateTime itineraryStartDate;
   final bool isReadOnly;
+  // ✅ ADDED: userId for fetching the user's specific bookmarks
+  final String userId;
 
   const EditStopScreen({
     Key? key,
     required this.stop,
     required this.itineraryStartDate,
     this.isReadOnly = false,
+    this.userId = '252f0924-192c-42fe-8643-881da7bbf285', // Match final screen fallback
   }) : super(key: key);
 
   @override
@@ -464,10 +469,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  /// Opens the Change Location flow:
-  ///   editability check → AI recommendations (+ existing manual search) →
-  ///   tap a place → existing ViewPlaceDetailScreen → "Use This Place" →
-  ///   final validation → replacement → recalculation → save.
+  /// Opens the Change Location flow
   Future<void> _openLocationSearch() async {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
@@ -476,7 +478,11 @@ class _EditStopScreenState extends State<EditStopScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _ChangeLocationSheet(stop: _viewModel.stop),
+      // ✅ PASSED: the userId into the newly updated BottomSheet
+      builder: (_) => _ChangeLocationSheet(
+        stop: _viewModel.stop,
+        userId: widget.userId,
+      ),
     );
     if (confirmed == true && mounted) {
       _hasChanges = true;
@@ -489,8 +495,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
   Widget _buildTimeAndDuration() {
     final timeFormat = DateFormat('hh:mm a');
 
-    final editedStart = _viewModel.editedStartTime;
-    final editedEnd = _viewModel.editedEndTime;
     final readOnly = _viewModel.isReadOnly;
 
     return Column(
@@ -663,7 +667,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
                 )
               else if (options.isEmpty)
               // No available end times – show a message
-                Text(
+                const Text(
                   'No available end times',
                   style: TextStyle(
                     color: AppColors.inkFaint,
@@ -1236,13 +1240,13 @@ class _EditStopScreenState extends State<EditStopScreen> {
 
 // ═══════════════════════════════════════════════════════════════════════
 //  CHANGE LOCATION SHEET
-//  (unchanged – full implementation below)
 // ═══════════════════════════════════════════════════════════════════════
 
 class _ChangeLocationSheet extends StatefulWidget {
   final ItineraryStop stop;
+  final String userId;
 
-  const _ChangeLocationSheet({required this.stop});
+  const _ChangeLocationSheet({required this.stop, required this.userId});
 
   @override
   State<_ChangeLocationSheet> createState() => _ChangeLocationSheetState();
@@ -1257,11 +1261,37 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
   bool _isSearching = false;
   String? _searchError;
 
+  // ✅ ADDED: State for fetching and displaying bookmarks directly in the sheet
+  List<Place> _bookmarks = [];
+  bool _isLoadingBookmarks = true;
+  String? _bookmarksError;
+
   @override
   void initState() {
     super.initState();
     _vm = ChangeLocationViewModel(stop: widget.stop);
     _vm.loadRecommendations();
+    _loadBookmarks();
+  }
+
+  Future<void> _loadBookmarks() async {
+    try {
+      final repo = DatabaseManager().bookmarkRepository;
+      final dtos = await repo.getBookmarksWithPlaces(widget.userId);
+      if (mounted) {
+        setState(() {
+          _bookmarks = dtos.map((d) => d.place).toList();
+          _isLoadingBookmarks = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _bookmarksError = 'Could not load bookmarks.';
+          _isLoadingBookmarks = false;
+        });
+      }
+    }
   }
 
   @override
@@ -1328,226 +1358,283 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 16,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.moduleBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Change Location',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.ink,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            ListenableBuilder(
-              listenable: _vm,
-              builder: (context, _) {
-                if (_vm.isLoadingRecommendations) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Finding recommended places...',
-                          style: TextStyle(
-                              fontSize: 14, color: AppColors.inkFaint),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                if (_vm.problemMessage != null) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.info_outline,
-                            size: 20, color: AppColors.error),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _vm.problemMessage!,
-                            style: const TextStyle(
-                                fontSize: 14, color: AppColors.ink),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                if (_vm.recommendations.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-
-                return _buildRecommendations();
-              },
-            ),
-
-            const Text(
-              'SEARCH MANUALLY',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
-                color: AppColors.inkFaint,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _queryController,
-              textInputAction: TextInputAction.search,
-              onSubmitted: _search,
-              decoration: InputDecoration(
-                hintText: 'Search restaurants or attractions...',
-                hintStyle: const TextStyle(color: AppColors.inkFaint),
-                prefixIcon: const Icon(Icons.search, color: AppColors.inkFaint),
-                suffixIcon: _queryController.text.isNotEmpty
-                    ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    _queryController.clear();
-                    _search('');
-                  },
-                )
-                    : null,
-                filled: true,
-                fillColor: AppColors.bg,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.moduleBorder),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.moduleBorder),
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 12),
-            if (_isSearching)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_searchError != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text(
-                  _searchError!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: AppColors.inkFaint,
+    // ✅ EXTENDED: Make the bottom sheet 90% of the screen height
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.90,
+      decoration: const BoxDecoration(
+        color: AppColors.bg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.moduleBorder,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              )
-            else if (_results.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'Or pick one of the recommendations above.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
-                  ),
-                )
-              else
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.4,
-                  ),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _results.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final place = _results[index];
-                      return _LocationResultTile(
-                        place: place,
-                        onTap: () => _openPlaceDetail(place),
-                      );
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Change Location',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ✅ REORDERED: Search bar is now pinned to the top of the taller sheet
+              const Text(
+                'SEARCH MANUALLY',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: AppColors.inkFaint,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _queryController,
+                textInputAction: TextInputAction.search,
+                onSubmitted: _search,
+                decoration: InputDecoration(
+                  hintText: 'Search restaurants or attractions...',
+                  hintStyle: const TextStyle(color: AppColors.inkFaint),
+                  prefixIcon: const Icon(Icons.search, color: AppColors.inkFaint),
+                  suffixIcon: _queryController.text.isNotEmpty
+                      ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      _queryController.clear();
+                      _search('');
                     },
+                  )
+                      : null,
+                  filled: true,
+                  fillColor: AppColors.surface,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.moduleBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.moduleBorder),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+
+              // ✅ NEW: A massive scrollable area for Recommendations, Bookmarks, and Search Results
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_isSearching)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (_searchError != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Text(
+                            _searchError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppColors.inkFaint,
+                            ),
+                          ),
+                        )
+                      else if (_results.isNotEmpty)
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _results.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final place = _results[index];
+                              return _LocationResultTile(
+                                place: place,
+                                onTap: () => _openPlaceDetail(place),
+                              );
+                            },
+                          )
+                        else ...[
+                            // Show Recommendations and Bookmarks when the user is not actively searching
+                            _buildRecommendationsSection(),
+                            _buildBookmarksSection(),
+                          ]
+                    ],
                   ),
                 ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildRecommendations() {
-    final recommendations = _vm.recommendations;
+  Widget _buildRecommendationsSection() {
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) {
+        if (_vm.isLoadingRecommendations) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 12),
+                Text(
+                  'Finding recommended places...',
+                  style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (_vm.problemMessage != null) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline, size: 20, color: AppColors.error),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _vm.problemMessage!,
+                    style: const TextStyle(fontSize: 14, color: AppColors.ink),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (_vm.recommendations.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, size: 14, color: AppColors.accent),
+                const SizedBox(width: 6),
+                Text(
+                  'RECOMMENDED FOR YOU${_vm.usedFallback ? ' (NEARBY)' : ''}',
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                    color: AppColors.inkFaint,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _vm.recommendations.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final rec = _vm.recommendations[index];
+                return _RecommendationCard(
+                  recommendation: rec,
+                  onTap: () => _openPlaceDetail(rec.place),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+          ],
+        );
+      },
+    );
+  }
+
+  // ✅ ADDED: Renders the user's saved bookmarks directly below the AI recommendations
+  Widget _buildBookmarksSection() {
+    if (_isLoadingBookmarks) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Icon(Icons.auto_awesome, size: 14, color: AppColors.accent),
-            const SizedBox(width: 6),
-            Text(
-              'RECOMMENDED FOR YOU${_vm.usedFallback ? ' (NEARBY)' : ''}',
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
-                color: AppColors.inkFaint,
-              ),
-            ),
-          ],
+        const Text(
+          'SAVED BOOKMARKS',
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: AppColors.inkFaint,
+          ),
         ),
         const SizedBox(height: 10),
-        ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.38,
+        if (_bookmarksError != null)
+          Text(
+            _bookmarksError!,
+            style: const TextStyle(fontSize: 14, color: AppColors.inkFaint, fontStyle: FontStyle.italic),
+          )
+        else if (_bookmarks.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 24),
+            child: Text(
+              'No bookmarks saved yet. Search above to find places!',
+              style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _bookmarks.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final place = _bookmarks[index];
+                // Reuse the clean LocationResultTile format for visual consistency
+                return _LocationResultTile(
+                  place: place,
+                  onTap: () => _openPlaceDetail(place),
+                );
+              },
+            ),
           ),
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: recommendations.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final rec = recommendations[index];
-              return _RecommendationCard(
-                recommendation: rec,
-                onTap: () => _openPlaceDetail(rec.place),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 16),
       ],
     );
   }
@@ -1697,9 +1784,16 @@ class _LocationResultTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.bg,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.moduleBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            )
+          ],
         ),
         child: Row(
           children: [

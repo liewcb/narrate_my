@@ -51,6 +51,12 @@ class ARRecommendation {
 
   bool get isWalkable => distanceKm <= 2;
 
+  /// A fallback recommendation uses a stable NarrateMy bookmark ID when
+  /// Google Places cannot safely verify the attraction. Such an ID must not
+  /// be sent to Google Maps as a Google Place ID; coordinates still work.
+  String? get googleMapsPlaceId =>
+      placeId.startsWith('narratemy-ar-') ? null : placeId;
+
   String get travelSummary => isWalkable
       ? '$estimatedWalkMinutes min walk'
       : '~$estimatedDriveMinutes min by car';
