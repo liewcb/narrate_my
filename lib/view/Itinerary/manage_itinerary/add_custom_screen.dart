@@ -115,19 +115,32 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildWarningBanner(),
-                    const SizedBox(height: 24),
+                    if (vm.searchError != null || vm.planError != null || vm.loadError != null)
+                      const SizedBox(height: 24),
+
                     _buildSearchBar(),
                     const SizedBox(height: 24),
-                    if (vm.hasSearched) _buildSearchResults(),
-                    if (vm.hasSearched) const SizedBox(height: 24),
-                    _buildBookmarksSection(),
+
+                    _buildNearbySuggestions(),
+                    if (widget.dayStops != null && widget.dayStops!.isNotEmpty)
+                      const SizedBox(height: 24),
+
+                    // Unified List Area: Show Search Results OR Bookmarks
+                    if (vm.hasSearched)
+                      _buildSearchResults()
+                    else
+                      _buildRichBookmarksSection(),
+
                     const SizedBox(height: 24),
-                    _buildPlaceDetails(),
-                    const SizedBox(height: 24),
-                    _buildDaySelector(),
-                    const SizedBox(height: 24),
-                    if (vm.hasPlan) _buildSchedule(),
-                    const SizedBox(height: 24),
+
+                    // Scheduling Details Area
+                    if (vm.selectedPlace != null) ...[
+                      const Divider(color: AppColors.moduleBorder, height: 32, thickness: 1),
+                      _buildPlaceDetails(),
+                      const SizedBox(height: 24),
+                      if (vm.hasPlan) _buildSchedule(),
+                      const SizedBox(height: 24),
+                    ]
                   ],
                 ),
               ),
@@ -150,7 +163,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
         child: IconButton(
           icon: Container(
             width: 40, height: 40,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.surface2, shape: BoxShape.circle,
             ),
             child: const Icon(Icons.arrow_back, color: AppColors.ink),
@@ -159,7 +172,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
         ),
       ),
       title: const Text(
-        "Add custom stop",
+        "Add a Place",
         style: TextStyle(
           fontFamily: 'Inter', fontSize: 20, fontWeight: FontWeight.w600,
           color: AppColors.ink, letterSpacing: -0.5,
@@ -232,19 +245,73 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
           prefixIcon: const Icon(Icons.search, color: AppColors.inkFaint),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    _searchController.clear();
-                    _viewModel.query = '';
-                    setState(() {});
-                  },
-                )
+            icon: const Icon(Icons.clear, size: 18),
+            onPressed: () {
+              _searchController.clear();
+              _viewModel.query = '';
+              setState(() {});
+            },
+          )
               : null,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),
         onChanged: (_) => setState(() {}),
       ),
+    );
+  }
+
+  Widget _buildNearbySuggestions() {
+    // If the day is completely empty, there is no "nearby" context to suggest
+    if (widget.dayStops == null || widget.dayStops!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4.0, bottom: 12.0),
+          child: Text(
+            "SEARCH NEARBY TODAY'S STOPS",
+            style: TextStyle(
+              fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
+              letterSpacing: 1.2, color: AppColors.inkFaint,
+            ),
+          ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: Row(
+            children: widget.dayStops!.map((stop) {
+              final placeName = stop.place.placeName;
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: ActionChip(
+                  backgroundColor: AppColors.surface,
+                  side: const BorderSide(color: AppColors.moduleBorder),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  labelStyle: const TextStyle(
+                    fontSize: 13, color: AppColors.ink, fontWeight: FontWeight.w500,
+                  ),
+                  avatar: const Icon(Icons.near_me_outlined, size: 14, color: AppColors.green),
+                  label: Text('Near $placeName'),
+                  onPressed: () {
+                    // 1. Update the search UI
+                    _searchController.text = 'Near $placeName';
+                    // 2. Pass it to the ViewModel
+                    _viewModel.query = 'Near $placeName';
+                    // 3. Trigger the search immediately
+                    _viewModel.searchPlaces();
+                  },
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
     );
   }
 
@@ -277,143 +344,40 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "SEARCH RESULTS",
-                style: TextStyle(
-                  fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2, color: AppColors.inkFaint,
-                ),
-              ),
-              Text(
-                '${vm.searchResults.length} '
-                '${vm.searchResults.length == 1 ? 'place' : 'places'} found',
-                style: const TextStyle(
-                  fontSize: 12, color: AppColors.inkSoft,
-                ),
-              ),
-            ],
-          ),
-        ),
-        ...vm.searchResults.map((place) => _buildPlaceCard(place)),
-      ],
-    );
-  }
-
-  Widget _buildPlaceCard(Place place) {
-    final isSelected = _viewModel.selectedPlaceId == place.placeId;
-    final photoUrl = place.photoReference != null
-        ? 'https://maps.googleapis.com/maps/api/place/photo'
-            '?maxwidth=200&photoreference=${place.photoReference}'
-            '&key=${ApiKeys.googleMapsApiKey}'
-        : null;
-    final primaryType = place.placeCategory ?? (place.types.isNotEmpty ? place.types.first : 'Attraction');
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        onTap: () => _viewModel.selectPlace(place.placeId),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.accentSoft : AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isSelected ? AppColors.accent : AppColors.moduleBorder.withOpacity(0.6),
-              width: isSelected ? 2 : 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 8, offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 64, height: 64,
-                  color: AppColors.surface2,
-                  child: photoUrl != null
-                      ? Image.network(photoUrl, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(
-                            Icons.place, color: AppColors.inkFaint),
-                        )
-                      : const Icon(Icons.place, color: AppColors.inkFaint),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(place.placeName,
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: 'Inter', fontSize: 15,
-                        fontWeight: FontWeight.w600, color: AppColors.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(primaryType,
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12, color: AppColors.inkFaint),
-                    ),
-                    if (place.rating > 0) ...[
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          const Icon(Icons.star, size: 14, color: AppColors.gold),
-                          const SizedBox(width: 4),
-                          Text(place.rating.toStringAsFixed(1),
-                            style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w600,
-                              color: AppColors.ink,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (isSelected)
-                const Icon(Icons.check_circle, color: AppColors.green, size: 20),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBookmarksSection() {
-    final vm = _viewModel;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4.0),
+        const Padding(
+          padding: EdgeInsets.only(left: 4.0, bottom: 12.0),
           child: Text(
-            vm.bookmarks.isEmpty
-                ? "FROM YOUR BOOKMARKS"
-                : "BOOKMARKS",
+            "SEARCH RESULTS",
             style: TextStyle(
               fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
               letterSpacing: 1.2, color: AppColors.inkFaint,
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        ...vm.searchResults.map((place) => _buildRichPlaceCard(place)),
+      ],
+    );
+  }
+
+  Widget _buildRichBookmarksSection() {
+    final vm = _viewModel;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4.0, bottom: 12.0),
+          child: Text(
+            "SAVED BOOKMARKS",
+            style: TextStyle(
+              fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
+              letterSpacing: 1.2, color: AppColors.inkFaint,
+            ),
+          ),
+        ),
         if (vm.isLoadingBookmarks)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
+            padding: EdgeInsets.symmetric(vertical: 24),
             child: Center(child: CircularProgressIndicator()),
           )
         else if (vm.bookmarksError != null)
@@ -426,76 +390,114 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
               ),
             ),
           )
-        else if (vm.bookmarks.isNotEmpty)
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            clipBehavior: Clip.none,
-            child: Row(
-              children: vm.bookmarks.map((place) {
-                final selected = vm.selectedPlaceId == place.placeId;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: GestureDetector(
-                    onTap: () => vm.selectPlace(place.placeId),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: selected ? AppColors.accent : AppColors.surface,
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(
-                          color: selected ? AppColors.accent : AppColors.moduleBorder,
-                          width: selected ? 2 : 1,
-                        ),
-                      ),
-                      child: Text(
-                        place.placeName,
-                        style: TextStyle(
-                          fontFamily: 'Inter', fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: selected ? Colors.white : AppColors.ink,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
+        else if (vm.bookmarks.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'No bookmarks yet.\nSearch above to find places to visit!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: AppColors.inkSoft, height: 1.5),
+                ),
+              ),
+            )
+          else
+            ...vm.bookmarks.map((place) => _buildRichPlaceCard(place)),
       ],
+    );
+  }
+
+  // Unified Card Design for both Search Results and Bookmarks
+  Widget _buildRichPlaceCard(Place place) {
+    final isSelected = _viewModel.selectedPlaceId == place.placeId;
+    final photoUrl = place.photoReference != null
+        ? 'https://maps.googleapis.com/maps/api/place/photo'
+        '?maxwidth=200&photoreference=${place.photoReference}'
+        '&key=${ApiKeys.googleMapsApiKey}'
+        : null;
+    final subtitle = place.placeCategory ?? (place.types.isNotEmpty ? place.types.first : 'Place');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isSelected ? AppColors.accentSoft : AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isSelected ? AppColors.accent : AppColors.moduleBorder.withOpacity(0.6),
+          width: isSelected ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: InkWell(
+        onTap: () => _viewModel.selectPlace(place.placeId),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 64, height: 64,
+                  color: AppColors.moduleBorder,
+                  child: photoUrl != null
+                      ? Image.network(photoUrl, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 24, color: AppColors.inkFaint),
+                  )
+                      : const Icon(Icons.place, size: 24, color: AppColors.inkFaint),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(place.placeName,
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.ink,
+                        )),
+                    const SizedBox(height: 4),
+                    Text(subtitle,
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13, color: AppColors.inkFaint)),
+                    if (place.rating > 0) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.star, size: 14, color: Colors.amber),
+                          const SizedBox(width: 4),
+                          Text(place.rating.toStringAsFixed(1),
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.ink)),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (isSelected)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8.0),
+                  child: Icon(Icons.check_circle, color: AppColors.green, size: 24),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildPlaceDetails() {
     final vm = _viewModel;
     final place = vm.selectedPlace;
-    if (place == null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Column(
-          children: [
-            Icon(Icons.place_outlined, size: 40, color: AppColors.inkFaint),
-            SizedBox(height: 12),
-            Text(
-              'Select a place to see details',
-              style: TextStyle(
-                fontSize: 14, color: AppColors.inkFaint, fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    if (place == null) return const SizedBox.shrink();
 
     final photoUrl = place.photoReference != null
         ? 'https://maps.googleapis.com/maps/api/place/photo'
-            '?maxwidth=400&photoreference=${place.photoReference}'
-            '&key=${ApiKeys.googleMapsApiKey}'
+        '?maxwidth=400&photoreference=${place.photoReference}'
+        '&key=${ApiKeys.googleMapsApiKey}'
         : null;
     final primaryType = place.placeCategory ?? (place.types.isNotEmpty ? place.types.first : 'Attraction');
     final prox = vm.proximity;
@@ -525,9 +527,9 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                   color: AppColors.surface2,
                   child: photoUrl != null
                       ? Image.network(photoUrl, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(
-                            Icons.place, color: AppColors.inkFaint),
-                        )
+                    errorBuilder: (_, __, ___) => const Icon(
+                        Icons.place, color: AppColors.inkFaint),
+                  )
                       : const Icon(Icons.place, color: AppColors.inkFaint),
                 ),
               ),
@@ -538,7 +540,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
+                          horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: AppColors.accentSoft,
                         borderRadius: BorderRadius.circular(4),
@@ -572,7 +574,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                               place.placeAddress,
                               maxLines: 1, overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 12, color: AppColors.inkFaint),
+                                  fontSize: 12, color: AppColors.inkFaint),
                             ),
                           ),
                         ],
@@ -613,10 +615,10 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                   const SizedBox(width: 8),
                   Text(
                     '${prox.proximity} '
-                    '(${prox.distanceFromItineraryKm.toStringAsFixed(1)} km, '
-                    '~${prox.travelMinutes} min)',
+                        '(${prox.distanceFromItineraryKm.toStringAsFixed(1)} km, '
+                        '~${prox.travelMinutes} min)',
                     style: const TextStyle(
-                      fontSize: 12, color: AppColors.inkSoft),
+                        fontSize: 12, color: AppColors.inkSoft),
                   ),
                 ],
               ),
@@ -640,98 +642,6 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
           ],
         ],
       ),
-    );
-  }
-
-  Widget _buildDaySelector() {
-    final vm = _viewModel;
-    final days = widget.availableDayIndices.isNotEmpty
-        ? widget.availableDayIndices
-        : [widget.dayIndex];
-    if (days.length <= 1) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4.0),
-            child: Text(
-              "ADD TO DAY",
-              style: TextStyle(
-                fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
-                letterSpacing: 1.2, color: AppColors.inkFaint,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.green,
-              borderRadius: BorderRadius.circular(30),
-            ),
-            child: Text(
-              'Day ${vm.dayIndex}',
-              style: const TextStyle(
-                fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4.0),
-          child: Text(
-            "ADD TO DAY",
-            style: TextStyle(
-              fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
-              letterSpacing: 1.2, color: AppColors.inkFaint,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          clipBehavior: Clip.none,
-          child: Row(
-            children: days.map((day) {
-              final isSelected = day == vm.dayIndex;
-              return Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: GestureDetector(
-                  onTap: () {
-                    if (day != vm.dayIndex) {
-                      final dayDate = widget.dayDate.add(
-                        Duration(days: day - widget.dayIndex));
-                      vm.selectDay(day, dayDate);
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppColors.green : AppColors.surface2,
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Text(
-                      'Day $day',
-                      style: TextStyle(
-                        fontFamily: 'Inter', fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: isSelected ? Colors.white : AppColors.inkFaint,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
     );
   }
 
@@ -774,8 +684,8 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
               ],
             ),
           ),
-        Padding(
-          padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
+        const Padding(
+          padding: EdgeInsets.only(left: 4.0, bottom: 8.0),
           child: Text(
             "PROPOSED SCHEDULE",
             style: TextStyle(
@@ -817,7 +727,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                             Text(
                               '$travel min travel',
                               style: const TextStyle(
-                                fontSize: 11, color: AppColors.inkFaint),
+                                  fontSize: 11, color: AppColors.inkFaint),
                             ),
                           ],
                         ),
@@ -828,13 +738,13 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                         Container(
                           width: 48,
                           padding: const EdgeInsets.symmetric(
-                            vertical: 4, horizontal: 8),
+                              vertical: 4, horizontal: 8),
                           decoration: BoxDecoration(
                             color: isNew ? AppColors.accentSoft : AppColors.bg,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            '${timeFormat.format(stop.startTime)}',
+                            timeFormat.format(stop.startTime),
                             style: TextStyle(
                               fontSize: 11, fontWeight: FontWeight.w700,
                               color: isNew ? AppColors.accent : AppColors.ink,
@@ -855,10 +765,10 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                               ),
                               Text(
                                 '${timeFormat.format(stop.startTime)} – '
-                                '${timeFormat.format(stop.endTime)} '
-                                '(${stop.durationMinutes} min)',
+                                    '${timeFormat.format(stop.endTime)} '
+                                    '(${stop.durationMinutes} min)',
                                 style: const TextStyle(
-                                  fontSize: 11, color: AppColors.inkFaint),
+                                    fontSize: 11, color: AppColors.inkFaint),
                               ),
                             ],
                           ),
@@ -866,7 +776,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                         if (isNew)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
+                                horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
                               color: AppColors.accent,
                               borderRadius: BorderRadius.circular(12),
@@ -996,8 +906,8 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
         title: const Text('Add this place?'),
         content: Text(
           '${vm.selectedPlace?.placeName ?? 'This place'} will be added to '
-          'Day ${vm.dayIndex} of your itinerary preview. '
-          'Changes become permanent only when you save.',
+              'Day ${vm.dayIndex} of your itinerary preview. '
+              'Changes become permanent only when you save.',
         ),
         actions: [
           TextButton(

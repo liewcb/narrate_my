@@ -101,7 +101,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _bgColor,
-      // Replaced _buildAppBar() with WizardAppBar
       appBar: const WizardAppBar(
         step: 4,
         totalSteps: 5,
@@ -109,7 +108,10 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
       body: Stack(
         children: [
           const SizedBox(height: 8),
-          const WizardProgressBar(activeSteps: 4),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child:WizardProgressBar(activeSteps: 4),
+          ),
           const SizedBox(height: 24),
           SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),

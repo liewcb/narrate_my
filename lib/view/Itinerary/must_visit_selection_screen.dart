@@ -7,6 +7,7 @@ import '../../core/theme/colors.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/must_visit_selection_vm.dart';
 import 'split_days_screen.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 
 class MustVisitSelectionScreen extends StatefulWidget {
   final TripDraft draft;
@@ -522,9 +523,9 @@ class _PlaceList extends StatelessWidget {
       case MustVisitSelectionStatus.added:
         break;
       case MustVisitSelectionStatus.warning:
-        // OUTSIDE_HOTSPOT — traveler may confirm (§19). "Add Anyway" only
-        // means "outside the recommended hotspot"; it never bypasses the
-        // other validation rules.
+      // OUTSIDE_HOTSPOT — traveler may confirm (§19). "Add Anyway" only
+      // means "outside the recommended hotspot"; it never bypasses the
+      // other validation rules.
         if (!context.mounted) break;
         final confirmed = await showDialog<bool>(
           context: context,
@@ -546,7 +547,7 @@ class _PlaceList extends StatelessWidget {
         }
         break;
       case MustVisitSelectionStatus.rejected:
-        // Validation failure — clear message, never a raw exception.
+      // Validation failure — clear message, never a raw exception.
         messenger.hideCurrentSnackBar();
         messenger.showSnackBar(
           SnackBar(
@@ -768,10 +769,26 @@ class _StickyFooter extends StatelessWidget {
               ),
               const SizedBox(height: 16),
             ],
-            GestureDetector(
-              onTap: onSkip,
-              child: const Text('Skip for now', style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: AppColors.outline)),
-            ),
+            // Show skip button ONLY when no selection
+            if (!hasSelection)
+              GestureDetector(
+                onTap: onSkip,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppColors.outline.withOpacity(0.5)),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Text('Skip for now', style: TextStyle(fontSize: 14, color: AppColors.outline)),
+                      SizedBox(width: 4),
+                      Icon(Icons.arrow_forward, size: 14, color: AppColors.outline),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),

@@ -186,7 +186,7 @@ class ItineraryGenerationPipeline {
     required void Function(String) onProgress,
     Coordinates? tripLocation,
   }) async {
-    final effectivePace = request.travelType ?? 'Standard';
+    final effectivePace = request.pace ?? 'Standard';
     final effectiveExploration = request.exploration ?? 'Standard';
 
     // Lightweight end-to-end timing (debug only) so the <=25s target can be
@@ -1353,7 +1353,7 @@ class ItineraryGenerationPipeline {
     request.exploration ?? 'Standard'] ??
         ItineraryConstants.explorationWindows['Standard']!;
     final startDate = request.startDate ?? DateTime.now();
-    final travelPace = request.travelType ?? 'Standard';
+    final travelPace = request.pace ?? 'Standard';
     final transportation = request.transportation;
 
     return [
@@ -1527,7 +1527,7 @@ class ItineraryGenerationPipeline {
 
     // 2. Fill remaining slots per day by destination + score.
     const paceTarget = {'Slow': 2, 'Standard': 4, 'Fast': 6};
-    final target = paceTarget[request.travelType] ?? 4;
+    final target = paceTarget[request.pace] ?? 4;
     for (var day = 0; day < request.totalDays; day++) {
       final dest = dayDest(day);
       final pool = List<ScoredAttraction>.of(byDest[dest] ?? const [])
@@ -1676,7 +1676,7 @@ class ItineraryGenerationPipeline {
     };
 
     // ─── NEW: ENSURE EACH DESTINATION GETS ENOUGH CANDIDATES TO FILL TARGET STOPS PER DAY ───
-    final pace = request.travelType ?? 'Standard';
+    final pace = request.pace ?? 'Standard';
     int targetStopsPerDay;
     switch (pace) {
       case 'Slow':

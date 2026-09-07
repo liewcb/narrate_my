@@ -1,22 +1,22 @@
-// lib/viewmodel/Itinerary/trip_customization_vm.dart
-
 import 'package:flutter/foundation.dart';
 import '../../core/config/itinerary_constants.dart';
 import '../../model/business_logic/itinerary_service/itinerary_validation_service.dart';
 import '../../model/entities/trip_draft.dart';
 
 class Step2TripStyleVM extends ChangeNotifier {
-  static const int maxTripDaysLimit = 3;
+  static const int maxTripDaysLimit = 3; // Maximum duration capped at 3 days
+  static const int maxPlanningWindowDays = 180; // Half a year (~6 months)
   static const int maxInterestsLimit = 2;
+
   final int maxTripDays = maxTripDaysLimit;
+  final int maxPlanningWindow = maxPlanningWindowDays;
   final int maxInterests = maxInterestsLimit;
 
   TripDraft _draft;
   String? _transportationSelection;
-  Map<String, String> _validationErrors = {}; // 👈 always holds latest errors
+  Map<String, String> _validationErrors = {};
 
   Step2TripStyleVM({required TripDraft initialDraft}) : _draft = initialDraft {
-    // Validate on start – shows empty errors
     _validate();
   }
 
@@ -32,7 +32,7 @@ class Step2TripStyleVM extends ChangeNotifier {
   String? get transportation => _transportationSelection;
   List<String> get destinations => _draft.destinations.map((d) => d.destinationName).toList();
   Map<String, String> get validationErrors => _validationErrors;
-  String? get dateError => _validationErrors['dates']; // 👈 for inline display
+  String? get dateError => _validationErrors['dates'];
 
   String? get travelTypeError => _validationErrors['travelType'];
   String? get tripNameError => _validationErrors['tripName'];
@@ -48,18 +48,42 @@ class Step2TripStyleVM extends ChangeNotifier {
 
   WeatherCoverage get weatherCoverage =>
       ItineraryValidationService.getWeatherCoverage(_draft.startDate, _draft.endDate);
-  String? get weatherWarning =>
-      ItineraryValidationService.getWeatherWarning(_draft.startDate, _draft.endDate);
 
-  bool get canProceed => _validationErrors.isEmpty; // 👈 no errors at all
+  // Suppressed weather warning message completely
+  String? get weatherWarning => null;
 
-  // ─── Internal validation – updates _validationErrors ────────
+  bool get canProceed => _validationErrors.isEmpty;
+
+  // ─── Date Boundaries ──────────────────────────────────────────
+  DateTime maxSelectableStartDate() {
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    return todayOnly.add(const Duration(days: maxPlanningWindowDays));
+  }
+
+  DateTime latestPossibleEndDate({DateTime? fromStart}) {
+    final start = fromStart ?? startDate;
+    if (start == null) {
+      return maxSelectableStartDate().add(Duration(days: maxTripDays - 1));
+    }
+    return start.add(Duration(days: maxTripDays - 1));
+  }
+
+  // ─── Validation ────────────────────────────────────────────────
   void _validate() {
     final errors = <String, String>{};
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final maxStart = maxSelectableStartDate();
+
     if (startDate == null || endDate == null) {
       errors['dates'] = 'Pick your travel dates.';
+    } else if (startDate!.isBefore(todayOnly)) {
+      errors['dates'] = 'Start date cannot be in the past.';
+    } else if (startDate!.isAfter(maxStart) || endDate!.isAfter(maxStart)) {
+      errors['dates'] = 'Travel dates must be within 6 months (180 days).';
     } else if (totalDays > maxTripDays) {
-      errors['dates'] = 'Trips are limited to $maxTripDays days.';
+      errors['dates'] = 'Trip duration is limited to a maximum of $maxTripDays days.';
     } else if (destinations.length > 1 && totalDays < 2) {
       errors['dates'] = 'Multiple destinations require a minimum trip duration of 2 days.';
     }
@@ -74,7 +98,7 @@ class Step2TripStyleVM extends ChangeNotifier {
     _validationErrors = errors;
   }
 
-  // ─── Setters – each updates the draft, re‑validates, notifies ──
+  // ─── Setters ──────────────────────────────────────────────────
   void setTripName(String name) {
     _draft = _draft.copyWith(tripName: name);
     _validate();
@@ -86,7 +110,7 @@ class Step2TripStyleVM extends ChangeNotifier {
     final clampedEnd = end.isAfter(latest) ? latest : end;
     final wasClamped = clampedEnd != end;
     _draft = _draft.copyWith(startDate: start, endDate: clampedEnd);
-    _validate(); // 👈 real‑time validation
+    _validate();
     notifyListeners();
     return wasClamped;
   }
@@ -129,24 +153,10 @@ class Step2TripStyleVM extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ─── Public validation (called by footer button) ─────────────
   Map<String, String> validate() {
-    _validate(); // re‑compute and return
-    notifyListeners(); // in case UI needs to update
+    _validate();
+    notifyListeners();
     return _validationErrors;
-  }
-
-  // ─── Date helper ──────────────────────────────────────────────
-  DateTime latestPossibleEndDate({DateTime? fromStart}) {
-    final start = fromStart ?? startDate;
-    final tripLimit = start == null ? null : start.add(Duration(days: maxTripDays - 1));
-    final today = DateTime.now();
-    final todayOnly = DateTime(today.year, today.month, today.day);
-    final weatherLimit = todayOnly.add(Duration(
-      days: ItineraryValidationService.primaryForecastDays - 1,
-    ));
-    if (tripLimit == null) return weatherLimit;
-    return tripLimit.isBefore(weatherLimit) ? tripLimit : weatherLimit;
   }
 
   TripDraft buildDraft() => _draft;

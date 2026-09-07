@@ -8,7 +8,7 @@ import '../../core/services/database_manager.dart';
 import '../../core/services/google_maps_service.dart';
 import '../../model/business_logic/itinerary_service/candidate_retrieval_service.dart';
 import '../../model/business_logic/itinerary_service/candidate_retrieval_service.dart'
-    as hotspot_svc;
+as hotspot_svc;
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/destination.dart';
 import '../../model/entities/destination_hotspot.dart';
@@ -467,11 +467,11 @@ class Step3AddPlaceVM extends ChangeNotifier {
   /// answer to the OUTSIDE_HOTSPOT warning — it never bypasses any other
   /// validation rule (§19).
   Future<MustVisitSelectionResult> togglePlace(
-    String placeId, {
-    String? placeName,
-    required String source,
-    bool confirmOutsideHotspot = false,
-  }) async {
+      String placeId, {
+        String? placeName,
+        required String source,
+        bool confirmOutsideHotspot = false,
+      }) async {
     // Toggle-off path: the place is already selected → remove it.
     if (_mustVisitPlaceIds.contains(placeId)) {
       removeMustVisit(placeId);
@@ -538,7 +538,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
     if (place.placeTypes.any(_bannedMustVisitTypes.contains)) {
       return MustVisitSelectionResult.rejected(
         'This place is not a valid attraction and cannot be added as a '
-        'must-visit.',
+            'must-visit.',
       );
     }
 
@@ -547,7 +547,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
         !_belongsToAnySelectedDestination(place)) {
       return MustVisitSelectionResult.rejected(
         'This place cannot be added because its location is outside your '
-        'selected destinations.',
+            'selected destinations.',
       );
     }
 
@@ -621,7 +621,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
     DestinationHotspot? hotspot;
     try {
       final dest = _cachedSelectedDestinations.firstWhere(
-        (d) => d.destinationId == destinationId,
+            (d) => d.destinationId == destinationId,
       );
       hotspot = await _candidateService.selectBestHotspot(
         destinationName: dest.destinationName,

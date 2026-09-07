@@ -378,11 +378,15 @@ class _TravelDates extends StatelessWidget {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
+    final maxCalendarDate = vm.maxSelectableStartDate().add(
+      Duration(days: vm.maxTripDays - 1),
+    );
+
     final DateTimeRange? picked = await showDialog<DateTimeRange>(
       context: context,
       builder: (dialogContext) => _DateRangePickerDialog(
         firstDate: today,
-        lastDate: vm.latestPossibleEndDate(),
+        lastDate: maxCalendarDate,
         initialStart: vm.startDate,
         initialEnd: vm.endDate,
         maxEndFor: (start) => vm.latestPossibleEndDate(fromStart: start),
@@ -398,9 +402,7 @@ class _TravelDates extends StatelessWidget {
     String format(DateTime? d) =>
         d == null ? 'Pick date' : DateFormat('MMM d, yyyy').format(d);
     final days = vm.totalDays;
-
     final coverage = vm.weatherCoverage;
-    final warning = vm.weatherWarning;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -450,8 +452,8 @@ class _TravelDates extends StatelessWidget {
 
         Text(
           vm.startDate != null
-              ? 'Up to ${vm.maxTripDays} days · tap to change'
-              : 'Tap to pick · up to ${vm.maxTripDays} days',
+              ? 'Up to ${vm.maxTripDays} days duration · tap to change'
+              : 'Tap to pick · start within 6 months, max ${vm.maxTripDays} days',
           style: GoogleFonts.inter(fontSize: 12, color: AppColors.outline),
         ),
 
@@ -467,52 +469,9 @@ class _TravelDates extends StatelessWidget {
           ),
         ],
 
-        if (coverage != WeatherCoverage.unknown) ...[
+        if (coverage != WeatherCoverage.unknown && coverage != WeatherCoverage.outOfRange) ...[
           const SizedBox(height: 8),
           _WeatherCoverageBadge(coverage: coverage),
-        ],
-
-        if (warning != null) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: coverage == WeatherCoverage.outOfRange
-                  ? Colors.red.shade50
-                  : Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: coverage == WeatherCoverage.outOfRange
-                    ? Colors.red.shade200
-                    : Colors.orange.shade200,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  coverage == WeatherCoverage.outOfRange
-                      ? Icons.warning_amber_rounded
-                      : Icons.info_outline_rounded,
-                  size: 18,
-                  color: coverage == WeatherCoverage.outOfRange
-                      ? Colors.red.shade700
-                      : Colors.orange.shade700,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    warning,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: coverage == WeatherCoverage.outOfRange
-                          ? Colors.red.shade700
-                          : Colors.orange.shade700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ],
     );
@@ -564,6 +523,52 @@ class _TravelDates extends StatelessWidget {
     );
   }
 }
+
+  Widget _dateCard(String label, String date) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.brandGrayLight,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.outlineLight.withOpacity(0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.0,
+                color: AppColors.outline,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.calendar_today_rounded,
+                    size: 14, color: AppColors.brandGreen),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    date,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.brandCharcoal,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
 // ─── Date picker dialog ──────────────────────────────────────────
 
@@ -851,6 +856,10 @@ class _WeatherCoverageBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (coverage == WeatherCoverage.unknown || coverage == WeatherCoverage.outOfRange) {
+      return const SizedBox.shrink();
+    }
+
     final (label, color, icon) = switch (coverage) {
       WeatherCoverage.full => (
       'Weather data available for all days',
@@ -862,15 +871,10 @@ class _WeatherCoverageBadge extends StatelessWidget {
       Colors.orange,
       Icons.info_outline_rounded,
       ),
-      WeatherCoverage.outOfRange => (
-      'Beyond weather forecast range',
-      Colors.red,
-      Icons.warning_amber_rounded,
-      ),
-      WeatherCoverage.unknown => ('', AppColors.outline, Icons.help_outline),
+      _ => ('', AppColors.outline, Icons.help_outline),
     };
 
-    if (coverage == WeatherCoverage.unknown) return const SizedBox.shrink();
+    if (label.isEmpty) return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
