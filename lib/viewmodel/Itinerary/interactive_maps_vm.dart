@@ -148,7 +148,10 @@ class InteractiveMapsViewModel extends ChangeNotifier {
 
     try {
       debugPrint('[INTERACTIVE MAP] Loading itinerary: $itineraryId');
-      _itinerary = await _repository.getItinerary(itineraryId);
+      final loaded = await _repository.getItinerary(itineraryId);
+      // Recalculate + persist status if outdated (single source of truth in
+      // the repository).
+      _itinerary = await _repository.refreshItineraryStatus(loaded);
 
       _temporalStatus = ItineraryStatusResolver.resolve(
         startDate: _itinerary!.startDate,

@@ -128,8 +128,10 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                     // Unified List Area: Show Search Results OR Bookmarks
                     if (vm.hasSearched)
                       _buildSearchResults()
-                    else
+                    else ...[
+                      _buildRecommendationsSection(),
                       _buildRichBookmarksSection(),
+                    ],
 
                     const SizedBox(height: 24),
 
@@ -925,5 +927,72 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
 
     // Return the validated proposed day — NO database write here.
     Navigator.pop(context, (dayIndex: vm.dayIndex, day: proposedDay));
+  }
+
+  Widget _buildRecommendationsSection() {
+    final vm = _viewModel;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4.0, bottom: 12.0),
+          child: Text(
+            "RECOMMENDED FOR THIS DAY",
+            style: TextStyle(
+              fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
+              letterSpacing: 1.2, color: AppColors.inkFaint,
+            ),
+          ),
+        ),
+        if (vm.isLoadingRecommendations) // Assuming you add this to VM
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 12),
+                  Text('Analyzing schedule for recommendations...',
+                      style: TextStyle(color: AppColors.inkFaint)),
+                ],
+              ),
+            ),
+          )
+        else if (vm.recommendationsError != null) // Assuming you add this to VM
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              vm.recommendationsError!,
+              style: const TextStyle(
+                fontSize: 14, color: AppColors.inkFaint, fontStyle: FontStyle.italic,
+              ),
+            ),
+          )
+        else if (vm.recommendations.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 24),
+              child: Text(
+                'No specific recommendations available for this schedule.',
+                style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: vm.recommendations.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final place = vm.recommendations[index]; // Extract Place from recommendation
+                  // ✅ Reuse your beautiful rich card design!
+                  return _buildRichPlaceCard(place);
+                },
+              ),
+            ),
+      ],
+    );
   }
 }

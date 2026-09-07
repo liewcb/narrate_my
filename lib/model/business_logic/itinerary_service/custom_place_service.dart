@@ -229,7 +229,7 @@ class CustomPlaceService {
   /// Compute distance/proximity information for a searched place relative
   /// to the itinerary day's existing stops.
   ///
-  /// Distance is user information/warning only Ã¢â‚¬â€ it is NOT a rejection
+  /// Distance is user information/warning only  it is NOT a rejection
   /// criterion. Near/Moderate/Far thresholds are deliberately simple and
   /// easy to adjust.
   Future<PlaceProximityInfo> evaluateProximity({
@@ -248,7 +248,7 @@ class CustomPlaceService {
       }
     }
     if (anchor == null) {
-      anchor = place.coordinates; // empty day Ã¢â€ â€™ distance 0
+      anchor = place.coordinates; // empty day distance 0
       nearestKm = 0;
     }
 
@@ -617,7 +617,7 @@ class CustomPlaceService {
   /// Add Custom Place planning operation finishes inside the ~8-10s
   /// responsiveness budget: pre-checks are milliseconds, retrieval is one
   /// Places call, and the deterministic fallback always has room to run.
-  static const Duration aiTimeout = Duration(seconds: 6);
+  static const Duration aiTimeout = Duration(seconds: 8);
 
   /// Plans the insertion of [newPlace] into ONE day of the temporary
   /// itinerary.
@@ -1331,5 +1331,30 @@ class CustomPlaceService {
       };
       return (km / speedKph) * 60.0;
     }
+  }
+
+  /// Get AI/algorithmic recommendations for places to add to the day.
+  /// Uses Google Places Text Search with the traveler's interests as a query,
+  /// biased toward the day's location.
+  Future<List<Place>> recommendPlaces({
+    required Coordinates location,
+    required List<String> interests,
+    required String explorationTime,
+    int maxResults = 10,
+  }) async {
+    // Build a query string from interests
+    final query = interests.isNotEmpty ? interests.join(' ') : 'attractions';
+
+    // Use GoogleMapsService to search text
+    final results = await _mapsService.searchTextPlaces(
+      query: query,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      radius: 5000, // 5 km radius around the day's center
+    );
+
+    // Sort by rating and limit
+    results.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+    return results.take(maxResults).toList();
   }
 }

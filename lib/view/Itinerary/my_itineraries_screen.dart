@@ -254,7 +254,7 @@ class _ItinerariesView extends StatelessWidget {
                                   itineraryId: trip.itineraryId,
                                   // Opening an itinerary is the "Track" action:
                                   // auto-focus today's travel plan.
-                                  openTrackedDay: true,
+                                  openTrackedDay: false,
                                 ),
                               ),
                             );

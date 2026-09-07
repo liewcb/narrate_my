@@ -9,7 +9,6 @@ import '../../../core/config/api_keys.dart';
 import '../../../core/services/google_maps_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_confirmation_dialog.dart';
-// ✅ ADDED: Database Manager import for fetching bookmarks
 import '../../../core/services/database_manager.dart';
 import '../../../model/business_logic/itinerary_service/change_location_service.dart';
 import '../../../model/entities/itinerary_stop.dart';
@@ -28,7 +27,6 @@ class EditStopScreen extends StatefulWidget {
   final ItineraryStop stop;
   final DateTime itineraryStartDate;
   final bool isReadOnly;
-  // ✅ ADDED: userId for fetching the user's specific bookmarks
   final String userId;
 
   const EditStopScreen({
@@ -36,7 +34,7 @@ class EditStopScreen extends StatefulWidget {
     required this.stop,
     required this.itineraryStartDate,
     this.isReadOnly = false,
-    this.userId = '252f0924-192c-42fe-8643-881da7bbf285', // Match final screen fallback
+    this.userId = '252f0924-192c-42fe-8643-881da7bbf285',
   }) : super(key: key);
 
   @override
@@ -47,7 +45,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
   late EditStopViewModel _viewModel;
   late TextEditingController _skipReasonController;
 
-  // Brand Colors mapped from your Tailwind config
   final Color _bg = AppColors.bg;
   final Color _surfaceCard = AppColors.surface;
   final Color _onSurface = AppColors.ink;
@@ -55,19 +52,11 @@ class _EditStopScreenState extends State<EditStopScreen> {
   final Color _terracotta = AppColors.accent;
   final Color _dangerText = AppColors.error;
 
-  // Track whether any progress change was persisted, so the parent
-  // screen can reload on return.
   bool _hasChanges = false;
   bool _registeredInitialContext = false;
 
-  /// Back-button handler: if there are unsaved edits, ask whether to
-  /// discard them before leaving; otherwise pop normally — reporting any
-  /// already-persisted changes ([_hasChanges]) so the parent screen can
-  /// reload the updated itinerary.
   Future<void> _handleBack() async {
     if (!_viewModel.hasUnsavedChanges) {
-      // No pending edits: persisted changes (location/status/time) are
-      // already saved, so report them instead of asking to discard.
       Navigator.maybePop(context, _hasChanges);
       return;
     }
@@ -139,7 +128,8 @@ class _EditStopScreenState extends State<EditStopScreen> {
               children: [
                 _buildCompactHero(),
                 const SizedBox(height: 24),
-                if (!_viewModel.isReadOnly) ...[
+                if (!_viewModel.isEditable) _buildLockedBanner(),
+                if (_viewModel.isEditable) ...[
                   _buildLocationSection(),
                   const SizedBox(height: 24),
                 ],
@@ -157,7 +147,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
                   _buildErrorBanner(),
                 ],
                 const SizedBox(height: 32),
-                if (!_viewModel.isReadOnly) _buildRemoveButton(),
+                if (_viewModel.isEditable) _buildRemoveButton(),
               ],
             ),
           ),
@@ -208,7 +198,46 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  // ─── Compact Hero (now clickable) ─────────────────────────────
+  // ─── Locked banner ───────────────────────────────────────────
+
+  Widget _buildLockedBanner() {
+    String message;
+    if (_viewModel.isCompleted) {
+      message = 'This stop has been marked as completed and cannot be modified.';
+    } else if (_viewModel.isSkipped) {
+      message = 'This stop has been marked as skipped and cannot be modified.';
+    } else {
+      message = 'This stop is locked and cannot be modified.';
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.error.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_outline, color: AppColors.error),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 14,
+                color: AppColors.error,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Compact Hero ─────────────────────────────────────────────
 
   Widget _buildCompactHero() {
     final place = _viewModel.stop.place;
@@ -236,7 +265,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Thumbnail Image
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: photoUrl != null
@@ -250,14 +278,11 @@ class _EditStopScreenState extends State<EditStopScreen> {
                   : _photoPlaceholder(),
             ),
             const SizedBox(width: 16),
-
-            // Details
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Tag
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -290,8 +315,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-
-                  // Title
                   Text(
                     place?.name ?? _viewModel.stop.placeId,
                     style: TextStyle(
@@ -301,8 +324,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
                       color: _onSurface,
                     ),
                   ),
-
-                  // Location
                   Row(
                     children: [
                       const Icon(
@@ -339,7 +360,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  /// Opens the existing ViewPlaceDetailScreen for the current stop.
   Future<void> _openPlaceDetail() async {
     final place = _viewModel.stop.place;
     if (place == null) {
@@ -370,7 +390,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  // ─── Location (Change Location) ─────────────────────────────
+  // ─── Location ─────────────────────────────────────────────
 
   Widget _buildLocationSection() {
     final place = _viewModel.stop.place;
@@ -469,7 +489,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  /// Opens the Change Location flow
   Future<void> _openLocationSearch() async {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
@@ -478,7 +497,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      // ✅ PASSED: the userId into the newly updated BottomSheet
       builder: (_) => _ChangeLocationSheet(
         stop: _viewModel.stop,
         userId: widget.userId,
@@ -490,12 +508,11 @@ class _EditStopScreenState extends State<EditStopScreen> {
     }
   }
 
-  // ─── Time & Duration (simplified – start time only) ────────
+  // ─── Time & Duration ────────────────────────────────────────
 
   Widget _buildTimeAndDuration() {
     final timeFormat = DateFormat('hh:mm a');
-
-    final readOnly = _viewModel.isReadOnly;
+    final editable = _viewModel.isEditable;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -529,8 +546,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Start Time dropdown
-              _buildStartTimeDropdown(timeFormat, readOnly),
+              _buildStartTimeDropdown(timeFormat, !editable),
               const SizedBox(height: 12),
               Divider(
                 height: 1,
@@ -538,8 +554,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
                 color: Colors.grey.shade100,
               ),
               const SizedBox(height: 12),
-              // End Time (read-only, derived)
-              _buildEndTimeDropdown(timeFormat, readOnly),
+              _buildEndTimeDropdown(timeFormat, !editable),
             ],
           ),
         ),
@@ -624,8 +639,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  /// End Time dropdown – when no options are available, shows a disabled
-  /// field with a meaningful message.
   Widget _buildEndTimeDropdown(DateFormat timeFormat, bool readOnly) {
     final options = _viewModel.availableEndTimes;
     final current = _viewModel.editedEndTime;
@@ -666,7 +679,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
                   ),
                 )
               else if (options.isEmpty)
-              // No available end times – show a message
                 const Text(
                   'No available end times',
                   style: TextStyle(
@@ -713,8 +725,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  /// Applies a dropdown end-time selection via the ViewModel, then asks
-  /// the traveler to confirm before persisting.
   Future<void> _onEndTimeSelected(DateTime picked) async {
     if (_viewModel.isSaving) return;
     final applied = await _viewModel.setEndTime(picked);
@@ -749,8 +759,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
     }
   }
 
-  /// Applies a dropdown start-time selection via the ViewModel, then asks
-  /// the traveler to confirm before persisting.
   Future<void> _onStartTimeSelected(DateTime picked) async {
     if (_viewModel.isSaving) return;
     final applied = await _viewModel.setStartTime(picked);
@@ -784,6 +792,8 @@ class _EditStopScreenState extends State<EditStopScreen> {
       );
     }
   }
+
+  // ─── Stop Status ─────────────────────────────────────────────
 
   Widget _buildStopStatus() {
     return Column(
@@ -825,6 +835,26 @@ class _EditStopScreenState extends State<EditStopScreen> {
             ],
           ),
         ),
+        // ── Reset button (only when status is not PLANNED and today) ──
+        if (_viewModel.canReset) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _viewModel.isSaving ? null : _resetStatus,
+              icon: const Icon(Icons.undo, size: 18),
+              label: const Text('Reset to Planned'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: const BorderSide(color: AppColors.accent),
+                minimumSize: const Size(0, 44),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -873,6 +903,33 @@ class _EditStopScreenState extends State<EditStopScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _resetStatus() async {
+    final confirmed = await showConfirmationDialog(
+      context: context,
+      title: 'Reset to Planned?',
+      message: 'This will reset the stop status back to Planned and re-enable editing.',
+      confirmLabel: 'Reset',
+      icon: Icons.undo,
+      iconBgColor: AppColors.surface2,
+      iconColor: AppColors.accent,
+      confirmColor: AppColors.accent,
+    );
+    if (confirmed != true) return;
+
+    final success = await _viewModel.resetStatus();
+    if (!mounted) return;
+    if (success) {
+      _hasChanges = true;
+      setState(() {});
+      _showMessage(context, 'Stop status reset to Planned.');
+    } else {
+      _showMessage(
+        context,
+        'Unable to reset status: ${_viewModel.error ?? 'please try again.'}',
+      );
+    }
   }
 
   Future<void> _onStatusTapped(BuildContext context, String target) async {
@@ -987,7 +1044,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  // ─── Schedule Info (fixed invalid symbols) ──────────────────
+  // ─── Schedule Info ──────────────────────────────────────────
 
   Widget _buildScheduleInfo() {
     final stop = _viewModel.stop;
@@ -1024,7 +1081,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
               Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade500),
               const SizedBox(width: 8),
               Text(
-                'Day ${stop.dayIndex} • Stop ${stop.stopOrder}', // ✅ Fixed symbol
+                'Day ${stop.dayIndex} • Stop ${stop.stopOrder}',
                 style: const TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 13,
@@ -1181,7 +1238,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
   }
 
   Future<void> _save(BuildContext context) async {
-    // 1. Persist the skip reason when the stop is skipped.
     if (_viewModel.isSkipped) {
       final reasonSaved = await _viewModel.saveSkipReason(
         _skipReasonController.text.trim(),
@@ -1193,7 +1249,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
       _hasChanges = true;
     }
 
-    // 2. Persist pending time change (with confirmation).
     if (_viewModel.hasTimeChanges) {
       final confirmed = await _confirmTimeChange(context);
       if (confirmed != true) {
@@ -1238,9 +1293,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  CHANGE LOCATION SHEET
-// ═══════════════════════════════════════════════════════════════════════
+// ─── ChangeLocationSheet (unchanged from original) ─────────────
 
 class _ChangeLocationSheet extends StatefulWidget {
   final ItineraryStop stop;
@@ -1261,7 +1314,6 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
   bool _isSearching = false;
   String? _searchError;
 
-  // ✅ ADDED: State for fetching and displaying bookmarks directly in the sheet
   List<Place> _bookmarks = [];
   bool _isLoadingBookmarks = true;
   String? _bookmarksError;
@@ -1358,7 +1410,6 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ EXTENDED: Make the bottom sheet 90% of the screen height
     return Container(
       height: MediaQuery.of(context).size.height * 0.90,
       decoration: const BoxDecoration(
@@ -1397,8 +1448,6 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // ✅ REORDERED: Search bar is now pinned to the top of the taller sheet
               const Text(
                 'SEARCH MANUALLY',
                 style: TextStyle(
@@ -1442,8 +1491,6 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 16),
-
-              // ✅ NEW: A massive scrollable area for Recommendations, Bookmarks, and Search Results
               Expanded(
                 child: SingleChildScrollView(
                   child: Column(
@@ -1481,7 +1528,6 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
                             },
                           )
                         else ...[
-                            // Show Recommendations and Bookmarks when the user is not actively searching
                             _buildRecommendationsSection(),
                             _buildBookmarksSection(),
                           ]
@@ -1581,7 +1627,6 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
     );
   }
 
-  // ✅ ADDED: Renders the user's saved bookmarks directly below the AI recommendations
   Widget _buildBookmarksSection() {
     if (_isLoadingBookmarks) {
       return const Padding(
@@ -1627,7 +1672,6 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
               separatorBuilder: (_, _) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final place = _bookmarks[index];
-                // Reuse the clean LocationResultTile format for visual consistency
                 return _LocationResultTile(
                   place: place,
                   onTap: () => _openPlaceDetail(place),

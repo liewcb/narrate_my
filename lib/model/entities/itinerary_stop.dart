@@ -84,7 +84,7 @@ class ItineraryStop {
   // ---------- Serialization ----------
   Map<String, dynamic> toMap() {
     return {
-      'stop_id': stopId,
+      // ❌ REMOVE THIS: 'stop_id': stopId,
       'itinerary_id': itineraryId,
       'place_id': placeId,
       'destination_id': destinationId,
@@ -97,7 +97,7 @@ class ItineraryStop {
       'stop_status': stopStatus,
       'skip_reason': skipReason,
       'weather_note': weatherNote,
-      'created_at': createdAt.toIso8601String(),
+      // ❌ REMOVE THIS: 'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
   }

@@ -66,8 +66,16 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
   /// Whether progress recording (Completed/Skipped) is allowed (Ongoing only).
   bool get canRecordProgress => _temporalStatus.allowsProgressRecording;
 
-  /// Whether the itinerary can be customized (Ongoing or Upcoming – now editable).
   bool get canCustomize => _temporalStatus.isEditable;
+
+  bool isDayEditable(int dayIndex) {
+    if (_itinerary == null) return false;
+    final dayDate = _itinerary!.startDate.add(Duration(days: dayIndex - 1));
+    final today = DateTime.now();
+    final dayStart = DateTime(dayDate.year, dayDate.month, dayDate.day);
+    final todayStart = DateTime(today.year, today.month, today.day);
+    return dayStart.isAfter(todayStart) || dayStart.isAtSameMomentAs(todayStart);
+  }
 
   /// Sorted list of available day indices (1‑based).
   List<int> get availableDayIndices {
@@ -178,12 +186,16 @@ class ManageDisplayPlanViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _itinerary = await _repository.getItinerary(itineraryId);
+      final loaded = await _repository.getItinerary(itineraryId);
+      // Recalculate + persist status if outdated (single source of truth in
+      // the repository). Returns the itinerary with the correct status.
+      _itinerary = await _repository.refreshItineraryStatus(loaded);
 
       _temporalStatus = ItineraryStatusResolver.resolve(
         startDate: _itinerary!.startDate,
         endDate: _itinerary!.endDate,
       );
+      debugPrint('[ManagePlanVM] Temporal status: $_temporalStatus, canCustomize: $canCustomize');
 
       final rawStops = await _stopRepo.getStopsForItinerary(itineraryId);
 

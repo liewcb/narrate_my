@@ -427,6 +427,9 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
 
       _dayKeys[dayIndex] ??= GlobalKey();
 
+      // ✅ NEW LOGIC: Combine global edit status with this specific day's date
+      final bool canEditThisDay = canEdit && _viewModel.isDayEditable(dayIndex);
+
       cards.add(
         Container(
           key: _dayKeys[dayIndex],
@@ -436,7 +439,10 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
             dayMeta: dayMeta,
             stops: stops,
             dayDate: date ?? DateTime.now(),
-            canEdit: canEdit,
+
+            // ✅ APPLY IT: Pass the calculated value to the Day Card
+            canEdit: canEditThisDay,
+
             isSelected: _selectedMapDayIndex == dayIndex,
             onEditDay: () => _openEditDay(dayIndex),
             onEditStop: _openEditStop,
