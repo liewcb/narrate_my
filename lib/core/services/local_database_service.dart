@@ -19,7 +19,7 @@ class LocalDatabaseService {
     final path = join(await getDatabasesPath(), 'narratemy.db');
     return openDatabase(
       path,
-      version: 4, // ✅ Incremented from 3 to 4
+      version: 5, // ✅ Incremented to 5 to trigger migration for the new table
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -35,15 +35,16 @@ class LocalDatabaseService {
     if (oldVersion < 3) {
       await _upgradeBookmarkCacheV3(db);
     }
-    // ✅ NEW: Migration to add missing columns for version 4
     if (oldVersion < 4) {
       await _upgradeItineraryV4(db);
     }
+    // ✅ NEW: Migration for version 5 to add itinerary_selected_destinations table
+    if (oldVersion < 5) {
+      await _upgradeItineraryV5(db);
+    }
   }
 
-  /// ✅ NEW: Migration to add travel_type and transportation_mode columns
   Future<void> _upgradeItineraryV4(Database db) async {
-    // Check if columns exist before adding them
     final columns = await db.rawQuery('PRAGMA table_info(itineraries)');
     final columnNames = columns.map((col) => col['name'] as String).toList();
 
@@ -53,6 +54,20 @@ class LocalDatabaseService {
     if (!columnNames.contains('transportation_mode')) {
       await db.execute('ALTER TABLE itineraries ADD COLUMN transportation_mode TEXT');
     }
+  }
+
+  /// ✅ NEW: Creates the itinerary_selected_destinations table for existing users upgrading to v5
+  Future<void> _upgradeItineraryV5(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS itinerary_selected_destinations (
+        itinerary_id TEXT NOT NULL,
+        destination_id TEXT NOT NULL,
+        allocated_days INTEGER NOT NULL,
+        created_at TEXT,
+        updated_at TEXT,
+        PRIMARY KEY (itinerary_id, destination_id)
+      )
+    ''');
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -96,7 +111,6 @@ class LocalDatabaseService {
       )
     ''');
 
-    // ✅ Updated CREATE TABLE with all required columns
     await db.execute('''
       CREATE TABLE ${guard}itineraries (
         itinerary_id TEXT PRIMARY KEY,
@@ -126,7 +140,7 @@ class LocalDatabaseService {
         stop_id INTEGER PRIMARY KEY AUTOINCREMENT,
         itinerary_id TEXT NOT NULL,
         place_id TEXT NOT NULL,
-        destination_id TEXT, -- ✅ ADDED THIS LINE
+        destination_id TEXT,
         day_index INTEGER NOT NULL,
         stop_order INTEGER NOT NULL,
         start_time TEXT NOT NULL,
@@ -140,6 +154,18 @@ class LocalDatabaseService {
         updated_at TEXT NOT NULL,
         FOREIGN KEY (itinerary_id) REFERENCES itineraries (itinerary_id) ON DELETE CASCADE,
         FOREIGN KEY (place_id) REFERENCES places (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // ✅ ADDED: Included in table creation for fresh installs
+    await db.execute('''
+      CREATE TABLE ${guard}itinerary_selected_destinations (
+        itinerary_id TEXT NOT NULL,
+        destination_id TEXT NOT NULL,
+        allocated_days INTEGER NOT NULL,
+        created_at TEXT,
+        updated_at TEXT,
+        PRIMARY KEY (itinerary_id, destination_id)
       )
     ''');
   }

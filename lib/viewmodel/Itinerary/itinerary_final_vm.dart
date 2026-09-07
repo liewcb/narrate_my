@@ -1,6 +1,5 @@
 // lib/viewmodel/Itinerary/itinerary_final_vm.dart
 import 'package:flutter/foundation.dart';
-
 import '../../core/config/api_keys.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/services/database_manager.dart';
@@ -193,7 +192,7 @@ class ItineraryFinalViewModel extends ChangeNotifier {
   void selectDay(int index) {
     if (_selectedDayIndex == index) return;
     _selectedDayIndex = index;
-    notifyListeners();  // ✅ critical
+    notifyListeners();
   }
 
   Future<void> regenerate() async {
@@ -397,6 +396,28 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     final saved = await itineraryRepo.createItinerary(itinerary);
     _savedItineraryId = saved.itineraryId;
 
+    // ✅ MOVED UP: Resolve destination IDs BEFORE saving stops
+    final destRepo = DatabaseManager().itineraryDestinationRepository;
+    final destIdByName = <String, String>{};
+    try {
+      final allDest =
+      await DatabaseManager().destinationRepository.getAllDestinations();
+      for (final d in allDest) {
+        destIdByName[d.destinationName.trim().toLowerCase()] = d.destinationId;
+      }
+    } catch (e) {
+      debugPrint('[FINAL SAVE] Destination ID resolution failed: $e');
+    }
+
+    // ✅ Determine a safe default destination ID from the draft
+    String defaultDestId = 'D001'; // Fallback failsafe
+    if (_draft != null && _draft!.destinationNames.isNotEmpty) {
+      final firstName = _draft!.destinationNames.first.trim().toLowerCase();
+      if (destIdByName.containsKey(firstName)) {
+        defaultDestId = destIdByName[firstName]!;
+      }
+    }
+
     // Build stops + save places so the edit screen can join them.
     final stopRepo = DatabaseManager().itineraryStopRepository;
     final placeRepo = DatabaseManager().placeRepository;
@@ -415,7 +436,8 @@ class ItineraryFinalViewModel extends ChangeNotifier {
           stopId: 0,
           itineraryId: saved.itineraryId,
           placeId: place.placeId,
-          destinationId: place.destinationId,
+          // ✅ FIX APPLIED: Fallback to the itinerary's destination if null
+          destinationId: place.destinationId ?? defaultDestId,
           // DB schema is 1-based: day_index > 0, stop_order > 0.
           dayIndex: day.dayIndex + 1,
           stopOrder: i + 1,
@@ -436,25 +458,9 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     }
 
     await stopRepo.saveStops(stops);
-    debugPrint('[PERSISTENCE] itineraryId=${saved.itineraryId} '
-        'inserting ${stops.length} stops '
-        '(per-day: ${scheduledDays.map((d) => 'D${d.dayIndex + 1}=${d.stops.length}').join(', ')})');
-    debugPrint('[FINAL SAVE] Saved ${stops.length} stops for '
-        '${saved.itineraryId}');
+    debugPrint('[FINAL SAVE] Saved ${stops.length} stops for ${saved.itineraryId}');
 
     // Persist selected destinations (itinerary_selected_destinations).
-    // Resolve destination names → DB destination_id (e.g. "D001").
-    final destRepo = DatabaseManager().itineraryDestinationRepository;
-    final destIdByName = <String, String>{};
-    try {
-      final allDest =
-      await DatabaseManager().destinationRepository.getAllDestinations();
-      for (final d in allDest) {
-        destIdByName[d.destinationName.trim().toLowerCase()] = d.destinationId;
-      }
-    } catch (e) {
-      debugPrint('[FINAL SAVE] Destination ID resolution failed: $e');
-    }
     for (final destName in _draft?.destinationNames ?? const <String>[]) {
       final destId = destIdByName[destName.trim().toLowerCase()] ?? destName;
       final allocated = _draft?.daySplit[destName] ??
@@ -476,9 +482,7 @@ class ItineraryFinalViewModel extends ChangeNotifier {
       }
     }
 
-    // Persist must-visits (itinerary_must_visits). Each row keeps the
-    // validated place identity (stable place_id), display name, destination
-    // association and selection source preserved by Step 3.
+    // Persist must-visits (itinerary_must_visits).
     final mustVisitRepo = DatabaseManager().itineraryMustVisitRepository;
     for (final mvId in _mustVisitPlaceIds) {
       final meta = _draft?.mustVisitPlaceInfo[mvId];

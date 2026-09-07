@@ -173,7 +173,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     if (itinerary == null) return;
 
     final availableDays =
-    _viewModel.stops.map((s) => s.dayIndex).toSet().toList()..sort();
+        _viewModel.stops.map((s) => s.dayIndex).toSet().toList()..sort();
 
     final changed = await Navigator.push<bool>(
       context,
@@ -245,7 +245,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
     final place = stop.place ?? Place.empty(stop.placeId);
     final type =
         place.placeCategory ??
-            (place.placeTypes.isNotEmpty ? place.placeTypes.first : 'Attraction');
+        (place.placeTypes.isNotEmpty ? place.placeTypes.first : 'Attraction');
     final travelMinutes = stop.travelFromPrevMinutes;
 
     return WizardPlace(
@@ -343,48 +343,52 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
               style: AppTextStyles.pageTitle.copyWith(fontSize: 18),
             ),
           ),
-          body: ListView(
-            controller: _scrollController,
-            padding: const EdgeInsets.only(
-              left: 20.0,
-              right: 20.0,
-              top: 8.0,
-              bottom: 40.0, // reduced bottom padding since no sticky bar
-            ),
-            children: [
-              // ─── Hero Section ──────────────────────────────
-              _HeroSection(
-                title: itinerary?.title ?? 'My Trip',
-                totalDays: itinerary?.totalDays ?? 0,
-                startDate: itinerary?.startDate,
-                endDate: itinerary?.endDate,
-                status: _viewModel.temporalStatus,
+          body: RefreshIndicator(
+            onRefresh: () => _viewModel.load(),
+            color: AppColors.accent,
+            child: ListView(
+              controller: _scrollController,
+              padding: const EdgeInsets.only(
+                left: 20.0,
+                right: 20.0,
+                top: 8.0,
+                bottom: 40.0, // reduced bottom padding since no sticky bar
               ),
-              const SizedBox(height: 24.0),
-
-              // ─── Day Selector ──────────────────────────────
-              if (_availableDays.isNotEmpty)
-                _DaySelector(
-                  days: _availableDays,
-                  selectedDay: _selectedMapDayIndex,
-                  onDaySelected: (day) {
-                    setState(() {
-                      _selectedMapDayIndex = day;
-                    });
-                  },
+              children: [
+                // ─── Hero Section ──────────────────────────────
+                _HeroSection(
+                  title: itinerary?.title ?? 'My Trip',
+                  totalDays: itinerary?.totalDays ?? 0,
+                  startDate: itinerary?.startDate,
+                  endDate: itinerary?.endDate,
+                  status: _viewModel.temporalStatus,
                 ),
+                const SizedBox(height: 24.0),
 
-              // ─── Map Card ──────────────────────────────────
-              _MapCard(
-                stops: stops,
-                dayIndex: _selectedMapDayIndex,
-                onStopTap: _openStopDetail,
-              ),
-              const SizedBox(height: 16.0),
+                // ─── Day Selector ──────────────────────────────
+                if (_availableDays.isNotEmpty)
+                  _DaySelector(
+                    days: _availableDays,
+                    selectedDay: _selectedMapDayIndex,
+                    onDaySelected: (day) {
+                      setState(() {
+                        _selectedMapDayIndex = day;
+                      });
+                    },
+                  ),
 
-              // ─── Day Cards ──────────────────────────────────
-              ..._buildDayCards(canEdit),
-            ],
+                // ─── Map Card ──────────────────────────────────
+                _MapCard(
+                  stops: stops,
+                  dayIndex: _selectedMapDayIndex,
+                  onStopTap: _openStopDetail,
+                ),
+                const SizedBox(height: 16.0),
+
+                // ─── Day Cards ──────────────────────────────────
+                ..._buildDayCards(canEdit),
+              ],
+            ),
           ),
         );
       },
@@ -661,10 +665,10 @@ class _MapCard extends StatelessWidget {
         child: validStops.isEmpty
             ? _EmptyMapState(dayIndex: dayIndex)
             : _DayMapWidget(
-          stops: validStops,
-          dayIndex: dayIndex,
-          onStopTap: onStopTap,
-        ),
+                stops: validStops,
+                dayIndex: dayIndex,
+                onStopTap: onStopTap,
+              ),
       ),
     );
   }
@@ -787,7 +791,7 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
         infoWindow: maps.InfoWindow(
           title: item.stop.place?.name ?? item.stop.placeId,
           snippet:
-          'Day ${widget.dayIndex} • Stop ${item.stop.stopOrder}\n${_formattedTime(item.stop)}',
+              'Day ${widget.dayIndex} • Stop ${item.stop.stopOrder}\n${_formattedTime(item.stop)}',
         ),
         onTap: () => widget.onStopTap(item.stop),
       );
@@ -850,7 +854,7 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
 
   String _formattedTime(ItineraryStop stop) =>
       '${DateFormat('HH:mm').format(stop.startTime)} – '
-          '${DateFormat('HH:mm').format(stop.endTime)}';
+      '${DateFormat('HH:mm').format(stop.endTime)}';
 }
 
 /// A stop with valid, mappable coordinates.

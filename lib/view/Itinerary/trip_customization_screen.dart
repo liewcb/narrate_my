@@ -15,7 +15,8 @@ class TripCustomizationScreen extends StatefulWidget {
   const TripCustomizationScreen({super.key});
 
   @override
-  State<TripCustomizationScreen> createState() => _TripCustomizationScreenState();
+  State<TripCustomizationScreen> createState() =>
+      _TripCustomizationScreenState();
 }
 
 class _TripCustomizationScreenState extends State<TripCustomizationScreen> {
@@ -38,100 +39,111 @@ class _Step2TripStyleBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final vm = context.watch<Step2TripStyleVM>();
 
-    return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: const WizardAppBar(step: 2),
-        body: Stack(
-          children: [
-            SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 8),
-                  const WizardProgressBar(activeSteps: 2),
-                  const SizedBox(height: 24),
-                  _Header(vm: vm),
-                  const SizedBox(height: 24),
-                  _TravelType(
-                    selected: vm.travelType,
-                    onSelected: vm.setTravelType,
-                    error: vm.travelTypeError,
-                  ),
-                  const SizedBox(height: 24),
-                  _TripName(
-                    initialValue: vm.tripName,
-                    onChanged: vm.setTripName,
-                    error: vm.tripNameError,
-                  ),
-                  const SizedBox(height: 24),
-                  _TravelDates(
-                    vm: vm,
-                    error: vm.dateError,
-                  ),
-                  const SizedBox(height: 24),
-                  _ExplorationTime(
-                    selected: vm.exploration,
-                    onSelected: vm.setExploration,
-                    error: vm.explorationError,
-                  ),
-                  const SizedBox(height: 24),
-                  _TravelPace(
-                    selected: vm.pace,
-                    onSelected: vm.setPace,
-                    error: vm.paceError,
-                  ),
-                  const SizedBox(height: 24),
-                  _Interests(
-                    selected: vm.interests,
-                    onToggle: vm.toggleInterest,
-                    maxInterests: vm.maxInterests,
-                    error: vm.interestsError,
-                  ),
-                  const SizedBox(height: 24),
-                  _Transportation(
-                    selected: vm.transportation,
-                    onSelected: vm.setTransportation,
-                    error: vm.transportationError,
-                  ),
-                  const SizedBox(height: 120),
-                ],
-              ),
-            ),
-            _FooterButton(
-              onPressed: () {
-                final errors = vm.validate();
-                if (errors.isNotEmpty) return;
-
-                try {
-                  // ✅ 1. Build the updated draft from this screen
-                  final updatedDraft = vm.buildDraft();
-
-                  // ✅ 2. Save it to the global vault!
-                  context.read<TripDraftNotifier>().updateDraft(updatedDraft);
-
-                  // ✅ 3. Navigate forward (passing draft to Step 3 so it doesn't break)
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const MustVisitSelectionScreen(),
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          // Save current inputs to global state before going back to Step 1
+          final updatedDraft = vm.buildDraft();
+          context.read<TripDraftNotifier>().updateDraft(updatedDraft);
+        }
+      },
+      child: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: const WizardAppBar(step: 2),
+          body: Stack(
+            children: [
+              SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 8),
+                    const WizardProgressBar(activeSteps: 2),
+                    const SizedBox(height: 24),
+                    _Header(vm: vm),
+                    const SizedBox(height: 24),
+                    _TravelType(
+                      selected: vm.travelType,
+                      onSelected: vm.setTravelType,
+                      error: vm.travelTypeError,
                     ),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context)
-                    ..hideCurrentSnackBar()
-                    ..showSnackBar(
-                      SnackBar(
-                        content: Text(e.toString().replaceFirst('Bad state: ', '')),
-                        backgroundColor: Colors.red,
+                    const SizedBox(height: 24),
+                    _TripName(
+                      initialValue: vm.tripName,
+                      onChanged: vm.setTripName,
+                      error: vm.tripNameError,
+                    ),
+                    const SizedBox(height: 24),
+                    _TravelDates(vm: vm, error: vm.dateError),
+                    const SizedBox(height: 24),
+                    _ExplorationTime(
+                      selected: vm.exploration,
+                      onSelected: vm.setExploration,
+                      error: vm.explorationError,
+                    ),
+                    const SizedBox(height: 24),
+                    _TravelPace(
+                      selected: vm.pace,
+                      onSelected: vm.setPace,
+                      error: vm.paceError,
+                    ),
+                    const SizedBox(height: 24),
+                    _Interests(
+                      selected: vm.interests,
+                      onToggle: vm.toggleInterest,
+                      maxInterests: vm.maxInterests,
+                      error: vm.interestsError,
+                    ),
+                    const SizedBox(height: 24),
+                    _Transportation(
+                      selected: vm.transportation,
+                      onSelected: vm.setTransportation,
+                      error: vm.transportationError,
+                    ),
+                    const SizedBox(height: 120),
+                  ],
+                ),
+              ),
+              _FooterButton(
+                onPressed: () {
+                  final errors = vm.validate();
+                  if (errors.isNotEmpty) return;
+
+                  try {
+                    // ✅ 1. Build the updated draft from this screen
+                    final updatedDraft = vm.buildDraft();
+
+                    // ✅ 2. Save it to the global vault!
+                    context.read<TripDraftNotifier>().updateDraft(updatedDraft);
+
+                    // ✅ 3. Navigate forward (passing draft to Step 3 so it doesn't break)
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MustVisitSelectionScreen(),
                       ),
                     );
-                }
-              },
-            ),
-          ],
+                  } catch (e) {
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            e.toString().replaceFirst('Bad state: ', ''),
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                  }
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -142,11 +154,14 @@ class _Step2TripStyleBody extends StatelessWidget {
 
 class _Header extends StatelessWidget {
   final Step2TripStyleVM vm;
+
   const _Header({required this.vm});
 
   @override
   Widget build(BuildContext context) {
-    final dests = vm.destinations.isNotEmpty ? vm.destinations.join(' • ') : 'Destination';
+    final dests = vm.destinations.isNotEmpty
+        ? vm.destinations.join(' • ')
+        : 'Destination';
     final dateText = vm.startDate != null && vm.endDate != null
         ? '${vm.totalDays} days · ${DateFormat('MMM d').format(vm.startDate!)} – ${DateFormat('MMM d').format(vm.endDate!)}'
         : 'Pick your dates';
@@ -228,21 +243,34 @@ class _TravelType extends StatelessWidget {
 
             return Expanded(
               child: Padding(
-                padding: EdgeInsets.only(right: idx < types.length - 1 ? 8.0 : 0.0),
+                padding: EdgeInsets.only(
+                  right: idx < types.length - 1 ? 8.0 : 0.0,
+                ),
                 child: GestureDetector(
                   onTap: () => onSelected(label),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                      horizontal: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.brandGreenLight : AppColors.white,
+                      color: isSelected
+                          ? AppColors.brandGreenLight
+                          : AppColors.white,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: isSelected ? AppColors.brandGreen : AppColors.outlineLight.withOpacity(0.5),
+                        color: isSelected
+                            ? AppColors.brandGreen
+                            : AppColors.outlineLight.withOpacity(0.5),
                         width: isSelected ? 1.5 : 1,
                       ),
                       boxShadow: const [
-                        BoxShadow(color: Color(0x0A004D40), offset: Offset(0, 2), blurRadius: 10)
+                        BoxShadow(
+                          color: Color(0x0A004D40),
+                          offset: Offset(0, 2),
+                          blurRadius: 10,
+                        ),
                       ],
                     ),
                     child: Column(
@@ -251,15 +279,21 @@ class _TravelType extends StatelessWidget {
                         Icon(
                           icon,
                           size: 22,
-                          color: isSelected ? AppColors.brandGreen : AppColors.outline,
+                          color: isSelected
+                              ? AppColors.brandGreen
+                              : AppColors.outline,
                         ),
                         const SizedBox(height: 6),
                         Text(
                           label,
                           style: GoogleFonts.inter(
                             fontSize: 12,
-                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                            color: isSelected ? AppColors.brandGreen : AppColors.brandCharcoal,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: isSelected
+                                ? AppColors.brandGreen
+                                : AppColors.brandCharcoal,
                           ),
                         ),
                       ],
@@ -290,6 +324,7 @@ class _TripName extends StatefulWidget {
   final String initialValue;
   final ValueChanged<String> onChanged;
   final String? error;
+
   const _TripName({
     required this.initialValue,
     required this.onChanged,
@@ -335,7 +370,11 @@ class _TripNameState extends State<_TripName> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: AppColors.outlineLight.withOpacity(0.5)),
             boxShadow: const [
-              BoxShadow(color: Color(0x0A004D40), offset: Offset(0, 4), blurRadius: 16)
+              BoxShadow(
+                color: Color(0x0A004D40),
+                offset: Offset(0, 4),
+                blurRadius: 16,
+              ),
             ],
           ),
           child: TextField(
@@ -345,11 +384,17 @@ class _TripNameState extends State<_TripName> {
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r"[a-zA-Z0-9\s\-,']")),
             ],
-            style: GoogleFonts.inter(fontSize: 15, color: AppColors.brandCharcoal),
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              color: AppColors.brandCharcoal,
+            ),
             decoration: const InputDecoration(
               hintText: 'e.g., My Kuala Lumpur Getaway',
               hintStyle: TextStyle(color: AppColors.outline),
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
               border: InputBorder.none,
               counterText: '',
             ),
@@ -423,7 +468,10 @@ class _TravelDates extends StatelessWidget {
             ),
             if (vm.startDate != null)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.brandGreenLight,
                   borderRadius: BorderRadius.circular(12),
@@ -472,9 +520,10 @@ class _TravelDates extends StatelessWidget {
           ),
         ],
 
-        if (coverage != WeatherCoverage.unknown && coverage != WeatherCoverage.outOfRange) ...[
+        if (coverage != WeatherCoverage.unknown &&
+            coverage != WeatherCoverage.outOfRange) ...[
           const SizedBox(height: 8),
-          _WeatherCoverageBadge(coverage: coverage),
+          //_WeatherCoverageBadge(coverage: coverage),
         ],
       ],
     );
@@ -504,8 +553,11 @@ class _TravelDates extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.calendar_today_rounded,
-                    size: 14, color: AppColors.brandGreen),
+                const Icon(
+                  Icons.calendar_today_rounded,
+                  size: 14,
+                  color: AppColors.brandGreen,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -550,7 +602,13 @@ class _DateRangePickerDialog extends StatefulWidget {
 
 class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
   static const List<String> _weekdayLabels = [
-    'S', 'M', 'T', 'W', 'T', 'F', 'S'
+    'S',
+    'M',
+    'T',
+    'W',
+    'T',
+    'F',
+    'S',
   ];
 
   DateTime? _start;
@@ -598,27 +656,38 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
 
   void _shiftMonth(int months) {
     setState(() {
-      _displayedMonth = DateTime(_displayedMonth.year, _displayedMonth.month + months);
+      _displayedMonth = DateTime(
+        _displayedMonth.year,
+        _displayedMonth.month + months,
+      );
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final firstOfShown = _displayedMonth;
-    final firstOfFirst = DateTime(widget.firstDate.year, widget.firstDate.month);
+    final firstOfFirst = DateTime(
+      widget.firstDate.year,
+      widget.firstDate.month,
+    );
     final firstOfLast = DateTime(widget.lastDate.year, widget.lastDate.month);
     final canGoPrev = firstOfShown.isAfter(firstOfFirst);
     final canGoNext = firstOfShown.isBefore(firstOfLast);
 
-    final gridStart = firstOfShown.subtract(Duration(days: firstOfShown.weekday % 7));
+    final gridStart = firstOfShown.subtract(
+      Duration(days: firstOfShown.weekday % 7),
+    );
 
     String hint;
     if (_start == null) {
       hint = 'Select a start date';
     } else if (_end == null) {
       final maxEnd = widget.maxEndFor(_start!);
-      final minEnd = _start!.isBefore(widget.firstDate) ? widget.firstDate : _start!;
-      hint = 'End date must be between '
+      final minEnd = _start!.isBefore(widget.firstDate)
+          ? widget.firstDate
+          : _start!;
+      hint =
+          'End date must be between '
           '${DateFormat('MMM d').format(minEnd)} and '
           '${DateFormat('MMM d').format(maxEnd)}';
     } else {
@@ -682,17 +751,19 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
               ),
               Row(
                 children: _weekdayLabels
-                    .map((label) => Expanded(
-                  child: Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.outline,
-                    ),
-                  ),
-                ))
+                    .map(
+                      (label) => Expanded(
+                        child: Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.outline,
+                          ),
+                        ),
+                      ),
+                    )
                     .toList(),
               ),
               const SizedBox(height: 4),
@@ -703,7 +774,9 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
                     return Expanded(
                       child: Row(
                         children: List.generate(7, (weekday) {
-                          final day = gridStart.add(Duration(days: week * 7 + weekday));
+                          final day = gridStart.add(
+                            Duration(days: week * 7 + weekday),
+                          );
                           return Expanded(child: _buildDayCell(day));
                         }),
                       ),
@@ -717,7 +790,9 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
                   Expanded(
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      style: TextButton.styleFrom(foregroundColor: AppColors.outline),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.outline,
+                      ),
                       child: Text(
                         'Cancel',
                         style: GoogleFonts.inter(fontWeight: FontWeight.w600),
@@ -728,13 +803,18 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: _hasCompleteRange
-                          ? () => Navigator.of(context).pop(DateTimeRange(start: _start!, end: _end!))
+                          ? () => Navigator.of(
+                              context,
+                            ).pop(DateTimeRange(start: _start!, end: _end!))
                           : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.brandGreen,
-                        disabledBackgroundColor: AppColors.outlineLight.withOpacity(0.5),
+                        disabledBackgroundColor: AppColors.outlineLight
+                            .withOpacity(0.5),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
                       ),
                       child: Text(
                         'Select',
@@ -752,26 +832,35 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
   }
 
   Widget _buildDayCell(DateTime day) {
-    final inMonth = day.month == _displayedMonth.month && day.year == _displayedMonth.year;
+    final inMonth =
+        day.month == _displayedMonth.month && day.year == _displayedMonth.year;
     if (!inMonth) return const SizedBox.shrink();
 
     final disabled = _isDisabled(day);
     final isStart = _start != null && _isSameDay(day, _start!);
     final isEnd = _end != null && _isSameDay(day, _end!);
     final isSelected = isStart || isEnd;
-    final inRange = _hasCompleteRange && day.isAfter(_start!) && day.isBefore(_end!);
-    final inValidWindow = _start != null &&
+    final inRange =
+        _hasCompleteRange && day.isAfter(_start!) && day.isBefore(_end!);
+    final inValidWindow =
+        _start != null &&
         _end == null &&
         !day.isBefore(_start!) &&
         !day.isAfter(widget.maxEndFor(_start!));
 
-    final isBeyondMax = _start != null && _end == null && day.isAfter(widget.maxEndFor(_start!));
+    final isBeyondMax =
+        _start != null &&
+        _end == null &&
+        day.isAfter(widget.maxEndFor(_start!));
     final isToday = _isSameDay(day, _today);
 
     Color? bg;
-    if (isSelected) bg = AppColors.brandGreen;
-    else if (inRange) bg = AppColors.brandGreenLight;
-    else if (inValidWindow && !disabled) bg = AppColors.brandGreenLight.withOpacity(0.45);
+    if (isSelected)
+      bg = AppColors.brandGreen;
+    else if (inRange)
+      bg = AppColors.brandGreenLight;
+    else if (inValidWindow && !disabled)
+      bg = AppColors.brandGreenLight.withOpacity(0.45);
 
     final fg = isSelected
         ? Colors.white
@@ -807,56 +896,58 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
   }
 }
 
-class _WeatherCoverageBadge extends StatelessWidget {
-  final WeatherCoverage coverage;
-  const _WeatherCoverageBadge({required this.coverage});
+// class _WeatherCoverageBadge extends StatelessWidget {
+//   final WeatherCoverage coverage;
+//
+//   const _WeatherCoverageBadge({required this.coverage});
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     if (coverage == WeatherCoverage.unknown ||
+//         coverage == WeatherCoverage.outOfRange) {
+//       return const SizedBox.shrink();
+//     }
 
-  @override
-  Widget build(BuildContext context) {
-    if (coverage == WeatherCoverage.unknown || coverage == WeatherCoverage.outOfRange) {
-      return const SizedBox.shrink();
-    }
+    // final (label, color, icon) = switch (coverage) {
+    //   WeatherCoverage.full => (
+    //     'Weather data available for all days',
+    //     AppColors.brandGreen,
+    //     Icons.check_circle_rounded,
+    //   ),
+    //   WeatherCoverage.primaryOnly => (
+    //     'Primary forecast only (${ItineraryValidationService.primaryForecastDays}-day)',
+    //     Colors.orange,
+    //     Icons.info_outline_rounded,
+    //   ),
+    //   _ => ('', AppColors.outline, Icons.help_outline),
+    // };
 
-    final (label, color, icon) = switch (coverage) {
-      WeatherCoverage.full => (
-      'Weather data available for all days',
-      AppColors.brandGreen,
-      Icons.check_circle_rounded,
-      ),
-      WeatherCoverage.primaryOnly => (
-      'Primary forecast only (${ItineraryValidationService.primaryForecastDays}-day)',
-      Colors.orange,
-      Icons.info_outline_rounded,
-      ),
-      _ => ('', AppColors.outline, Icons.help_outline),
-    };
-
-    if (label.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+//     if (label.isEmpty) return const SizedBox.shrink();
+//
+//     return Container(
+//       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+//       decoration: BoxDecoration(
+//         color: color.withOpacity(0.1),
+//         borderRadius: BorderRadius.circular(8),
+//       ),
+//       child: Row(
+//         mainAxisSize: MainAxisSize.min,
+//         children: [
+//           Icon(icon, size: 14, color: color),
+//           const SizedBox(width: 6),
+//           Text(
+//             label,
+//             style: GoogleFonts.inter(
+//               fontSize: 11,
+//               fontWeight: FontWeight.w600,
+//               color: color,
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+// }
 
 class _ExplorationTime extends StatelessWidget {
   final String? selected;
@@ -897,16 +988,27 @@ class _ExplorationTime extends StatelessWidget {
               child: GestureDetector(
                 onTap: () => onSelected(option),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
-                    color: isSelected ? AppColors.brandGreenLight : AppColors.white,
+                    color: isSelected
+                        ? AppColors.brandGreenLight
+                        : AppColors.white,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: isSelected ? AppColors.brandGreen : AppColors.outlineLight.withOpacity(0.5),
+                      color: isSelected
+                          ? AppColors.brandGreen
+                          : AppColors.outlineLight.withOpacity(0.5),
                       width: isSelected ? 1.5 : 1,
                     ),
                     boxShadow: const [
-                      BoxShadow(color: Color(0x0A004D40), offset: Offset(0, 2), blurRadius: 10)
+                      BoxShadow(
+                        color: Color(0x0A004D40),
+                        offset: Offset(0, 2),
+                        blurRadius: 10,
+                      ),
                     ],
                   ),
                   child: Row(
@@ -916,13 +1018,21 @@ class _ExplorationTime extends StatelessWidget {
                         option,
                         style: GoogleFonts.inter(
                           fontSize: 14,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color: isSelected ? AppColors.brandGreen : AppColors.brandCharcoal,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: isSelected
+                              ? AppColors.brandGreen
+                              : AppColors.brandCharcoal,
                         ),
                       ),
                       Icon(
-                        isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                        color: isSelected ? AppColors.brandGreen : AppColors.outlineLight,
+                        isSelected
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color: isSelected
+                            ? AppColors.brandGreen
+                            : AppColors.outlineLight,
                         size: 20,
                       ),
                     ],
@@ -988,16 +1098,27 @@ class _TravelPace extends StatelessWidget {
                 onTap: () => onSelected(label),
                 child: Container(
                   margin: const EdgeInsets.only(right: 8),
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 8,
+                  ),
                   decoration: BoxDecoration(
-                    color: isSelected ? AppColors.brandGreenLight : AppColors.white,
+                    color: isSelected
+                        ? AppColors.brandGreenLight
+                        : AppColors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isSelected ? AppColors.brandGreen : AppColors.outlineLight.withOpacity(0.5),
+                      color: isSelected
+                          ? AppColors.brandGreen
+                          : AppColors.outlineLight.withOpacity(0.5),
                       width: isSelected ? 1.5 : 1,
                     ),
                     boxShadow: const [
-                      BoxShadow(color: Color(0x0A004D40), offset: Offset(0, 4), blurRadius: 12)
+                      BoxShadow(
+                        color: Color(0x0A004D40),
+                        offset: Offset(0, 4),
+                        blurRadius: 12,
+                      ),
                     ],
                   ),
                   child: Column(
@@ -1006,15 +1127,21 @@ class _TravelPace extends StatelessWidget {
                       Icon(
                         p['icon'] as IconData,
                         size: 24,
-                        color: isSelected ? AppColors.brandGreen : AppColors.outline,
+                        color: isSelected
+                            ? AppColors.brandGreen
+                            : AppColors.outline,
                       ),
                       const SizedBox(height: 6),
                       Text(
                         label,
                         style: GoogleFonts.inter(
                           fontSize: 13,
-                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                          color: isSelected ? AppColors.brandGreen : AppColors.brandCharcoal,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                          color: isSelected
+                              ? AppColors.brandGreen
+                              : AppColors.brandCharcoal,
                         ),
                       ),
                     ],
@@ -1093,7 +1220,9 @@ class _Interests extends StatelessWidget {
             fontSize: 10,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.0,
-            color: remaining == 0 ? AppColors.brandTerracotta : AppColors.outline,
+            color: remaining == 0
+                ? AppColors.brandTerracotta
+                : AppColors.outline,
           ),
         ),
         const SizedBox(height: 10),
@@ -1108,7 +1237,10 @@ class _Interests extends StatelessWidget {
               onTap: isDisabled ? null : () => onToggle(label),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? AppColors.brandGreen
@@ -1117,11 +1249,17 @@ class _Interests extends StatelessWidget {
                       : AppColors.white,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: isSelected ? AppColors.brandGreen : AppColors.outlineLight.withOpacity(0.6),
+                    color: isSelected
+                        ? AppColors.brandGreen
+                        : AppColors.outlineLight.withOpacity(0.6),
                     width: 1,
                   ),
                   boxShadow: const [
-                    BoxShadow(color: Color(0x0A004D40), offset: Offset(0, 2), blurRadius: 10)
+                    BoxShadow(
+                      color: Color(0x0A004D40),
+                      offset: Offset(0, 2),
+                      blurRadius: 10,
+                    ),
                   ],
                 ),
                 child: Row(
@@ -1130,15 +1268,25 @@ class _Interests extends StatelessWidget {
                     Icon(
                       icon,
                       size: 16,
-                      color: isSelected ? Colors.white : isDisabled ? AppColors.outline : AppColors.brandCharcoal,
+                      color: isSelected
+                          ? Colors.white
+                          : isDisabled
+                          ? AppColors.outline
+                          : AppColors.brandCharcoal,
                     ),
                     const SizedBox(width: 6),
                     Text(
                       label,
                       style: GoogleFonts.inter(
                         fontSize: 13,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isSelected ? Colors.white : isDisabled ? AppColors.outline : AppColors.brandCharcoal,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: isSelected
+                            ? Colors.white
+                            : isDisabled
+                            ? AppColors.outline
+                            : AppColors.brandCharcoal,
                       ),
                     ),
                   ],
@@ -1179,12 +1327,14 @@ class _Transportation extends StatelessWidget {
     const options = [
       {
         'title': 'Public Transit (LRT/MRT/KTM)',
-        'desc': 'Accounts for rail networks and transfers, ideal for downtown city exploration.',
+        'desc':
+            'Accounts for rail networks and transfers, ideal for downtown city exploration.',
         'icon': Icons.directions_subway_rounded,
       },
       {
         'title': 'Driving / Car',
-        'desc': 'Accounts for direct routing, Grab/Taxi pickup wait times, and parking search times.',
+        'desc':
+            'Accounts for direct routing, Grab/Taxi pickup wait times, and parking search times.',
         'icon': Icons.directions_car_rounded,
       },
     ];
@@ -1217,18 +1367,24 @@ class _Transportation extends StatelessWidget {
                   curve: Curves.easeInOut,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: isSelected ? AppColors.brandGreenLight : AppColors.white,
+                    color: isSelected
+                        ? AppColors.brandGreenLight
+                        : AppColors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isSelected ? AppColors.brandGreen : AppColors.outlineLight.withOpacity(0.5),
+                      color: isSelected
+                          ? AppColors.brandGreen
+                          : AppColors.outlineLight.withOpacity(0.5),
                       width: isSelected ? 1.5 : 1,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: isSelected ? AppColors.brandGreen.withOpacity(0.08) : const Color(0x0A004D40),
+                        color: isSelected
+                            ? AppColors.brandGreen.withOpacity(0.08)
+                            : const Color(0x0A004D40),
                         offset: const Offset(0, 3),
                         blurRadius: 10,
-                      )
+                      ),
                     ],
                   ),
                   child: Row(
@@ -1237,13 +1393,17 @@ class _Transportation extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: isSelected ? AppColors.brandGreen.withOpacity(0.15) : AppColors.brandGrayLight,
+                          color: isSelected
+                              ? AppColors.brandGreen.withOpacity(0.15)
+                              : AppColors.brandGrayLight,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           icon,
                           size: 22,
-                          color: isSelected ? AppColors.brandGreen : AppColors.outline,
+                          color: isSelected
+                              ? AppColors.brandGreen
+                              : AppColors.outline,
                         ),
                       ),
                       const SizedBox(width: 14),
@@ -1255,8 +1415,12 @@ class _Transportation extends StatelessWidget {
                               title,
                               style: GoogleFonts.inter(
                                 fontSize: 14,
-                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                                color: isSelected ? AppColors.brandGreen : AppColors.brandCharcoal,
+                                fontWeight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w600,
+                                color: isSelected
+                                    ? AppColors.brandGreen
+                                    : AppColors.brandCharcoal,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -1266,7 +1430,9 @@ class _Transportation extends StatelessWidget {
                                 fontSize: 12,
                                 fontWeight: FontWeight.w400,
                                 height: 1.35,
-                                color: isSelected ? AppColors.brandGreen.withOpacity(0.85) : AppColors.outline,
+                                color: isSelected
+                                    ? AppColors.brandGreen.withOpacity(0.85)
+                                    : AppColors.outline,
                               ),
                             ),
                           ],
@@ -1274,8 +1440,12 @@ class _Transportation extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Icon(
-                        isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                        color: isSelected ? AppColors.brandGreen : AppColors.outlineLight,
+                        isSelected
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color: isSelected
+                            ? AppColors.brandGreen
+                            : AppColors.outlineLight,
                         size: 22,
                       ),
                     ],
@@ -1303,6 +1473,7 @@ class _Transportation extends StatelessWidget {
 
 class _FooterButton extends StatelessWidget {
   final VoidCallback onPressed;
+
   const _FooterButton({required this.onPressed});
 
   @override
@@ -1330,17 +1501,26 @@ class _FooterButton extends StatelessWidget {
           ),
           child: ElevatedButton.icon(
             onPressed: canProceed ? onPressed : null,
-            icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20),
+            icon: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
             label: Text(
               'Craft My Itinerary',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16),
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.brandTerracotta,
               disabledBackgroundColor: AppColors.outlineLight,
               foregroundColor: Colors.white,
               minimumSize: const Size(double.infinity, 54),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
               elevation: 4,
               shadowColor: AppColors.brandTerracotta.withOpacity(0.3),
             ),

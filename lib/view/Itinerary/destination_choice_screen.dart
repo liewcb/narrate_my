@@ -101,11 +101,15 @@ class _Step1WhereToBody extends StatelessWidget {
             label: 'Continue to Trip Dates',
             onContinue: () {
               try {
-                // ✅ 1. Build the initial draft from this screen's ViewModel
-                final initialDraft = vm.buildTripDraft();
+                final notifier = context.read<TripDraftNotifier>();
+                final currentDraft = notifier.draft;
 
-                // ✅ 2. Save it to the global shared Provider
-                context.read<TripDraftNotifier>().updateDraft(initialDraft);
+                // Merge new destinations into existing draft instead of replacing it entirely
+                final updatedDraft = currentDraft.copyWith(
+                  destinations: vm.selectedDestinations,
+                );
+
+                notifier.updateDraft(updatedDraft);
 
                 Navigator.push(
                   context,

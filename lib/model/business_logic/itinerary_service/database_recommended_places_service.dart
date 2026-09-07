@@ -5,6 +5,7 @@
 // Candidate source: Supabase `places` table.
 // No Google Places request is made by this service.
 
+import '../../../core/config/itinerary_constants.dart';
 import '../../data_sources/remote/place_remote_source.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
@@ -245,4 +246,37 @@ class DatabaseRecommendedPlacesService {
 
     return (distanceKm / speedKph) * 60.0;
   }
+
+// ============================================================
+  // FAST DETERMINISTIC PRE-CHECK (UI FILTERING)
+  // ============================================================
+
+  /// Extremely fast mathematical check to see if a place has any logical chance
+  /// of fitting into the day's available hours.
+  bool canPlaceFitLocally({
+    required Place place,
+    required List<ExistingStopContext> existingStops,
+    required String explorationTime,
+  }) {
+    // 1. Get the total minutes available in the day (e.g., 9am to 8pm = 660 mins)
+    final window = ItineraryConstants.explorationWindows[explorationTime] ??
+        ItineraryConstants.explorationWindows['Standard']!;
+
+    final totalWindowMinutes = window.endMinutes - window.startMinutes;
+
+    // 2. Calculate time already used by existing stops
+    int usedMinutes = 0;
+    for (final stop in existingStops) {
+      usedMinutes += stop.durationMinutes;
+      usedMinutes += stop.travelFromPrevMinutes ?? 0;
+    }
+
+    // 3. Get the candidate's required time
+    final candidateDuration = place.visitDurationMinutes ?? 60;
+    final estimatedTravel = 20; // 20 mins rough travel estimate
+
+    // 4. If the used time + new time exceeds the day's limit, it physically cannot fit
+    return (usedMinutes + candidateDuration + estimatedTravel) <= totalWindowMinutes;
+  }
+
 }

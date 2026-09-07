@@ -5,10 +5,13 @@ import 'package:narrate_my/view/Itinerary/widgets/view_place_detail_screen.dart'
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../core/theme/colors.dart';
+import '../../core/widgets/app_confirmation_dialog.dart';
+import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/must_visit_selection_vm.dart';
-import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
+
 class MustVisitSelectionScreen extends StatefulWidget {
   const MustVisitSelectionScreen({super.key});
 
@@ -20,8 +23,6 @@ class _MustVisitSelectionScreenState extends State<MustVisitSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
-
-    print('CURRENT USER: ${user?.id}');
 
     if (user == null) {
       return const Scaffold(
@@ -87,7 +88,7 @@ class _Step3AddPlaceBody extends StatelessWidget {
     final vm = context.watch<Step3AddPlaceVM>();
 
     final query = vm.searchQuery.trim().toLowerCase();
-    List<WizardPlace> displayPlaces;
+    final List<WizardPlace> displayPlaces;
 
     if (vm.selectedTab == 1) {
       displayPlaces = query.isEmpty
@@ -112,76 +113,68 @@ class _Step3AddPlaceBody extends StatelessWidget {
       body: SafeArea(
         child: Stack(
           children: [
-            SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 160),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  WizardAppBar(step: 3),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 24),
-                    child: WizardProgressBar(activeSteps: 3),
-                  ),
-                  const SizedBox(height: 8),
-                  const _Title(),
-                  const SizedBox(height: 24),
-                  _TabToggle(
-                    selectedIndex: vm.selectedTab,
-                    onChanged: vm.setTab,
-                  ),
-                  const SizedBox(height: 14),
-                  _SelectedChips(
-                    selectedEntries: vm.mustVisitEntries,
-                    onRemove: vm.removeMustVisit,
-                  ),
-                  const SizedBox(height: 14),
-                  _SearchBar(onChanged: vm.searchPlaces),
-                  if (vm.selectedTab == 1 && vm.selectedHotspot != null) ...[
-                    const SizedBox(height: 12),
-                    _HotspotBanner(
-                      hotspotName: vm.selectedHotspot!.hotspotName,
-                      radiusKm: vm.selectedHotspot!.suggestedRadiusKm,
+            RefreshIndicator(
+              onRefresh: () {
+                if (vm.selectedTab == 0) {
+                  return vm.loadBookmarks();
+                } else {
+                  return vm.loadDefaultPlaces();
+                }
+              },
+              color: AppColors.brandGreen,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: 160),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    WizardAppBar(step: 3),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24),
+                      child: WizardProgressBar(activeSteps: 3),
                     ),
-                  ],
-                  const SizedBox(height: 22),
+                    const SizedBox(height: 8),
+                    const _Title(),
+                    const SizedBox(height: 24),
+                    _TabToggle(
+                      selectedIndex: vm.selectedTab,
+                      onChanged: vm.setTab,
+                    ),
+                    const SizedBox(height: 14),
+                    _SelectedChips(
+                      selectedEntries: vm.mustVisitEntries,
+                      onRemove: vm.removeMustVisit,
+                    ),
+                    const SizedBox(height: 14),
+                    _SearchBar(onChanged: vm.searchPlaces),
+                    if (vm.selectedTab == 1 && vm.selectedHotspot != null) ...[
+                      const SizedBox(height: 12),
+                      _HotspotBanner(
+                        hotspotName: vm.selectedHotspot!.hotspotName,
+                        radiusKm: vm.selectedHotspot!.suggestedRadiusKm,
+                      ),
+                    ],
+                    const SizedBox(height: 22),
 
-                  if (vm.isLoading)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 48),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (vm.selectedTab == 0 && vm.isLoadingBookmarks)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 48),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else if (vm.errorMessage != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
-                        child: Center(
-                          child: Column(
-                            children: [
-                              const Icon(Icons.cloud_off, color: AppColors.outline, size: 40),
-                              const SizedBox(height: 8),
-                              Text(
-                                vm.errorMessage!,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: AppColors.outline, fontSize: 14),
-                              ),
-                            ],
-                          ),
-                        ),
+                    if (vm.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 48),
+                        child: Center(child: CircularProgressIndicator()),
                       )
-                    else if (vm.selectedTab == 0 && vm.bookmarksError != null && vm.availablePlaces.isEmpty)
+                    else if (vm.selectedTab == 0 && vm.isLoadingBookmarks)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 48),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (vm.errorMessage != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
                           child: Center(
                             child: Column(
                               children: [
-                                const Icon(Icons.bookmark_border, color: AppColors.outline, size: 40),
+                                const Icon(Icons.cloud_off, color: AppColors.outline, size: 40),
                                 const SizedBox(height: 8),
                                 Text(
-                                  vm.bookmarksError!,
+                                  vm.errorMessage!,
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(color: AppColors.outline, fontSize: 14),
                                 ),
@@ -189,56 +182,74 @@ class _Step3AddPlaceBody extends StatelessWidget {
                             ),
                           ),
                         )
-                      else if (displayPlaces.isEmpty && query.isEmpty)
+                      else if (vm.selectedTab == 0 && vm.bookmarksError != null && vm.availablePlaces.isEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
                             child: Center(
-                              child: Text(
-                                vm.selectedTab == 1
-                                    ? 'No places found in the selected destination.'
-                                    : 'No bookmarks yet.\nSave places you want to visit!',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: AppColors.outline, fontSize: 14, height: 1.4),
+                              child: Column(
+                                children: [
+                                  const Icon(Icons.bookmark_border, color: AppColors.outline, size: 40),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    vm.bookmarksError!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: AppColors.outline, fontSize: 14),
+                                  ),
+                                ],
                               ),
                             ),
                           )
-                        else if (displayPlaces.isEmpty && query.isNotEmpty)
+                        else if (displayPlaces.isEmpty && query.isEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
                               child: Center(
-                                child: Column(
-                                  children: [
-                                    const Icon(Icons.search_off, color: AppColors.outline, size: 40),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'No places match your search.',
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(color: AppColors.outline, fontSize: 14),
-                                    ),
-                                  ],
+                                child: Text(
+                                  vm.selectedTab == 1
+                                      ? 'No places found in the selected destination.'
+                                      : 'No bookmarks yet.\nSave places you want to visit!',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: AppColors.outline, fontSize: 14, height: 1.4),
                                 ),
                               ),
                             )
-                          else
-                            _PlaceList(
-                              places: displayPlaces,
-                              isAdded: vm.isPlaceAdded,
-                              onToggle: (placeId, {confirmOutsideHotspot = false}) =>
-                                  vm.togglePlace(
-                                    placeId,
-                                    source: vm.selectedTab == 0
-                                        ? 'BOOKMARK'
-                                        : 'GOOGLE_SEARCH',
-                                    confirmOutsideHotspot: confirmOutsideHotspot,
+                          else if (displayPlaces.isEmpty && query.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 48, left: 24, right: 24),
+                                child: Center(
+                                  child: Column(
+                                    children: [
+                                      const Icon(Icons.search_off, color: AppColors.outline, size: 40),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'No places match your search.',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(color: AppColors.outline, fontSize: 14),
+                                      ),
+                                    ],
                                   ),
-                              showLoadMore: vm.selectedTab == 1 &&
-                                  query.isEmpty &&
-                                  vm.hasMoreDefaultPlaces,
-                              onLoadMore: vm.loadMorePlaces,
-                              isLoadingMore: vm.isLoadingMore,
-                            ),
-                  const SizedBox(height: 32),
-                ],
+                                ),
+                              )
+                            else
+                              _PlaceList(
+                                places: displayPlaces,
+                                isAdded: vm.isPlaceAdded,
+                                onToggle: (placeId, {confirmOutsideHotspot = false}) =>
+                                    vm.togglePlace(
+                                      placeId,
+                                      source: vm.selectedTab == 0
+                                          ? 'BOOKMARK'
+                                          : 'GOOGLE_SEARCH',
+                                      confirmOutsideHotspot: confirmOutsideHotspot,
+                                    ),
+                                showLoadMore: vm.selectedTab == 1 &&
+                                    query.isEmpty &&
+                                    vm.hasMoreDefaultPlaces,
+                                onLoadMore: vm.loadMorePlaces,
+                                isLoadingMore: vm.isLoadingMore,
+                              ),
+                    const SizedBox(height: 32),
+                  ],
+                ),
               ),
             ),
             _StickyFooter(
@@ -345,7 +356,7 @@ class _TabToggle extends StatelessWidget {
 }
 
 class _SelectedChips extends StatelessWidget {
-  final List<(String, String)> selectedEntries; // (placeId, displayName)
+  final List<(String, String)> selectedEntries;
   final ValueChanged<String> onRemove;
   const _SelectedChips({
     required this.selectedEntries,
@@ -502,6 +513,7 @@ class _PlaceList extends StatelessWidget {
   final bool showLoadMore;
   final VoidCallback? onLoadMore;
   final bool isLoadingMore;
+
   const _PlaceList({
     required this.places,
     required this.isAdded,
@@ -522,27 +534,26 @@ class _PlaceList extends StatelessWidget {
     switch (result.status) {
       case MustVisitSelectionStatus.added:
         break;
+
       case MustVisitSelectionStatus.warning:
         if (!context.mounted) break;
-        final confirmed = await showDialog<bool>(
+        final confirmed = await showConfirmationDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Outside recommended hotspot'),
-            content: Text(result.message),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel')),
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Add Anyway')),
-            ],
-          ),
+          title: 'Far from main area',
+          message: result.message,
+          confirmLabel: 'Add Anyway',
+          cancelLabel: 'Cancel',
+          confirmColor: AppColors.brandGreen,
+          icon: Icons.location_off_rounded,
+          iconBgColor: const Color(0xFFFFF3E0),
+          iconColor: Colors.orange,
         );
+
         if (confirmed == true) {
           await onToggle(place.placeId, confirmOutsideHotspot: true);
         }
         break;
+
       case MustVisitSelectionStatus.rejected:
         messenger.hideCurrentSnackBar();
         messenger.showSnackBar(

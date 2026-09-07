@@ -170,47 +170,70 @@ class _RecommendedPlacesScreenState extends State<RecommendedPlacesScreen>
   }
 
   Widget _buildCategoryList(RecommendationCategory category) {
+    // The RefreshIndicator must wrap a scrollable widget.
+    // We'll use a ListView with a single child for loading/error/empty states,
+    // and the actual ListView.separated when we have items.
+
+    return RefreshIndicator(
+      onRefresh: () => _vm.loadRecommendations(),
+      color: AppColors.terracottaDark,
+      child: _buildCategoryContent(category),
+    );
+  }
+
+  Widget _buildCategoryContent(RecommendationCategory category) {
     if (_vm.isLoadingRecommendations) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: AppColors.terracottaDark),
-            SizedBox(height: 16),
-            Text(
-              'Finding recommendations for your day...',
-              style: TextStyle(color: AppColors.mutedText, fontSize: 14),
+      return ListView(
+        children: const [
+          SizedBox(height: 100),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: AppColors.terracottaDark),
+                SizedBox(height: 16),
+                Text(
+                  'Finding recommendations for your day...',
+                  style: TextStyle(color: AppColors.mutedText, fontSize: 14),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
     if (_vm.recommendationsError != null &&
         _vm.forCategory(category).isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text(
-            _vm.recommendationsError!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.mutedText, fontSize: 14),
+      return ListView(
+        children: [
+          SizedBox(height: 100),
+          Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              _vm.recommendationsError!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.mutedText, fontSize: 14),
+            ),
           ),
-        ),
+        ],
       );
     }
 
     final items = _vm.forCategory(category);
     if (items.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text(
-            'No recommendations available for this day.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.mutedText, fontSize: 14),
+      return ListView(
+        children: const [
+          SizedBox(height: 100),
+          Padding(
+            padding: EdgeInsets.all(32),
+            child: Text(
+              'No recommendations available for this day.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.mutedText, fontSize: 14),
+            ),
           ),
-        ),
+        ],
       );
     }
 
@@ -328,6 +351,7 @@ class _RecommendedPlacesScreenState extends State<RecommendedPlacesScreen>
       ),
     );
   }
+
 
   Widget _buildPlanningOverlay() {
     return Positioned.fill(
