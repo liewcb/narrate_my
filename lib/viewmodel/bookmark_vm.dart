@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/localization/app_localizations.dart';
 import '../model/business_logic/shared_services/place_bookmark_service.dart';
 import '../model/entities/place.dart';
 import '../model/entities/bookmark.dart';
@@ -49,7 +50,7 @@ class BookmarkVm extends ChangeNotifier {
       _isBookmarked = _bookmark != null;
     } catch (error) {
       debugPrint('Unable to check bookmark status: $error');
-      _errorMessage = 'Unable to check bookmark status.';
+      _errorMessage = AppLocalizations.t('bookmark.checkFailed');
     } finally {
       _isChecking = false;
       notifyListeners();
@@ -106,13 +107,13 @@ class BookmarkVm extends ChangeNotifier {
       _bookmark = await _service.getBookmark(place.placeId);
       _isBookmarked = true;
       _statusMessage = created
-          ? 'Attraction added to bookmarks.'
-          : 'This attraction is already bookmarked.';
+          ? AppLocalizations.t('bookmark.added')
+          : AppLocalizations.t('bookmark.alreadyAdded');
       clearPendingBookmark();
       return created ? BookmarkResult.added : BookmarkResult.alreadyBookmarked;
     } catch (error) {
       debugPrint('Unable to bookmark place: $error');
-      _errorMessage = 'Unable to bookmark this place. Please try again.';
+      _errorMessage = AppLocalizations.t('bookmark.addFailed');
       _statusMessage = _errorMessage;
       return BookmarkResult.failed;
     } finally {
@@ -130,17 +131,17 @@ class BookmarkVm extends ChangeNotifier {
       final bookmark = _bookmark ?? await _service.getBookmark(googlePlaceId);
       if (bookmark == null) {
         _isBookmarked = false;
-        _statusMessage = 'Bookmark removed.';
+        _statusMessage = AppLocalizations.t('bookmark.removed');
         return BookmarkResult.removed;
       }
       await _service.removeBookmark(bookmark.id);
       _bookmark = null;
       _isBookmarked = false;
-      _statusMessage = 'Bookmark removed.';
+      _statusMessage = AppLocalizations.t('bookmark.removed');
       return BookmarkResult.removed;
     } catch (error) {
       debugPrint('Unable to remove bookmark: $error');
-      _errorMessage = 'Unable to remove this bookmark. Please try again.';
+      _errorMessage = AppLocalizations.t('bookmark.removeFailed');
       _statusMessage = _errorMessage;
       return BookmarkResult.failed;
     } finally {

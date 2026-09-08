@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:narrate_my/core/localization/app_localizations.dart';
 import 'package:narrate_my/model/business_logic/shared_services/place_bookmark_service.dart';
 import 'package:narrate_my/model/dto/bookmark_with_place_dto.dart';
 import 'package:narrate_my/model/entities/bookmark.dart';
@@ -82,6 +83,94 @@ BookmarkVm _viewModel(_FakeBookmarkRepository repository) {
 
 void main() {
   group('BookmarkVm', () {
+    test(
+      'localizes bookmark add and remove messages in every supported language',
+      () async {
+        final originalLanguage = AppLocalizations.currentCode;
+        addTearDown(() => AppLocalizations.currentCode = originalLanguage);
+        const expectedMessages = <String, List<String>>{
+          'en': ['Attraction added to bookmarks.', 'Bookmark removed.'],
+          'zh': ['景点已添加到收藏夹。', '已从收藏夹移除。'],
+          'ms': [
+            'Tarikan telah ditambahkan pada penanda buku.',
+            'Penanda buku telah dialih keluar.',
+          ],
+          'es': ['Atracción añadida a marcadores.', 'Marcador eliminado.'],
+          'hi': [
+            'आकर्षण को बुकमार्क में जोड़ दिया गया है।',
+            'बुकमार्क हटा दिया गया है।',
+          ],
+        };
+
+        for (final entry in expectedMessages.entries) {
+          AppLocalizations.currentCode = entry.key;
+          final repository = _FakeBookmarkRepository(currentUserId: 'user-1');
+          final viewModel = _viewModel(repository);
+
+          final result = await viewModel.bookmark(
+            _place,
+            itemType: 'attraction',
+          );
+
+          expect(result, BookmarkResult.added, reason: entry.key);
+          expect(viewModel.statusMessage, entry.value[0], reason: entry.key);
+
+          final removeResult = await viewModel.toggleBookmark(
+            _place,
+            itemType: 'attraction',
+          );
+
+          expect(removeResult, BookmarkResult.removed, reason: entry.key);
+          expect(viewModel.statusMessage, entry.value[1], reason: entry.key);
+        }
+      },
+    );
+
+    test('localizes every bookmark status in Malay', () async {
+      final originalLanguage = AppLocalizations.currentCode;
+      AppLocalizations.currentCode = 'ms';
+      addTearDown(() => AppLocalizations.currentCode = originalLanguage);
+
+      final duplicateRepository = _FakeBookmarkRepository(
+        currentUserId: 'user-1',
+      )..addCreatesRow = false;
+      final duplicateViewModel = _viewModel(duplicateRepository);
+      await duplicateViewModel.bookmark(_place, itemType: 'attraction');
+      expect(duplicateViewModel.statusMessage, 'Tarikan ini sudah ditandai.');
+
+      final addFailureRepository = _FakeBookmarkRepository(
+        currentUserId: 'user-1',
+      )..error = Exception('database unavailable');
+      final addFailureViewModel = _viewModel(addFailureRepository);
+      await addFailureViewModel.bookmark(_place, itemType: 'attraction');
+      expect(
+        addFailureViewModel.statusMessage,
+        'Tidak dapat menandai tempat ini. Sila cuba lagi.',
+      );
+
+      final checkFailureViewModel = _viewModel(addFailureRepository);
+      await checkFailureViewModel.load(_place.placeId);
+      expect(
+        checkFailureViewModel.errorMessage,
+        'Tidak dapat menyemak status penanda buku.',
+      );
+
+      final removeFailureRepository = _FakeBookmarkRepository(
+        currentUserId: 'user-1',
+      )..bookmarked = true;
+      final removeFailureViewModel = _viewModel(removeFailureRepository);
+      await removeFailureViewModel.load(_place.placeId);
+      removeFailureRepository.error = Exception('database unavailable');
+      await removeFailureViewModel.toggleBookmark(
+        _place,
+        itemType: 'attraction',
+      );
+      expect(
+        removeFailureViewModel.statusMessage,
+        'Tidak dapat mengalih keluar penanda buku ini. Sila cuba lagi.',
+      );
+    });
+
     test('keeps a pending bookmark when login is required', () async {
       final repository = _FakeBookmarkRepository();
       final viewModel = _viewModel(repository);

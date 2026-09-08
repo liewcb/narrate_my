@@ -458,11 +458,10 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
         : AiChatActionPolicy.isContextReference(requestedDestination)
         ? _attractionContext?.attractionName
         : requestedDestination;
-    final mapPlace = _bookmarkCandidates.length == 1
-        ? _bookmarkCandidates.single
-        : contextTarget.length == 1
-        ? contextTarget.single
-        : null;
+    final mapPlace = _matchingMapPlace(mapDestination, <Place>[
+      ..._bookmarkCandidates,
+      ...contextTarget,
+    ]);
 
     if (bookmarkPlaces.isEmpty && mapDestination == null) return;
     _responseActions[messageIndex] = AiChatResponseActions(
@@ -470,6 +469,29 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
       mapDestination: mapDestination,
       mapPlace: mapPlace,
     );
+  }
+
+  Place? _matchingMapPlace(String? destination, List<Place> candidates) {
+    final normalizedDestination = _normalizeMapPlaceName(destination);
+    if (normalizedDestination.isEmpty) return null;
+
+    for (final place in candidates) {
+      final normalizedName = _normalizeMapPlaceName(place.placeName);
+      if (normalizedName.isNotEmpty &&
+          (normalizedName == normalizedDestination ||
+              normalizedName.contains(normalizedDestination))) {
+        return place;
+      }
+    }
+    return null;
+  }
+
+  String _normalizeMapPlaceName(String? value) {
+    return (value ?? '')
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9 ]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   String _nearbyRequestInstruction({

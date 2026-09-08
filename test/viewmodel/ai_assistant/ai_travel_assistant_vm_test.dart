@@ -293,12 +293,40 @@ void main() {
       final firstActions = vm.actionsForMessage(firstResponseIndex);
       expect(firstActions?.bookmarkPlaces, const [klcc]);
       expect(firstActions?.mapDestination, 'KLCC');
+      expect(firstActions?.mapPlace, klcc);
 
       await vm.sendQuestion('Tell me its history');
 
       final preservedActions = vm.actionsForMessage(firstResponseIndex);
       expect(preservedActions?.bookmarkPlaces, const [klcc]);
       expect(preservedActions?.mapDestination, 'KLCC');
+      expect(preservedActions?.mapPlace, klcc);
+    },
+  );
+
+  test(
+    'an unrelated resolved candidate cannot override a map destination',
+    () async {
+      const unrelatedPlace = Place(
+        placeId: 'ChIJ-unrelated-kiosk',
+        placeName: 'KIOSK LEPAK SINI',
+        placeAddress: 'Gombak',
+        placeLatitude: 3.214,
+        placeLongitude: 101.742,
+        placeRating: 4.0,
+        placeTypes: ['point_of_interest'],
+      );
+      final vm = AiTravelAssistantViewModel(
+        repository: _FakeRepository(),
+        bookmarkPlaceResolver: _FakePlaceResolver(const [unrelatedPlace]),
+      );
+      addTearDown(vm.dispose);
+
+      await vm.sendQuestion('Where is Suria KLCC?');
+
+      final actions = vm.actionsForMessage(vm.actionMessageIndex!);
+      expect(actions?.mapDestination, 'Suria KLCC');
+      expect(actions?.mapPlace, isNull);
     },
   );
 

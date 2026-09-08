@@ -759,15 +759,11 @@ class _GoogleMapsButton extends StatelessWidget {
 
   Uri get _directionsUri {
     final resolvedPlace = place;
-    final hasCoordinates =
-        resolvedPlace != null &&
-        resolvedPlace.placeLatitude != 0 &&
-        resolvedPlace.placeLongitude != 0;
     final parameters = <String, String>{
       'api': '1',
-      'destination': hasCoordinates
-          ? '${resolvedPlace.placeLatitude},${resolvedPlace.placeLongitude}'
-          : destination,
+      // Keep the user's requested name authoritative. Raw coordinates from a
+      // stale candidate can otherwise route to an unrelated nearby business.
+      'destination': destination,
     };
     final googlePlaceId = resolvedPlace?.placeId.trim();
     if (googlePlaceId != null && googlePlaceId.startsWith('ChIJ')) {
