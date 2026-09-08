@@ -195,6 +195,27 @@ class AppLocalizations {
     'ui.bookmarks': 'Bookmarks',
     'ui.guidance': 'Guidance',
     'ui.guidanceSubtitle': 'Step-by-step walkthroughs for each part of the app.',
+    'ui.aiChatGuide': 'AI Chat Guide',
+    'ui.aiChatGuideOpenTitle': 'Open Manja Anywhere',
+    'ui.aiChatGuideOpenBody':
+    'Tap the floating green chat button on a supported screen to open your '
+        'AI travel assistant.',
+    'ui.aiChatGuideStartTitle': 'Start a Conversation',
+    'ui.aiChatGuideStartBody':
+    'Chat normally, or enter from a place to let Manja use the attraction '
+        'shown in the Discussing banner.',
+    'ui.aiChatGuideAskTitle': 'Ask in Your Language',
+    'ui.aiChatGuideAskBody':
+    'Type a clear travel question in English, Mandarin, Malay, Spanish, or '
+        'Hindi, then tap Send.',
+    'ui.aiChatGuideActionsTitle': 'Use Verified Place Actions',
+    'ui.aiChatGuideActionsBody':
+    'For a specific place or directions question, open Google Maps or '
+        'bookmark the verified place for later.',
+    'ui.aiChatGuideSummaryTitle': 'Review or Start Over',
+    'ui.aiChatGuideSummaryBody':
+    'Tap the Travel Assistant title to view the latest summary. Use the '
+        'refresh button when you want to clear the conversation.',
     'ui.arGuide': 'AR Guide',
     'ui.arGuideExplorationTitle': 'Explore in AR',
     'ui.arGuideExplorationBody':
@@ -579,6 +600,17 @@ class AppLocalizations {
     'ui.bookmarks': '收藏夹',
     'ui.guidance': '使用指南',
     'ui.guidanceSubtitle': '各模块的分步操作指南。',
+    'ui.aiChatGuide': 'AI 聊天指南',
+    'ui.aiChatGuideOpenTitle': '随时打开 Manja',
+    'ui.aiChatGuideOpenBody': '在支持的页面点击绿色聊天悬浮按钮，打开 AI 旅行助手。',
+    'ui.aiChatGuideStartTitle': '开始对话',
+    'ui.aiChatGuideStartBody': '直接开始普通对话，或从景点页面进入，让 Manja 使用“正在讨论”栏中显示的景点背景。',
+    'ui.aiChatGuideAskTitle': '使用你的语言提问',
+    'ui.aiChatGuideAskBody': '使用英语、中文、马来语、西班牙语或印地语输入明确的旅行问题，然后点击发送。',
+    'ui.aiChatGuideActionsTitle': '使用已核实地点功能',
+    'ui.aiChatGuideActionsBody': '询问具体地点或路线时，可以打开 Google 地图，或收藏已核实地点以便稍后查看。',
+    'ui.aiChatGuideSummaryTitle': '查看摘要或重新开始',
+    'ui.aiChatGuideSummaryBody': '点击“旅行助手”标题查看最新摘要。想清除对话时，请点击刷新按钮。',
     'ui.arGuide': 'AR 指南',
     'ui.arGuideExplorationTitle': '在 AR 中探索',
     'ui.arGuideExplorationBody': '将相机对准遗产景点周围，发现附近兴趣点的标记。',
@@ -940,6 +972,27 @@ class AppLocalizations {
     'ui.bookmarks': 'Penanda Halaman',
     'ui.guidance': 'Panduan',
     'ui.guidanceSubtitle': 'Panduan langkah demi langkah untuk setiap bahagian aplikasi.',
+    'ui.aiChatGuide': 'Panduan Sembang AI',
+    'ui.aiChatGuideOpenTitle': 'Buka Manja di Mana-mana',
+    'ui.aiChatGuideOpenBody':
+    'Ketik butang sembang hijau terapung pada skrin yang disokong untuk '
+        'membuka pembantu perjalanan AI anda.',
+    'ui.aiChatGuideStartTitle': 'Mulakan Perbualan',
+    'ui.aiChatGuideStartBody':
+    'Berbual seperti biasa, atau masuk dari halaman tempat supaya Manja '
+        'menggunakan tarikan pada bar Sedang Dibincangkan.',
+    'ui.aiChatGuideAskTitle': 'Tanya dalam Bahasa Anda',
+    'ui.aiChatGuideAskBody':
+    'Taip soalan perjalanan yang jelas dalam bahasa Inggeris, Mandarin, '
+        'Melayu, Sepanyol atau Hindi, kemudian ketik Hantar.',
+    'ui.aiChatGuideActionsTitle': 'Gunakan Tindakan Tempat Disahkan',
+    'ui.aiChatGuideActionsBody':
+    'Untuk soalan tentang tempat atau arah tertentu, buka Google Maps atau '
+        'tandakan tempat yang disahkan untuk kemudian.',
+    'ui.aiChatGuideSummaryTitle': 'Semak atau Mulakan Semula',
+    'ui.aiChatGuideSummaryBody':
+    'Ketik tajuk Pembantu Perjalanan untuk melihat ringkasan terkini. '
+        'Gunakan butang muat semula untuk mengosongkan perbualan.',
     'ui.arGuide': 'Panduan AR',
     'ui.arGuideExplorationTitle': 'Terokai dalam AR',
     'ui.arGuideExplorationBody':
@@ -1355,6 +1408,27 @@ class AppLocalizations {
     'ui.bookmarks': 'Marcadores',
     'ui.guidance': 'Guía',
     'ui.guidanceSubtitle': 'Guías paso a paso para cada parte de la app.',
+    'ui.aiChatGuide': 'Guía del Chat con IA',
+    'ui.aiChatGuideOpenTitle': 'Abre Manja en Cualquier Momento',
+    'ui.aiChatGuideOpenBody':
+    'Toca el botón verde flotante de chat en una pantalla compatible para '
+        'abrir tu asistente de viajes con IA.',
+    'ui.aiChatGuideStartTitle': 'Inicia una Conversación',
+    'ui.aiChatGuideStartBody':
+    'Chatea normalmente o entra desde una página de lugar para que Manja use '
+        'la atracción mostrada en la barra En conversación.',
+    'ui.aiChatGuideAskTitle': 'Pregunta en tu Idioma',
+    'ui.aiChatGuideAskBody':
+    'Escribe una pregunta de viaje clara en inglés, mandarín, malayo, '
+        'español o hindi y toca Enviar.',
+    'ui.aiChatGuideActionsTitle': 'Usa Acciones de Lugares Verificados',
+    'ui.aiChatGuideActionsBody':
+    'Para un lugar específico o una pregunta de indicaciones, abre Google '
+        'Maps o guarda el lugar verificado para más tarde.',
+    'ui.aiChatGuideSummaryTitle': 'Revisa o Empieza de Nuevo',
+    'ui.aiChatGuideSummaryBody':
+    'Toca el título Asistente de Viajes para ver el último resumen. Usa el '
+        'botón de actualizar cuando quieras borrar la conversación.',
     'ui.arGuide': 'Guía de RA',
     'ui.arGuideExplorationTitle': 'Explora en RA',
     'ui.arGuideExplorationBody':
@@ -1759,6 +1833,27 @@ class AppLocalizations {
     'ui.bookmarks': 'बुकमार्क',
     'ui.guidance': 'मार्गदर्शन',
     'ui.guidanceSubtitle': 'ऐप के हर हिस्से के लिए चरण-दर-चरण मार्गदर्शिका।',
+    'ui.aiChatGuide': 'AI चैट गाइड',
+    'ui.aiChatGuideOpenTitle': 'Manja को कहीं से भी खोलें',
+    'ui.aiChatGuideOpenBody':
+    'अपना AI यात्रा सहायक खोलने के लिए समर्थित स्क्रीन पर तैरते हुए हरे '
+        'चैट बटन को टैप करें।',
+    'ui.aiChatGuideStartTitle': 'बातचीत शुरू करें',
+    'ui.aiChatGuideStartBody':
+    'सामान्य रूप से चैट करें, या किसी स्थान के पेज से खोलें ताकि Manja '
+        'चर्चा वाले बैनर में दिखाए गए आकर्षण का उपयोग करे।',
+    'ui.aiChatGuideAskTitle': 'अपनी भाषा में पूछें',
+    'ui.aiChatGuideAskBody':
+    'अंग्रेज़ी, मंदारिन, मलय, स्पेनिश या हिंदी में स्पष्ट यात्रा प्रश्न '
+        'लिखें, फिर भेजें पर टैप करें।',
+    'ui.aiChatGuideActionsTitle': 'सत्यापित स्थान की सुविधाएँ इस्तेमाल करें',
+    'ui.aiChatGuideActionsBody':
+    'किसी खास स्थान या दिशा के प्रश्न के लिए Google Maps खोलें या उस '
+        'सत्यापित स्थान को बाद के लिए बुकमार्क करें।',
+    'ui.aiChatGuideSummaryTitle': 'सारांश देखें या फिर शुरू करें',
+    'ui.aiChatGuideSummaryBody':
+    'नवीनतम सारांश देखने के लिए यात्रा सहायक शीर्षक को टैप करें। बातचीत '
+        'साफ़ करने के लिए रीफ़्रेश बटन इस्तेमाल करें।',
     'ui.arGuide': 'AR गाइड',
     'ui.arGuideExplorationTitle': 'AR में एक्सप्लोर करें',
     'ui.arGuideExplorationBody':

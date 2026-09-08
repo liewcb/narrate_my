@@ -98,6 +98,7 @@ flutter:
     - assets/images/3dmodel/
     - assets/images/placeholders/
     - assets/images/guides/
+    - assets/images/guides/ai chat/
     - assets/images/guides/nearby recommendation/
 
   # To add assets to your application, add an assets section, like this:

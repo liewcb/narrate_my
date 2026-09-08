@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/locale_vm.dart';
 import '../../../core/theme/app_theme.dart';
+import 'widgets/ai_chat_guide_steps.dart';
 import 'widgets/ar_guide_steps.dart';
 import 'widgets/guide_step.dart';
 import 'widgets/nearby_recommendation_guide_steps.dart';
@@ -28,6 +29,11 @@ class _GuidanceModule {
 }
 
 const List<_GuidanceModule> _kGuidanceModules = [
+  _GuidanceModule(
+    icon: Icons.chat_bubble_outline,
+    labelKey: 'ui.aiChatGuide',
+    steps: aiChatGuideSteps,
+  ),
   _GuidanceModule(
     icon: Icons.view_in_ar_outlined,
     labelKey: 'ui.arGuide',
