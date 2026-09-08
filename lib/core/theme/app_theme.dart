@@ -198,3 +198,77 @@ class AppTheme {
     );
   }
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Itinerary theme tokens
+// ──────────────────────────────────────────────────────────────────────
+
+/// Text styles shared by itinerary screens.
+class AppTextStyles {
+  AppTextStyles._();
+
+  static TextStyle get pageTitle => GoogleFonts.nunito(
+    fontWeight: FontWeight.w600,
+    fontSize: 24,
+    color: AppColors.ink,
+  );
+
+  static TextStyle get sectionLabel => GoogleFonts.nunito(
+    fontWeight: FontWeight.w700,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    color: AppColors.inkSoft,
+  );
+
+  static TextStyle get bodyLg => GoogleFonts.nunito(
+    fontWeight: FontWeight.w400,
+    fontSize: 16,
+    color: AppColors.ink,
+  );
+
+  static TextStyle get bodySm => GoogleFonts.nunito(
+    fontWeight: FontWeight.w400,
+    fontSize: 14,
+    color: AppColors.ink,
+  );
+
+  static TextStyle get labelSm => GoogleFonts.nunito(
+    fontWeight: FontWeight.w400,
+    fontSize: 12,
+    color: AppColors.inkFaint,
+  );
+
+  static TextStyle get button => GoogleFonts.nunito(
+    fontWeight: FontWeight.w600,
+    fontSize: 15,
+    color: AppColors.bg,
+  );
+}
+
+/// Corner radius tokens shared by itinerary screens.
+class AppRadius {
+  AppRadius._();
+
+  static const double card = 16.0;
+  static const double iconSm = 6.0;
+  static const double pill = 999.0;
+}
+
+/// Spacing tokens shared by itinerary screens.
+class AppSpacing {
+  AppSpacing._();
+
+  static const double componentGap = 8.0;
+  static const double cardPadding = 16.0;
+  static const double screenMargin = 20.0;
+  static const double sectionGap = 24.0;
+  static const double pillPaddingX = 16.0;
+  static const double pillPaddingY = 8.0;
+}
+
+/// Soft shadow color shared by cards.
+class AppShadows {
+  AppShadows._();
+
+  static const Color card = Color(0x0A000000);
+}
