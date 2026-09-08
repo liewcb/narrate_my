@@ -13,7 +13,7 @@ const FALLBACK_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_FALLBACK_MODEL") ??
 const PROMPT_VERSION = "nearby-v4-accessibility-proximity";
 const DEFAULT_RADIUS_KM = 10;
 const MAX_RADIUS_KM = 20;
-const MAX_RECOMMENDATIONS = 13;
+const MAX_RECOMMENDATIONS = 7;
 const GEMINI_REQUEST_TIMEOUT_MS = 25_000;
 const PLACES_REQUEST_TIMEOUT_MS = 10_000;
 const CACHE_TTL_HOURS = numberFromEnv("RECOMMENDATION_CACHE_TTL_HOURS", 24);
@@ -747,9 +747,20 @@ async function generateWithRetry(
   try {
     return await generate(supabase, cacheKey, modelName, apiKey, prompt);
   } catch (error) {
-    if (!(error instanceof GeminiRequestError) || error.status !== 503) {
+    const shouldRetry =
+      (error instanceof GeminiRequestError && error.status === 503) ||
+      error instanceof GeminiInvalidJsonError;
+
+    if (!shouldRetry) {
       throw error;
     }
+
+    if (error instanceof GeminiInvalidJsonError) {
+      console.error(
+        `Gemini ${modelName} returned malformed JSON. Retrying once.`,
+      );
+    }
+
     await delay(600 + Math.floor(Math.random() * 400));
     return await generate(supabase, cacheKey, modelName, apiKey, prompt);
   }
@@ -795,7 +806,7 @@ async function generate(
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Gemini returned no recommendation.");
 
-  const parsed = JSON.parse(removeCodeFences(String(text)));
+  const parsed = parseGeminiJson(String(text), modelName);
   const recommendations = validateRecommendations(parsed?.recommendations);
   if (recommendations.length === 0) {
     throw new Error("Gemini returned no valid recommendation.");
@@ -932,8 +943,8 @@ You are NarrateMy's tourism recommendation engine for Malaysia.
 
 POLICY VERSION: ${PROMPT_VERSION}
 
-Recommend 10 to ${MAX_RECOMMENDATIONS} real, identifiable tourist places. Return at least 7
-when 7 suitable places exist. Never invent a place merely to reach the target.
+Recommend 5 to ${MAX_RECOMMENDATIONS} real, identifiable tourist places. Return at least 5
+when 5 suitable places exist. Never invent a place merely to reach the target.
 
 GEOGRAPHIC SEARCH POLICY
 - Search closest-first from latitude ${latitude}, longitude ${longitude}.
@@ -1248,6 +1259,43 @@ function bucket(value: number): string {
   return (Math.round(value * 100) / 100).toFixed(2);
 }
 
+function parseGeminiJson(
+  text: string,
+  modelName: string,
+): Record<string, unknown> {
+  const cleaned = removeCodeFences(text);
+
+  try {
+    const parsed = JSON.parse(cleaned);
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new GeminiInvalidJsonError(
+        `Gemini ${modelName} returned JSON that is not an object.`,
+      );
+    }
+
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof GeminiInvalidJsonError) {
+      throw error;
+    }
+
+    const preview = cleaned.length > 1200
+      ? `${cleaned.slice(0, 1200)}... [truncated]`
+      : cleaned;
+
+    console.error(
+      `Gemini ${modelName} returned invalid JSON:`,
+      error,
+    );
+    console.error("Invalid Gemini JSON preview:", preview);
+
+    throw new GeminiInvalidJsonError(
+      `Gemini ${modelName} returned malformed JSON.`,
+    );
+  }
+}
+
 function removeCodeFences(text: string): string {
   return text
     .replace(/^```json\s*/i, "")
@@ -1283,6 +1331,13 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+class GeminiInvalidJsonError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GeminiInvalidJsonError";
+  }
 }
 
 class GeminiRequestError extends Error {
