@@ -26,6 +26,7 @@ class EditItineraryScreen extends StatefulWidget {
   final List<String> mustVisitPlaceIds;
   final String transportMode;
   final List<String> interests;
+  final String userId;
 
   const EditItineraryScreen({
     super.key,
@@ -37,6 +38,7 @@ class EditItineraryScreen extends StatefulWidget {
     required this.mustVisitPlaceIds,
     this.transportMode = 'walking',
     this.interests = const [],
+    this.userId = '',
   });
 
   @override
@@ -68,6 +70,10 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
 
   void _initViewModel() {
     if (_selectedDayIndex >= 0) {
+      debugPrint('[EDIT_DAY_LOAD] init preview editor for '
+          'day=${_selectedDayIndex + 1} '
+          'date=${widget.tripStartDate.add(Duration(days: _selectedDayIndex))
+              .toIso8601String().substring(0, 10)}');
       _vm = EditItineraryViewModel(
         result: widget.result,
         dayIndex: _selectedDayIndex,
@@ -95,11 +101,15 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   void _selectDay(int index) {
     if (index == _selectedDayIndex) return;
 
+    debugPrint('[EDIT_DAY_CHANGE] day=${_selectedDayIndex + 1} → '
+        'day=${index + 1} — rebuilding day context; previous day search/'
+        'recommendation/used-id state is discarded with the old view model');
     try {
       final oldVm = _selectedDayIndex >= 0 ? _vm : null;
 
       setState(() {
         _selectedDayIndex = index;
+        _mapController = null; // Clear controller so stale calls don't run on disposed maps
         if (index >= 0) {
           _vm = EditItineraryViewModel(
             result: widget.result,
@@ -116,9 +126,6 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         oldVm?.dispose();
-        if (index >= 0) {
-          _fitMapBounds();
-        }
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
             0,
@@ -126,10 +133,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             curve: Curves.easeOut,
           );
         }
-        final tabKeyIndex = index;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _centerSelectedTab(tabKeyIndex);
-        });
+        _centerSelectedTab(index);
       });
     } catch (e) {
       debugPrint('[EditItineraryScreen] Day switch failed: $e');
@@ -245,6 +249,9 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   void _reviewChanges() {
     if (_selectedDayIndex < 0) return;
 
+    debugPrint('[EDIT_VALIDATION] Review Changes — final full validation '
+        'day=${_vm.dayNumber} date='
+        '${_vm.dayDate.toIso8601String().substring(0, 10)}');
     final errors = _vm.validate();
     if (errors.isNotEmpty) {
       _showProblem(_friendlyValidationError(errors.first));
@@ -270,6 +277,9 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 
   Future<void> _showAddPicker() async {
+    debugPrint('[EDIT_DAY_CONTEXT] add-place day=${_vm.dayNumber} '
+        'date=${_vm.dayDate.toIso8601String().substring(0, 10)} '
+        'existingStops=${_vm.stops.length}');
     final existingStops = _vm.stops
         .map(
           (s) => ExistingStopContext(
@@ -350,7 +360,16 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     }
 
     final stop = _vm.stops[index];
-    final scheduledIds = _vm.stops.map((s) => s.placeId).toSet();
+    // WHOLE-itinerary used ids: a place scheduled on ANY day is filtered
+    // out of candidates (stable place_id). The day itself is contextualized
+    // by tripDate (= this day's date) for opening-hours filtering.
+    final scheduledIds = _vm.itineraryUsedPlaceIds;
+
+    debugPrint('[EDIT_DAY_CONTEXT] change-place day=${_vm.dayNumber} '
+        'dayIndex=${_vm.dayNumber - 1} '
+        'date=${_vm.dayDate.toIso8601String().substring(0, 10)} '
+        'existingStops=${_vm.stops.length} stopIndex=$index '
+        'current=${stop.placeId} itineraryUsed=${scheduledIds.length}');
 
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
@@ -376,15 +395,27 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ),
         scheduledPlaceIds: scheduledIds,
         tripDate: _vm.dayDate,
-        interests: const [],
+        interests: widget.interests,
         explorationTime: widget.explorationTime,
+        userId: widget.userId,
+        existingDayStops: _vm.stops
+            .map((s) => ExistingStopContext(
+          place: s.place,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          durationMinutes: s.durationMinutes,
+          travelFromPrevMinutes: s.travelFromPrevMinutes,
+          isMustVisit: s.isMustVisit,
+        ))
+            .toList(),
         onUsePlace: (selected) async {
-          final ok = _vm.replaceStop(index, selected);
+          final ok = await _vm.replaceStop(index, selected);
           if (ok) {
             _fitMapBounds();
             return null;
           }
-          return _vm.error ?? 'This place cannot fit into your remaining schedule.';
+          return _vm.error ??
+              'This place cannot replace the selected stop.';
         },
       ),
     );
@@ -427,24 +458,39 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     final stop = _vm.stops[index];
     TimeOfDay currentStart = TimeOfDay(hour: stop.startTime.hour, minute: stop.startTime.minute);
     TimeOfDay currentEnd = TimeOfDay(hour: stop.endTime.hour, minute: stop.endTime.minute);
+    int currentDuration = stop.durationMinutes;
 
-    final selectedRange = await showModalBottomSheet<List<TimeOfDay>>(
+    final selectedRange = await showModalBottomSheet<List<dynamic>>(
       context: context,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
       ),
+      isScrollControlled: true,
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             final startMins = currentStart.hour * 60 + currentStart.minute;
             final endMins = currentEnd.hour * 60 + currentEnd.minute;
-            final diffMins = endMins - startMins;
-            final isValid = diffMins > 0;
+            final derivedDuration = endMins - startMins;
 
-            final hours = diffMins ~/ 60;
-            final mins = diffMins % 60;
-            final durationStr = hours > 0 ? '${hours}h ${mins}m' : '${mins}m';
+            final effectiveDuration = currentDuration > 0 ? currentDuration : derivedDuration;
+
+            final endFromDuration = startMins + effectiveDuration;
+            final computedEnd = TimeOfDay(
+              hour: (endFromDuration ~/ 60).clamp(0, 23),
+              minute: (endFromDuration % 60).clamp(0, 59),
+            );
+            final displayEnd = currentDuration > 0 ? computedEnd : currentEnd;
+
+            final winEnd = _vm.window.endMinutes;
+            final isValid = effectiveDuration > 0 && endFromDuration <= winEnd;
+
+            final durationOptions = _vm.availableDurations(index);
+            final allOptions = durationOptions.toSet()
+              ..add(effectiveDuration)
+              ..add(stop.durationMinutes);
+            final sortedOptions = allOptions.toList()..sort();
 
             return SafeArea(
               child: Padding(
@@ -478,7 +524,6 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                     ),
                     const SizedBox(height: AppSpacing.sectionGap),
 
-                    // Tap Cards for Native Time Picker
                     Row(
                       children: [
                         Expanded(
@@ -489,7 +534,20 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                                 initialTime: currentStart,
                               );
                               if (picked != null) {
-                                setSheetState(() => currentStart = picked);
+                                setSheetState(() {
+                                  currentStart = picked;
+                                  if (currentDuration > 0) {
+                                    final newEndMins = picked.hour * 60 + picked.minute + currentDuration;
+                                    currentEnd = TimeOfDay(
+                                      hour: (newEndMins ~/ 60).clamp(0, 23),
+                                      minute: (newEndMins % 60).clamp(0, 59),
+                                    );
+                                  } else {
+                                    final newStartMins = picked.hour * 60 + picked.minute;
+                                    final endMins = currentEnd.hour * 60 + currentEnd.minute;
+                                    currentDuration = endMins - newStartMins;
+                                  }
+                                });
                               }
                             },
                             borderRadius: BorderRadius.circular(12),
@@ -533,10 +591,15 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                             onTap: () async {
                               final picked = await showTimePicker(
                                 context: context,
-                                initialTime: currentEnd,
+                                initialTime: displayEnd,
                               );
                               if (picked != null) {
-                                setSheetState(() => currentEnd = picked);
+                                setSheetState(() {
+                                  currentEnd = picked;
+                                  final startMins = currentStart.hour * 60 + currentStart.minute;
+                                  final endMins = picked.hour * 60 + picked.minute;
+                                  currentDuration = endMins - startMins;
+                                });
                               }
                             },
                             borderRadius: BorderRadius.circular(12),
@@ -559,7 +622,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    currentEnd.format(context),
+                                    displayEnd.format(context),
                                     style: GoogleFonts.nunito(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w700,
@@ -575,35 +638,86 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                     ),
                     const SizedBox(height: AppSpacing.cardPadding),
 
-                    // Realtime Calculated Duration Indicator
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.pillPaddingX,
-                        vertical: AppSpacing.pillPaddingY,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isValid ? AppColors.teal.withOpacity(0.1) : AppColors.error.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isValid ? Icons.timer_outlined : Icons.error_outline_rounded,
-                            size: 16,
-                            color: isValid ? AppColors.teal : AppColors.error,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          size: 16,
+                          color: isValid ? AppColors.teal : AppColors.error,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Duration:',
+                          style: GoogleFonts.nunito(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.inkSoft,
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isValid ? 'Total duration: $durationStr' : 'End time must be after start time',
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.surface2,
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                            border: Border.all(color: AppColors.moduleBorder),
+                          ),
+                          child: DropdownButton<int>(
+                            value: effectiveDuration,
+                            items: sortedOptions.map((d) {
+                              return DropdownMenuItem<int>(
+                                value: d,
+                                child: Text(
+                                  '${d ~/ 60}h ${d % 60}m',
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.ink,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (newDuration) {
+                              if (newDuration != null && newDuration > 0) {
+                                setSheetState(() {
+                                  currentDuration = newDuration;
+                                  final startMins = currentStart.hour * 60 + currentStart.minute;
+                                  final endMins = startMins + newDuration;
+                                  currentEnd = TimeOfDay(
+                                    hour: (endMins ~/ 60).clamp(0, 23),
+                                    minute: (endMins % 60).clamp(0, 59),
+                                  );
+                                });
+                              }
+                            },
+                            underline: const SizedBox.shrink(),
+                            icon: const Icon(Icons.keyboard_arrow_down, size: 16, color: AppColors.inkFaint),
+                            dropdownColor: AppColors.surface,
+                            elevation: 0,
                             style: GoogleFonts.nunito(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isValid ? AppColors.teal.withOpacity(0.1) : AppColors.error.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                          ),
+                          child: Text(
+                            isValid ? '✓' : '⚠',
+                            style: GoogleFonts.nunito(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
                               color: isValid ? AppColors.teal : AppColors.error,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: AppSpacing.sectionGap),
 
@@ -618,7 +732,11 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                         const SizedBox(width: AppSpacing.componentGap),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: isValid ? () => Navigator.pop(sheetContext, [currentStart, currentEnd]) : null,
+                            onPressed: isValid
+                                ? () {
+                              Navigator.pop(sheetContext, [currentStart, displayEnd]);
+                            }
+                                : null,
                             child: const Text('Apply'),
                           ),
                         ),
@@ -662,29 +780,40 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           )
               : Stack(
             children: [
-              SingleChildScrollView(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.screenMargin,
-                  vertical: AppSpacing.componentGap,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildCompactHero(), // ✅ Added compact hero section
-                    const SizedBox(height: 16),
-                    _buildDaySelector(),
-                    const SizedBox(height: 12),
-                    if (_selectedDayIndex >= 0) ...[
-                      _buildHeader(),
-                      const SizedBox(height: AppSpacing.cardPadding),
-                      _buildMapPreview(),
-                      const SizedBox(height: AppSpacing.cardPadding),
-                      _buildStopsList(),
+              RefreshIndicator(
+                onRefresh: () async {
+                  debugPrint('[EDIT_REFRESH] Pull-to-refresh on preview '
+                      'editor day=${_vm.dayNumber}');
+                  // Real reload of the day context + revalidation (not a
+                  // plain setState). Temporary edits are preserved by the
+                  // VM unless identical to the source schedule.
+                  _vm.refreshContext();
+                },
+                color: AppColors.accent,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.screenMargin,
+                    vertical: AppSpacing.componentGap,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildCompactHero(),
+                      const SizedBox(height: 16),
+                      _buildDaySelector(),
+                      const SizedBox(height: 12),
+                      if (_selectedDayIndex >= 0) ...[
+                        _buildHeader(),
+                        const SizedBox(height: AppSpacing.cardPadding),
+                        _buildMapPreview(),
+                        const SizedBox(height: AppSpacing.cardPadding),
+                        _buildStopsList(),
+                      ],
+                      const SizedBox(height: 120),
                     ],
-                    const SizedBox(height: 120),
-                  ],
+                  ),
                 ),
               ),
               if (_selectedDayIndex >= 0) ...[
@@ -728,18 +857,18 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     IconData icon;
 
     if (endDay.isBefore(nowDay)) {
-      bgColor = Colors.orange.shade100;
-      fgColor = Colors.deepOrange.shade900;
+      bgColor = AppColors.surface2;
+      fgColor = AppColors.inkSoft;
       icon = Icons.history;
       statusLabel = 'Past';
     } else if (startDay.isAfter(nowDay)) {
-      bgColor = Colors.yellow.shade400;
-      fgColor = Colors.red.shade800;
+      bgColor = AppColors.gold.withOpacity(0.18);
+      fgColor = AppColors.accentDark;
       icon = Icons.event_available;
       statusLabel = 'Upcoming';
     } else {
-      bgColor = Colors.green.shade600;
-      fgColor = Colors.white;
+      bgColor = AppColors.green.withOpacity(0.15);
+      fgColor = AppColors.green;
       icon = Icons.play_circle_outline;
       statusLabel = 'Ongoing';
     }
@@ -754,7 +883,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               child: Text(
                 widget.title.isEmpty ? 'My Trip' : widget.title,
                 style: GoogleFonts.nunito(
-                  fontSize: 20, // Smaller than typical 24/28 pageTitle
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: AppColors.ink,
                   height: 1.2,
@@ -848,7 +977,6 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ✅ Removed the redundant widget.title since it's in the hero now
         Text(
           'Day ${_vm.dayNumber} · ${dateFmt.format(_vm.dayDate)}',
           style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink),
@@ -880,6 +1008,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           polylines: _buildPolylines(),
           onMapCreated: (controller) {
             _mapController = controller;
+            // Ensure bounds fit only after controller is assigned
             _fitMapBounds();
           },
           zoomControlsEnabled: false,
@@ -926,7 +1055,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   Widget _buildFloatingAddButton() {
     return FloatingActionButton(
       onPressed: _showAddPicker,
-      backgroundColor: AppColors.green,
+      backgroundColor: AppColors.accent,
+      elevation: 2,
       child: const Icon(Icons.add, color: AppColors.bg, size: 26),
     );
   }
@@ -997,7 +1127,6 @@ class _StopItem extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Step Number Badge
           Container(
             width: 32,
             height: 32,
@@ -1088,7 +1217,6 @@ class _StopItem extends StatelessWidget {
                   const Divider(height: 1, thickness: 1, color: AppColors.moduleBorder),
                   const SizedBox(height: 8),
 
-                  // Bottom Bar: Tap Time Badge + Clean Actions
                   Row(
                     children: [
                       Expanded(
@@ -1122,7 +1250,6 @@ class _StopItem extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
 
-                      // Action Buttons (Swap & Delete)
                       _ActionButton(
                         icon: Icons.swap_horiz_rounded,
                         tooltip: 'Replace Place',

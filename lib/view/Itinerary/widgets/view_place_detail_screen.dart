@@ -1,7 +1,7 @@
 // lib/view/Itinerary/manage_itinerary/view_place_detail_screen.dart
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
@@ -56,9 +56,20 @@ class ViewPlaceDetailScreen extends StatefulWidget {
 
 class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
   late ViewPlaceDetailViewModel _viewModel;
+  late Future<Place?> _placeFuture;
   late StopStatus _currentStatus;
   bool _isConfirming = false;
   String? _registeredContextKey;
+
+  // Transparent 1x1 PNG for FadeInImage placeholder
+  static final Uint8List _transparentImage = Uint8List.fromList([
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+    0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+    0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+  ]);
 
   @override
   void initState() {
@@ -69,7 +80,14 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
       initialPlace: widget.initialPlace,
       onStatusChanged: widget.onStatusChanged,
     );
-    _viewModel.load();
+    // Store the future so FutureBuilder can manage the loading state.
+    _placeFuture = _loadPlace();
+  }
+
+  /// Loads the place and returns it when ready.
+  Future<Place?> _loadPlace() async {
+    await _viewModel.load();
+    return _viewModel.place;
   }
 
   @override
@@ -117,20 +135,34 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
           style: TextStyle(color: AppColors.ink, fontSize: 18, fontWeight: FontWeight.w700),
         ),
       ),
-      body: ListenableBuilder(
-        listenable: _viewModel,
-        builder: (context, _) {
-          if (_viewModel.isLoading) {
+      body: FutureBuilder<Place?>(
+        future: _placeFuture,
+        builder: (context, snapshot) {
+          // While loading, show a centered spinner.
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final place = _viewModel.place;
-          if (place == null) {
+          // If error or no data, show the unavailable screen.
+          if (snapshot.hasError || snapshot.data == null) {
             return _buildUnavailable();
           }
 
+          final place = snapshot.data!;
+          // Register the attraction context exactly once, now that we have data.
           _registerAttractionContext(place);
-          return _buildContent(place);
+
+          // Once data is ready, wrap the content in a ListenableBuilder
+          // so status toggles update only the necessary parts.
+          return ListenableBuilder(
+            listenable: _viewModel,
+            builder: (context, _) {
+              // The place is guaranteed to be non-null here; if the ViewModel
+              // somehow lost it (shouldn't happen), fall back to the snapshot data.
+              final currentPlace = _viewModel.place ?? place;
+              return _buildContent(currentPlace);
+            },
+          );
         },
       ),
     );
@@ -178,10 +210,8 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
           ),
           const SizedBox(height: 10),
         ],
-        // ❌ Removed type chips section
         _buildDetailsCard(place),
         const SizedBox(height: 16),
-        // ❌ Removed opening hours card
 
         const SizedBox(height: 24),
         if (widget.isReplacement && widget.onUsePlace != null) ...[
@@ -262,20 +292,13 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
         width: double.infinity,
         color: AppColors.surface2,
         child: imageUrl != null && imageUrl.isNotEmpty
-            ? Image.network(
-          imageUrl,
+            ? FadeInImage(
+          placeholder: MemoryImage(_transparentImage),
+          image: NetworkImage(imageUrl),
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const _HeroPlaceholder(),
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return const Center(
-              child: SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            );
-          },
+          imageErrorBuilder: (_, __, ___) => const _HeroPlaceholder(),
+          placeholderFit: BoxFit.cover,
+          fadeInDuration: const Duration(milliseconds: 300),
         )
             : const _HeroPlaceholder(),
       ),
@@ -519,9 +542,8 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
     );
   }
 
-  // ─── Removed _buildTypeChips ───
-
   Widget _buildDetailsCard(Place place) {
+    // Build the list of detail items, excluding destination, hotspot, and business status.
     final items = <(IconData, String)>[
       if (place.placeCategory != null && place.placeCategory!.isNotEmpty)
         (Icons.category_outlined, place.placeCategory!),
@@ -535,8 +557,7 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
       if (place.placePriceLevel != null)
         (Icons.attach_money_outlined,
         'Price level: ${_priceLevelLabel(place.placePriceLevel!)}'),
-      if (place.businessStatus != null && place.businessStatus!.isNotEmpty)
-        (Icons.store_outlined, place.businessStatus!),
+      // businessStatus removed (operational info)
       if (place.placePhone != null && place.placePhone!.isNotEmpty)
         (Icons.phone_outlined, place.placePhone!),
       if (place.placeWebsite != null && place.placeWebsite!.isNotEmpty)
@@ -544,11 +565,7 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
       (Icons.map_outlined,
       '${place.placeLatitude.toStringAsFixed(5)}, '
           '${place.placeLongitude.toStringAsFixed(5)}'),
-      // ❌ Removed Google ID line
-      if (place.destinationId != null && place.destinationId!.isNotEmpty)
-        (Icons.tour_outlined, 'Destination: ${place.destinationId}'),
-      if (place.hotspotId != null && place.hotspotId!.isNotEmpty)
-        (Icons.location_city_outlined, 'Hotspot: ${place.hotspotId}'),
+      // destinationId and hotspotId removed
     ];
 
     if (items.isEmpty) {
@@ -603,8 +620,6 @@ class _ViewPlaceDetailScreenState extends State<ViewPlaceDetailScreen> {
         return '$level';
     }
   }
-
-// ❌ Removed _buildOpeningHoursCard
 }
 
 class _HeroPlaceholder extends StatelessWidget {

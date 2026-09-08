@@ -1354,7 +1354,7 @@ class CustomPlaceService {
     );
 
     // Sort by rating and limit
-    results.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+    results.sort((a, b) => b.rating.compareTo(a.rating));
     return results.take(maxResults).toList();
   }
 }

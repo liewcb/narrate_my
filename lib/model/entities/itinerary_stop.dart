@@ -65,7 +65,7 @@ class ItineraryStop {
       itineraryId: itineraryId ?? this.itineraryId,
       placeId: placeId ?? this.placeId,
       destinationId:
-          clearDestinationId ? null : (destinationId ?? this.destinationId),
+      clearDestinationId ? null : (destinationId ?? this.destinationId),
       dayIndex: dayIndex ?? this.dayIndex,
       stopOrder: stopOrder ?? this.stopOrder,
       startTime: startTime ?? this.startTime,
@@ -81,23 +81,37 @@ class ItineraryStop {
     );
   }
 
+  // ─── Time formatting helpers ──────────────────────────────────
+  static String _formatTime(DateTime dt) {
+    return '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}:'
+        '${dt.second.toString().padLeft(2, '0')}';
+  }
+
+  static DateTime _parseTime(String timeStr) {
+    final parts = timeStr.split(':');
+    return DateTime(1970, 1, 1,
+        int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+  }
+
   // ---------- Serialization ----------
   Map<String, dynamic> toMap() {
     return {
-      // ❌ REMOVE THIS: 'stop_id': stopId,
+      // stop_id is NOT included for updates (it's the primary key, but we
+      // use it as a WHERE condition in the repository, not in the body).
       'itinerary_id': itineraryId,
       'place_id': placeId,
       'destination_id': destinationId,
       'day_index': dayIndex,
       'stop_order': stopOrder,
-      'start_time': startTime.toIso8601String(),
-      'end_time': endTime.toIso8601String(),
+      'start_time': _formatTime(startTime),       // ✅ time-only
+      'end_time': _formatTime(endTime),           // ✅ time-only
       'duration_minutes': durationMinutes,
       'travel_from_prev_minutes': travelFromPrevMinutes,
       'stop_status': stopStatus,
       'skip_reason': skipReason,
       'weather_note': weatherNote,
-      // ❌ REMOVE THIS: 'created_at': createdAt.toIso8601String(),
+      // created_at is usually immutable – skip it in updates
       'updated_at': updatedAt.toIso8601String(),
     };
   }
@@ -110,8 +124,8 @@ class ItineraryStop {
       destinationId: map['destination_id'] as String?,
       dayIndex: map['day_index'] as int,
       stopOrder: map['stop_order'] as int,
-      startTime: DateTime.parse(map['start_time'] as String),
-      endTime: DateTime.parse(map['end_time'] as String),
+      startTime: _parseTime(map['start_time'] as String),   // ✅ parse time-only
+      endTime: _parseTime(map['end_time'] as String),       // ✅ parse time-only
       durationMinutes: map['duration_minutes'] as int,
       travelFromPrevMinutes: map['travel_from_prev_minutes'] as int?,
       stopStatus: map['stop_status'] as String? ?? 'PLANNED',

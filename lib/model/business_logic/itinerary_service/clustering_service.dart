@@ -1,7 +1,16 @@
-import 'dart:math';
 import '../../../core/config/itinerary_constants.dart';
 import '../../entities/coordinates.dart';
 import './scoring_service.dart';
+
+class _KMeansResult {
+  final List<List<ScoredAttraction>> clusters;
+  final List<Coordinates> centroids;
+
+  const _KMeansResult({
+    required this.clusters,
+    required this.centroids,
+  });
+}
 
 class Cluster {
   final List<ScoredAttraction> attractions;
@@ -14,7 +23,6 @@ class Cluster {
 
 class ClusteringService {
   static const double _convergenceThreshold = 0.001;
-  final Random _random = Random();
 
   List<Cluster> clusterPlaces({
     required List<ScoredAttraction> scoredPlaces,
@@ -26,7 +34,8 @@ class ClusteringService {
       return [Cluster(attractions: scoredPlaces, center: _calculateCenter(scoredPlaces), dayIndex: 0)];
     }
 
-    List<List<ScoredAttraction>> rawClusters = _kMeansClustering(scoredPlaces, numberOfDays);
+    final kMeansResult = _kMeansClustering(scoredPlaces, numberOfDays);
+    List<List<ScoredAttraction>> rawClusters = kMeansResult.clusters;
 
     final int minAttractions = ItineraryConstants.attractionsPerDayFor(pace);
     final int maxAttractions = ItineraryConstants.maxAttractionsPerDay;
@@ -67,9 +76,9 @@ class ClusteringService {
       ];
     }
 
-    final rawClusters = _kMeansClustering(scoredPlaces, k);
-    _ensureNonEmpty(rawClusters, scoredPlaces);
-    _protectMustVisits(rawClusters);
+    final result = _kMeansClustering(scoredPlaces, k);
+    final rawClusters = result.clusters;
+    _ensureNonEmpty(rawClusters, scoredPlaces, result.centroids);
 
     return rawClusters.asMap().entries.map((entry) {
       return Cluster(
@@ -80,20 +89,26 @@ class ClusteringService {
     }).toList();
   }
 
-  /// Moves any empty cluster to a real place (re-using the original
-  /// nearest-place correction).
+  /// Repairs empty clusters using the actual K-Means centroid.
+  /// Must-visit places are never moved by this corrective step.
   void _ensureNonEmpty(
       List<List<ScoredAttraction>> clusters,
       List<ScoredAttraction> scored,
+      List<Coordinates> centroids,
       ) {
     for (int i = 0; i < clusters.length; i++) {
       if (clusters[i].isNotEmpty) continue;
-      final nearestIdx = _findNearestPlaceToCentroid(scored, _calculateCenter(clusters[i]));
+
+      final nearestIdx = _findNearestMovablePlace(
+        scored: scored,
+        target: centroids[i],
+        clusters: clusters,
+      );
       if (nearestIdx == -1) continue;
+
       final place = scored[nearestIdx];
-      for (var c in clusters) {
-        if (c.contains(place)) {
-          c.remove(place);
+      for (final cluster in clusters) {
+        if (cluster.remove(place)) {
           clusters[i].add(place);
           break;
         }
@@ -101,82 +116,116 @@ class ClusteringService {
     }
   }
 
-  /// Guarantees a must-visit is never discarded by clustering: a cluster
-  /// containing a must-visit keeps it, and empty clusters are filled first
-  /// from non-must-visit places to avoid pulling a must-visit away.
-  void _protectMustVisits(List<List<ScoredAttraction>> clusters) {
-    for (final cluster in clusters) {
-      if (cluster.isEmpty) continue;
-      // No-op safeguard: keeps must-visits in their nearest cluster.
-      final must = cluster.where((s) => s.isMustVisit).toList();
-      if (must.isEmpty) continue;
-      cluster.sort((a, b) {
-        if (a.isMustVisit && !b.isMustVisit) return -1;
-        if (!a.isMustVisit && b.isMustVisit) return 1;
-        return b.score.compareTo(a.score);
-      });
+  int _findNearestMovablePlace({
+    required List<ScoredAttraction> scored,
+    required Coordinates target,
+    required List<List<ScoredAttraction>> clusters,
+  }) {
+    int bestIndex = -1;
+    double bestDistance = double.infinity;
+
+    for (int i = 0; i < scored.length; i++) {
+      final place = scored[i];
+      if (place.isMustVisit) continue;
+      if (!clusters.any((cluster) => cluster.contains(place))) continue;
+
+      final distance = place.place.coordinates.distanceTo(target);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = i;
+      }
     }
+    return bestIndex;
   }
 
-  List<List<ScoredAttraction>> _kMeansClustering(List<ScoredAttraction> scored, int k) {
+  _KMeansResult _kMeansClustering(
+      List<ScoredAttraction> scored,
+      int k,
+      ) {
     if (scored.length <= k) {
       final clusters = List.generate(k, (_) => <ScoredAttraction>[]);
-      for (int i = 0; i < scored.length; i++) clusters[i].add(scored[i]);
-      return clusters;
+      final centroids = <Coordinates>[];
+      for (int i = 0; i < scored.length; i++) {
+        clusters[i].add(scored[i]);
+        centroids.add(scored[i].place.coordinates);
+      }
+      while (centroids.length < k) {
+        centroids.add(scored.last.place.coordinates);
+      }
+      return _KMeansResult(clusters: clusters, centroids: centroids);
     }
 
-    List<Coordinates> centroids = _initializeCentroids(scored, k);
-    List<List<ScoredAttraction>> clusters = [];
-    bool converged = false;
-    int iterations = 0;
+    var centroids = _initializeCentroids(scored, k);
+    var clusters = <List<ScoredAttraction>>[];
+    var converged = false;
+    var iterations = 0;
 
     while (!converged && iterations < 50) {
-      clusters = List.generate(k, (_) => []);
+      clusters = List.generate(k, (_) => <ScoredAttraction>[]);
       for (final item in scored) {
-        int nearest = _findNearestCentroid(item.place.coordinates, centroids);
+        final nearest = _findNearestCentroid(item.place.coordinates, centroids);
         clusters[nearest].add(item);
       }
-      List<Coordinates> newCentroids = clusters.map((c) => c.isNotEmpty ? _calculateCenter(c) : centroids[clusters.indexOf(c)]).toList();
+
+      final newCentroids = List.generate(k, (index) {
+        final c = clusters[index];
+        return c.isNotEmpty ? _calculateCenter(c) : centroids[index];
+      });
+
       converged = _centroidsConverged(centroids, newCentroids);
       centroids = newCentroids;
       iterations++;
     }
 
-    // FIX: Robust Empty Cluster Correction
+    return _KMeansResult(clusters: clusters, centroids: centroids);
+  }
+
+  List<List<ScoredAttraction>> _balanceClusters(
+      List<List<ScoredAttraction>> clusters,
+      int min,
+      int max,
+      ) {
     for (int i = 0; i < clusters.length; i++) {
-      if (clusters[i].isEmpty) {
-        final nearestIdx = _findNearestPlaceToCentroid(scored, centroids[i]);
-        if (nearestIdx != -1) {
-          final place = scored[nearestIdx];
-          for (var c in clusters) {
-            if (c.contains(place)) {
-              c.remove(place);
-              clusters[i].add(place);
-              break;
-            }
-          }
-        }
-      }
+      if (clusters[i].length >= min) continue;
+
+      final donorIndex = _findBestDonorCluster(
+        clusters,
+        min,
+        excludeIndex: i,
+      );
+      if (donorIndex == -1) continue;
+
+      final donor = clusters[donorIndex];
+      final movableIndex = _findMovableIndex(donor);
+      if (movableIndex == -1) continue;
+
+      clusters[i].add(donor.removeAt(movableIndex));
     }
     return clusters;
   }
 
-  List<List<ScoredAttraction>> _balanceClusters(List<List<ScoredAttraction>> clusters, int min, int max) {
-    // Basic balancing logic to ensure no cluster is empty and none exceed max significantly
+  int _findBestDonorCluster(
+      List<List<ScoredAttraction>> clusters,
+      int min, {
+        required int excludeIndex,
+      }) {
+    var bestIndex = -1;
+    var bestSize = min;
     for (int i = 0; i < clusters.length; i++) {
-      if (clusters[i].length < min) {
-        // Try to steal from largest cluster
-        int largestIdx = 0;
-        for (int j = 1; j < clusters.length; j++) {
-          if (clusters[j].length > clusters[largestIdx].length) largestIdx = j;
-        }
-        if (clusters[largestIdx].length > min) {
-          final toMove = clusters[largestIdx].removeAt(0);
-          clusters[i].add(toMove);
-        }
+      if (i == excludeIndex) continue;
+      if (clusters[i].length > bestSize) {
+        bestSize = clusters[i].length;
+        bestIndex = i;
       }
     }
-    return clusters;
+    return bestIndex;
+  }
+
+  int _findMovableIndex(List<ScoredAttraction> cluster) {
+    for (int i = cluster.length - 1; i >= 0; i--) {
+      if (!cluster[i].isMustVisit) return i;
+    }
+    return -1;
   }
 
   Coordinates _calculateCenter(List<ScoredAttraction> cluster) {

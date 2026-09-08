@@ -83,6 +83,28 @@ class _Step3AddPlaceBody extends StatelessWidget {
     );
   }
 
+  /// Shows a confirmation dialog before removing a must‑visit place.
+  Future<void> _confirmRemoveMustVisit(
+      BuildContext context,
+      String placeId,
+      Step3AddPlaceVM vm,
+      ) async {
+    final confirmed = await showConfirmationDialog(
+      context: context,
+      title: 'Remove must‑visit?',
+      message: 'Are you sure you want to remove this place from your must‑visit list?',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Cancel',
+      confirmColor: AppColors.dangerBg,
+      icon: Icons.delete_outline_rounded,
+      iconBgColor: AppColors.dangerBg,
+      iconColor: AppColors.dangerBg,
+    );
+    if (confirmed == true) {
+      vm.removeMustVisit(placeId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<Step3AddPlaceVM>();
@@ -115,11 +137,11 @@ class _Step3AddPlaceBody extends StatelessWidget {
           children: [
             RefreshIndicator(
               onRefresh: () {
-                if (vm.selectedTab == 0) {
-                  return vm.loadBookmarks();
-                } else {
-                  return vm.loadDefaultPlaces();
-                }
+                // Full reload: destinations → hotspots → places, then
+                // re-apply every destination/range/hotspot/validity
+                // filter and reset pagination. The tab-specific reload
+                // (bookmarks / default places) happens inside refreshAll.
+                return vm.refreshAll();
               },
               color: AppColors.brandGreen,
               child: SingleChildScrollView(
@@ -142,17 +164,10 @@ class _Step3AddPlaceBody extends StatelessWidget {
                     const SizedBox(height: 14),
                     _SelectedChips(
                       selectedEntries: vm.mustVisitEntries,
-                      onRemove: vm.removeMustVisit,
+                      onRemove: (placeId) => _confirmRemoveMustVisit(context, placeId, vm),
                     ),
                     const SizedBox(height: 14),
                     _SearchBar(onChanged: vm.searchPlaces),
-                    if (vm.selectedTab == 1 && vm.selectedHotspot != null) ...[
-                      const SizedBox(height: 12),
-                      _HotspotBanner(
-                        hotspotName: vm.selectedHotspot!.hotspotName,
-                        radiusKm: vm.selectedHotspot!.suggestedRadiusKm,
-                      ),
-                    ],
                     const SizedBox(height: 22),
 
                     if (vm.isLoading)
@@ -477,30 +492,6 @@ class _HotspotBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.brandGreenLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.brandGreen),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.location_on_outlined, color: AppColors.brandGreen, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Searching around $hotspotName', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.brandGreen)),
-                  Text('Recommended radius: ${radiusKm.toStringAsFixed(1)} km', style: const TextStyle(fontSize: 12, color: AppColors.outline)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

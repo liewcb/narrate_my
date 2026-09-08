@@ -89,13 +89,13 @@ class DailyCandidateGroup {
 
 class QueryDestination {
   final String name;
-  final String? destinationId; // resolved DB id, e.g. "D001"
+  final String destinationId;
   final double latitude;
   final double longitude;
 
   const QueryDestination({
     required this.name,
-    this.destinationId,
+    required this.destinationId,
     required this.latitude,
     required this.longitude,
   });
@@ -194,6 +194,29 @@ class CandidateRetrievalService {
     'natural_feature',
   ];
 
+  // All non-food semantic types that this itinerary service may treat as an
+  // attraction. This is used only for category-conflict detection; the actual
+  // Google query remains interest-driven through _buildAttractionTypeSet().
+  static const List<String> _allAttractionTypes = [
+    'tourist_attraction',
+    'museum',
+    'art_gallery',
+    'park',
+    'natural_feature',
+    'place_of_worship',
+    'amusement_park',
+    'zoo',
+    'aquarium',
+    'shopping_mall',
+    'night_club',
+    'casino',
+    'stadium',
+    'bowling_alley',
+    'movie_theater',
+    'garden',
+    'beach',
+  ];
+
   CandidateRetrievalService({
     PlacesRemoteDataSource? placesDataSource,
     DestinationHotspotRepository? hotspotRepository,
@@ -216,13 +239,11 @@ class CandidateRetrievalService {
     required TripDraft request,
   }) async {
     if (ItineraryConstants.enableCandidateDebugLogs) {
-      debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
-      debugPrint('ðŸ“ CANDIDATE RETRIEVAL (HOTSPOT-DRIVEN, MERGED POOL)');
-      debugPrint('â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•');
-      debugPrint('ðŸ—ºï¸ Destinations: ${request.destinationNames}');
-      debugPrint('ðŸ“… Trip duration: ${request.totalDays} days');
-      debugPrint('ðŸš¶ Travel pace: ${request.pace}');
-      debugPrint('ðŸŽ¯ Interests: ${request.interests.toList()}');
+      debugPrint('CANDIDATE RETRIEVAL (HOTSPOT-DRIVEN, MERGED POOL)');
+      debugPrint('Destinations: ${request.destinationNames}');
+      debugPrint('rip duration: ${request.totalDays} days');
+      debugPrint('Travel pace: ${request.pace}');
+      debugPrint('Interests: ${request.interests.toList()}');
     }
 
     // ============================================================
@@ -231,14 +252,19 @@ class CandidateRetrievalService {
 
     final List<String> selectedInterests = request.interests.toList();
 
+    final wantsWellness = InterestMapping
+        .databaseTagsForInterests(selectedInterests)
+        .map((tag) => tag.trim().toLowerCase())
+        .contains('wellness_relaxation');
+
     final List<String> interestTags =
     InterestMapping.databaseTagsForInterests(selectedInterests);
 
     final attractionTypes = _buildAttractionTypeSet(selectedInterests);
 
     if (ItineraryConstants.enableCandidateDebugLogs) {
-      debugPrint('ðŸŽ¯ Interest tags: $interestTags');
-      debugPrint('ðŸŽ¯ Attraction types: $attractionTypes');
+      debugPrint('Interest tags: $interestTags');
+      debugPrint('Attraction types: $attractionTypes');
     }
 
     // ============================================================
@@ -279,7 +305,10 @@ class CandidateRetrievalService {
 
     final mergedAttractions = <Place>[];
     final mergedFood = <Place>[];
-    final seenIds = <String>{};
+
+    // One Google place_id = one real place. A global set prevents the same
+    // place from entering both the attraction and food pools.
+    final seenPlaceIds = <String>{};
 
     for (final center in centers) {
       final raw = await _fetchCenter(center, attractionTypes.toList());
@@ -288,32 +317,47 @@ class CandidateRetrievalService {
         debugPrint(
           '[SEARCH] ${center.sourceLabel} '
               '@ (${center.latitude}, ${center.longitude}) '
-              'radius=${center.radiusKm}km â†’ '
+              'radius=${center.radiusKm}km -> '
               '${raw.attractions.length} attr, ${raw.food.length} food',
         );
       }
 
+      // Verify the category before adding a place to a pool.
       for (final place in raw.attractions) {
+        if (!_isVerifiedPlace(place)) continue;
+        if (!_belongsExclusivelyToAttraction(place, attractionTypes.toSet())) {
+          continue;
+        }
+
         final tagged = place.copyWith(
           destinationId: center.destinationId,
           hotspotId: center.hotspotId,
         );
-        if (seenIds.add(tagged.placeId)) mergedAttractions.add(tagged);
+
+        if (seenPlaceIds.add(tagged.placeId)) {
+          mergedAttractions.add(tagged);
+        }
       }
+
       for (final place in raw.food) {
+        if (!_isVerifiedPlace(place)) continue;
+        if (!_belongsExclusivelyToFood(place)) continue;
+
         final tagged = place.copyWith(
           destinationId: center.destinationId,
           hotspotId: center.hotspotId,
         );
-        if (seenIds.add(tagged.placeId)) mergedFood.add(tagged);
+
+        if (seenPlaceIds.add(tagged.placeId)) {
+          mergedFood.add(tagged);
+        }
       }
     }
 
     debugPrint(
-      '[MERGE] Raw results merged â†’ '
+      '[MERGE] Verified Google results -> '
           '${mergedAttractions.length} unique attractions, '
-          '${mergedFood.length} unique food '
-          '(${seenIds.length} unique place_ids total)',
+          '${mergedFood.length} unique food',
     );
 
     // ============================================================
@@ -329,7 +373,7 @@ class CandidateRetrievalService {
         mergedAttractions,
         <String>{},
         allowedSpecificTypes: attractionTypes,
-        allowSpa: false,
+        allowSpa: wantsWellness,
       ),
       0.05, // light dedup only â€” do not aggressively shrink the pool
     );
@@ -495,9 +539,9 @@ class CandidateRetrievalService {
     // Deduplicate nearby centres so we do not re-search the same area.
     final deduped = _deduplicateCenters(centers);
 
-    // Cap the total number of searches to bound API usage.
-    final cap = ItineraryConstants.maxCandidates;
-    return deduped.take(cap).toList(growable: false);
+    // maxCandidates limits candidate places, not search centres.
+    // maxHotspotsPerDestination already bounds each destination above.
+    return deduped;
   }
 
   /// Resolves the hotspots for a single destination, prioritising tag
@@ -506,10 +550,11 @@ class CandidateRetrievalService {
     required QueryDestination destination,
     required List<String> interestTags,
   }) async {
-    final String queryId = destination.destinationId ?? destination.name;
     try {
       final hotspots =
-      await _hotspotRepository.getHotspotsForDestination(queryId);
+      await _hotspotRepository.getHotspotsForDestination(
+        destination.destinationId,
+      );
 
       if (hotspots.isEmpty) return const [];
 
@@ -602,23 +647,36 @@ class CandidateRetrievalService {
       }
     } catch (e) {
       debugPrint('[DEST] Destination ID resolution failed: $e');
+      return const [];
     }
 
-    return request.destinationNames.map((name) {
-      final coords =
-          request.destinationCoordinates[name] ??
-              request.tripLocation ??
-              const Coordinates(latitude: 3.139, longitude: 101.687);
+    final resolved = <QueryDestination>[];
+    for (final name in request.destinationNames) {
+      final destinationId = idByName[name.trim().toLowerCase()];
+      if (destinationId == null || destinationId.isEmpty) {
+        debugPrint('[DEST] Unable to resolve destination "$name" to a DB id.');
+        continue;
+      }
 
-      return QueryDestination(
+      final coords = request.destinationCoordinates[name] ??
+          request.tripLocation ??
+          const Coordinates(latitude: 3.139, longitude: 101.687);
+
+      resolved.add(QueryDestination(
         name: name,
-        destinationId: idByName[name.trim().toLowerCase()] ?? name,
+        destinationId: destinationId,
         latitude: coords.latitude,
         longitude: coords.longitude,
-      );
-    }).toList();
+      ));
+    }
+    return resolved;
   }
 
+  /// Strict candidate validation.
+  ///
+  /// A place must contain a specific Google type. `establishment` by itself
+  /// is never considered a valid category. Ambiguous food/attraction places
+  /// are rejected instead of being guessed into the wrong pool.
   List<Place> _applyBasicFiltering(
       List<Place> places,
       Set<String> globalSeenIds, {
@@ -626,34 +684,115 @@ class CandidateRetrievalService {
         required bool allowSpa,
       }) {
     final valid = <Place>[];
+    final bannedTypes = _bannedTypes.map((t) => t.trim().toLowerCase()).toSet();
+    final allowedTypes = allowedSpecificTypes
+        .map((t) => t.trim().toLowerCase())
+        .toSet();
 
     for (final place in places) {
-      if (place.placeId.isEmpty || place.placeName.isEmpty) continue;
-      if (place.placeLatitude == 0.0 && place.placeLongitude == 0.0) continue;
+      if (!_isVerifiedPlace(place)) continue;
 
-      if (place.businessStatus != null &&
-          place.businessStatus != 'OPERATIONAL') {
-        continue;
-      }
+      final normalizedTypes = place.types
+          .map((type) => type.trim().toLowerCase())
+          .where((type) => type.isNotEmpty)
+          .toSet();
 
-      if ((place.placeTotalReviews ?? 0) < minUserRatingsTotal) continue;
+      if (normalizedTypes.intersection(bannedTypes).isNotEmpty) continue;
+      if (!allowSpa && normalizedTypes.contains('spa')) continue;
 
-      if (place.types.any((t) => _bannedTypes.contains(t))) continue;
+      // The place must have at least one specific type requested by this pool.
+      if (normalizedTypes.intersection(allowedTypes).isEmpty) continue;
 
-      if (!allowSpa && place.types.contains('spa')) continue;
-
-      if (place.types.contains('establishment')) {
-        final hasSpecificTag = place.types.any(
-              (t) => t != 'establishment' && allowedSpecificTypes.contains(t),
-        );
-        if (!hasSpecificTag) continue;
-      }
+      // Never classify a place when Google gives it both food and attraction
+      // identities. Rejecting ambiguity is safer than making a wrong guess.
+      final hasFoodType = _hasFoodType(normalizedTypes);
+      final hasAttractionType = _hasAttractionType(normalizedTypes);
+      if (hasFoodType && hasAttractionType) continue;
 
       if (!globalSeenIds.add(place.placeId)) continue;
-
       valid.add(place);
     }
+
     return valid;
+  }
+
+  /// Quality gate for places coming from Google Places or recovery searches.
+  bool _isVerifiedPlace(Place place) {
+    if (place.placeId.trim().isEmpty) return false;
+    if (place.placeName.trim().isEmpty) return false;
+    if (place.placeLatitude == 0.0 && place.placeLongitude == 0.0) return false;
+    if (place.types.isEmpty) return false;
+
+    // Google Places business status, when supplied, must be operational.
+    if (place.businessStatus != null &&
+        place.businessStatus!.trim().toUpperCase() != 'OPERATIONAL') {
+      return false;
+    }
+
+    // Require meaningful public evidence before a place becomes a normal
+    // itinerary candidate.
+    if (place.placeRating <= 0.0) return false;
+    if ((place.placeTotalReviews ?? 0) < minUserRatingsTotal) return false;
+
+    final types = place.types
+        .map((t) => t.trim().toLowerCase())
+        .where((t) => t.isNotEmpty)
+        .toSet();
+
+    if (types.intersection(
+      _bannedTypes.map((t) => t.toLowerCase()).toSet(),
+    ).isNotEmpty) {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _hasFoodType(Set<String> types) {
+    return types.intersection(
+      foodTypes.map((t) => t.toLowerCase()).toSet(),
+    ).isNotEmpty;
+  }
+
+  bool _hasAttractionType(Set<String> types) {
+    return types.intersection(
+      _allAttractionTypes.map((t) => t.toLowerCase()).toSet(),
+    ).isNotEmpty;
+  }
+
+  /// Attraction classification is allowed only when Google supplies a
+  /// specific attraction type from the actual request. Food types are never
+  /// accepted in this pool.
+  bool _belongsExclusivelyToAttraction(
+      Place place,
+      Set<String> allowedAttractionTypes,
+      ) {
+    final types = place.types
+        .map((t) => t.trim().toLowerCase())
+        .where((t) => t.isNotEmpty)
+        .toSet();
+
+    if (_hasFoodType(types)) return false;
+    if (!_hasAttractionType(types)) return false;
+
+    return types.intersection(
+      allowedAttractionTypes.map((t) => t.toLowerCase()).toSet(),
+    ).isNotEmpty;
+  }
+
+  /// Food classification is deliberately strict: only the five configured
+  /// Google food types are accepted, and a food place must not also carry an
+  /// attraction identity.
+  bool _belongsExclusivelyToFood(Place place) {
+    final types = place.types
+        .map((t) => t.trim().toLowerCase())
+        .where((t) => t.isNotEmpty)
+        .toSet();
+
+    if (!_hasFoodType(types)) return false;
+    if (_hasAttractionType(types)) return false;
+
+    return true;
   }
 
   List<Place> _applySpatialFiltering(List<Place> places, double minDistanceKm) {
@@ -776,8 +915,9 @@ class CandidateRetrievalService {
       if (result != null && result.placeId.isNotEmpty) {
         debugPrint('[MUST-VISIT RECOVERY] Level 1 result: RECOVERED '
             '(${result.placeName})');
-        _addRecovered(result, recovered, verifiedIds);
-        continue;
+        if (_addRecovered(result, recovered, verifiedIds)) {
+          continue;
+        }
       }
       debugPrint('[MUST-VISIT RECOVERY] Level 1 result: NOT FOUND');
 
@@ -788,8 +928,9 @@ class CandidateRetrievalService {
         if (localPlace != null && localPlace.placeId.isNotEmpty) {
           debugPrint('[MUST-VISIT RECOVERY] Level 2 result: RECOVERED '
               '(${localPlace.placeName})');
-          _addRecovered(localPlace, recovered, verifiedIds);
-          continue;
+          if (_addRecovered(localPlace, recovered, verifiedIds)) {
+            continue;
+          }
         }
       } catch (_) {}
       debugPrint('[MUST-VISIT RECOVERY] Level 2 result: NOT FOUND');
@@ -807,8 +948,9 @@ class CandidateRetrievalService {
         if (match != null) {
           debugPrint('[MUST-VISIT RECOVERY] Level 3 result: RECOVERED '
               '(${match.placeName})');
-          _addRecovered(match, recovered, verifiedIds);
-          continue;
+          if (_addRecovered(match, recovered, verifiedIds)) {
+            continue;
+          }
         }
         debugPrint('[MUST-VISIT RECOVERY] Level 3 result: NOT FOUND');
       }
@@ -825,8 +967,9 @@ class CandidateRetrievalService {
         if (match != null) {
           debugPrint('[MUST-VISIT RECOVERY] Level 4 result: RECOVERED '
               '(${match.placeName})');
-          _addRecovered(match, recovered, verifiedIds);
-          continue;
+          if (_addRecovered(match, recovered, verifiedIds)) {
+            continue;
+          }
         }
       }
       debugPrint('[MUST-VISIT RECOVERY] Level 4 result: NOT FOUND');
@@ -845,8 +988,9 @@ class CandidateRetrievalService {
           if (match != null) {
             debugPrint('[MUST-VISIT RECOVERY] Level 5 result: RECOVERED '
                 '(${match.placeName})');
-            _addRecovered(match, recovered, verifiedIds);
-            continue;
+            if (_addRecovered(match, recovered, verifiedIds)) {
+              continue;
+            }
           }
         }
         debugPrint('[MUST-VISIT RECOVERY] Level 5 result: NOT FOUND');
@@ -867,8 +1011,9 @@ class CandidateRetrievalService {
           if (match != null) {
             debugPrint('[MUST-VISIT RECOVERY] Level 6 result: RECOVERED '
                 '(${match.placeName})');
-            _addRecovered(match, recovered, verifiedIds);
-            continue;
+            if (_addRecovered(match, recovered, verifiedIds)) {
+              continue;
+            }
           }
         }
         debugPrint('[MUST-VISIT RECOVERY] Level 6 result: NOT FOUND');
@@ -889,11 +1034,41 @@ class CandidateRetrievalService {
     );
   }
 
-  /// Adds a recovered place to the result set, tagging it with the source
-  /// destination if available.
-  void _addRecovered(Place place, List<Place> recovered, Set<String> verifiedIds) {
+  /// Adds a recovered place only when it passes the same quality gate used
+  /// by normal candidate retrieval. This prevents a recovery path from
+  /// re-introducing an unverified or badly classified place.
+  bool _addRecovered(Place place, List<Place> recovered, Set<String> verifiedIds) {
+    if (!_isVerifiedPlace(place)) {
+      debugPrint('[MUST-VISIT] Recovered place rejected by verification gate: '
+          '${place.placeName}');
+      return false;
+    }
+
+    final types = place.types
+        .map((t) => t.trim().toLowerCase())
+        .where((t) => t.isNotEmpty)
+        .toSet();
+
+    // Must-visit recovery does not know whether the requested item is food or
+    // attraction, but it must still be a recognizable itinerary place.
+    final isFood = _hasFoodType(types);
+    final isAttraction = _hasAttractionType(types);
+
+    // Reject ambiguous places rather than guessing their category.
+    if (!isFood && !isAttraction) {
+      debugPrint('[MUST-VISIT] Recovered place rejected: no recognized '
+          'food/attraction type (${place.placeName})');
+      return false;
+    }
+    if (isFood && isAttraction) {
+      debugPrint('[MUST-VISIT] Recovered place rejected: conflicting '
+          'food/attraction types (${place.placeName})');
+      return false;
+    }
+
+    if (!verifiedIds.add(place.placeId)) return false;
     recovered.add(place);
-    verifiedIds.add(place.placeId);
+    return true;
   }
 
   /// Finds the best matching place from a list of candidates by comparing
@@ -909,7 +1084,7 @@ class CandidateRetrievalService {
     final words = normalized.split(RegExp(r'\s+')).where((w) => w.length > 2).toList();
 
     for (final candidate in candidates) {
-      if (candidate.placeId.isEmpty) continue;
+      if (!_isVerifiedPlace(candidate)) continue;
       final candidateName = candidate.placeName.toLowerCase().trim();
 
       // 1. Exact match (case-insensitive).

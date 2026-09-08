@@ -115,29 +115,66 @@ class _ItinerariesView extends StatelessWidget {
               children: [
                 const SizedBox(height: 8),
 
-                // Search Field
-                TextField(
-                  controller: searchController,
-                  onChanged: vm.setSearchQuery,
-                  style: GoogleFonts.nunito(
-                    fontSize: 16,
-                    color: AppColors.ink,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: "Search your trips...",
-                    hintStyle: GoogleFonts.nunito(
-                      color: AppColors.inkFaint,
-                      fontSize: 14,
+                // Search Field + Sort Option
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        onChanged: vm.setSearchQuery,
+                        style: GoogleFonts.nunito(
+                          fontSize: 16,
+                          color: AppColors.ink,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: "Search your trips...",
+                          hintStyle: GoogleFonts.nunito(
+                            color: AppColors.inkFaint,
+                            fontSize: 14,
+                          ),
+                          prefixIcon: Icon(Icons.search, color: AppColors.inkFaint, size: 20),
+                          enabledBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: AppColors.moduleBorder, width: 1.5),
+                          ),
+                          focusedBorder: const UnderlineInputBorder(
+                            borderSide: BorderSide(color: AppColors.accent, width: 1.5),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
                     ),
-                    prefixIcon: Icon(Icons.search, color: AppColors.inkFaint, size: 20),
-                    enabledBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: AppColors.moduleBorder, width: 1.5),
+                    const SizedBox(width: 4),
+                    PopupMenuButton<ItinerarySortOption>(
+                      tooltip: 'Sort itineraries',
+                      icon: Icon(Icons.sort, color: AppColors.ink, size: 24),
+                      onSelected: (option) => vm.setSortOption(option),
+                      itemBuilder: (context) => [
+                        PopupMenuItem<ItinerarySortOption>(
+                          value: ItinerarySortOption.currentDay,
+                          child: Row(children: [
+                            Icon(Icons.today, size: 20, color: AppColors.ink),
+                            const SizedBox(width: 12),
+                            Text('Current Day', style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink)),
+                            const Spacer(),
+                            if (vm.sortOption == ItinerarySortOption.currentDay)
+                              Icon(Icons.check, size: 20, color: AppColors.accent),
+                          ]),
+                        ),
+                        PopupMenuItem<ItinerarySortOption>(
+                          value: ItinerarySortOption.latestCreated,
+                          child: Row(children: [
+                            Icon(Icons.access_time, size: 20, color: AppColors.ink),
+                            const SizedBox(width: 12),
+                            Text('Latest Created', style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink)),
+                            const Spacer(),
+                            if (vm.sortOption == ItinerarySortOption.latestCreated)
+                              Icon(Icons.check, size: 20, color: AppColors.accent),
+                          ]),
+                        ),
+                      ],
                     ),
-                    focusedBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: AppColors.accent, width: 1.5),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
+                  ],
                 ),
                 const SizedBox(height: 24),
 

@@ -3,19 +3,23 @@ import '../../model/business_logic/itinerary_service/itinerary_validation_servic
 import '../../model/entities/trip_draft.dart';
 
 class Step2TripStyleVM extends ChangeNotifier {
-  static const int maxTripDaysLimit = 3; // Maximum duration capped at 3 days
-  static const int maxPlanningWindowDays = 180; // Half a year (~6 months)
-  static const int maxInterestsLimit = 2;
+  // ── Private static constants (used internally) ──────────────
+  static const int _kMaxTripDays = 3;
+  static const int _kMaxPlanningWindowDays = 180;
+  static const int _kMaxInterestsLimit = 2;
 
-  final int maxTripDays = maxTripDaysLimit;
-  final int maxPlanningWindow = maxPlanningWindowDays;
-  final int maxInterests = maxInterestsLimit;
+  // ── Instance getters for UI access ──────────────────────────
+  int get maxTripDays => _kMaxTripDays;
+  int get maxPlanningWindow => _kMaxPlanningWindowDays;
+  int get maxInterests => _kMaxInterestsLimit;
 
   TripDraft _draft;
   String? _transportationSelection;
   Map<String, String> _validationErrors = {};
 
   Step2TripStyleVM({required TripDraft initialDraft}) : _draft = initialDraft {
+    // Initialize transportation from the draft so the dropdown shows the saved value
+    _transportationSelection = _draft.transportation;
     _validate();
   }
 
@@ -57,15 +61,15 @@ class Step2TripStyleVM extends ChangeNotifier {
   DateTime maxSelectableStartDate() {
     final today = DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
-    return todayOnly.add(const Duration(days: maxPlanningWindowDays));
+    return todayOnly.add(const Duration(days: _kMaxPlanningWindowDays));
   }
 
   DateTime latestPossibleEndDate({DateTime? fromStart}) {
     final start = fromStart ?? startDate;
     if (start == null) {
-      return maxSelectableStartDate().add(Duration(days: maxTripDays - 1));
+      return maxSelectableStartDate().add(Duration(days: _kMaxTripDays - 1));
     }
-    return start.add(Duration(days: maxTripDays - 1));
+    return start.add(Duration(days: _kMaxTripDays - 1));
   }
 
   // ─── Validation ────────────────────────────────────────────────
@@ -81,7 +85,7 @@ class Step2TripStyleVM extends ChangeNotifier {
       errors['dates'] = 'Start date cannot be in the past.';
     } else if (startDate!.isAfter(maxStart) || endDate!.isAfter(maxStart)) {
       errors['dates'] = 'Travel dates must be within 6 months (180 days).';
-    } else if (totalDays > maxTripDays) {
+    } else if (totalDays > _kMaxTripDays) {
       errors['dates'] = 'Trip duration is limited to a maximum of $maxTripDays days.';
     } else if (destinations.length > 1 && totalDays < 2) {
       errors['dates'] = 'Multiple destinations require a minimum trip duration of 2 days.';
@@ -137,7 +141,7 @@ class Step2TripStyleVM extends ChangeNotifier {
     if (updated.contains(interest)) {
       updated.remove(interest);
     } else {
-      if (updated.length >= maxInterests) return;
+      if (updated.length >= _kMaxInterestsLimit) return;
       updated.add(interest);
     }
     _draft = _draft.copyWith(interests: updated);

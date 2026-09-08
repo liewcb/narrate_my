@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/business_logic/itinerary_service/custom_place_service.dart';
-import '../../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/add_custom_place_vm.dart';
 
@@ -51,6 +50,10 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
   void initState() {
     super.initState();
     debugPrint('[ADD_CUSTOM] Screen opened — day ${widget.dayIndex}');
+    debugPrint('[ADD_CUSTOM] itineraryId = ${widget.itineraryId}');
+    debugPrint('[ADD_CUSTOM] dayDate = ${widget.dayDate}');
+    debugPrint('[ADD_CUSTOM] mode = '
+        '${widget.dayStops != null ? "PREVIEW (temporary day)" : "DATABASE"}');
     _viewModel = AddCustomPlaceVM(
       itineraryId: widget.itineraryId,
       dayIndex: widget.dayIndex,
@@ -70,6 +73,15 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     _viewModel.loadBookmarks();
   }
 
+  Future<void> _onRefresh() async {
+    if (widget.dayStops != null) {
+      // Preview: refresh from the host-supplied temporary day (never the
+      // database) so the latest supplied context is used.
+      _viewModel.seedDayContext(widget.dayIndex, widget.dayStops!);
+    }
+    await _viewModel.refreshAll();
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -83,7 +95,9 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
       listenable: _viewModel,
       builder: (context, _) {
         final vm = _viewModel;
-        if (vm.isLoading) {
+        if (vm.isLoading && vm.dayStops.isEmpty) {
+          // Only the INITIAL load replaces the tree; a refresh keeps the
+          // list visible behind the pull-to-refresh spinner.
           return Scaffold(
             backgroundColor: AppColors.bg,
             appBar: _buildAppBar(),
@@ -107,43 +121,48 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
           appBar: _buildAppBar(),
           body: Stack(
             children: [
-              SingleChildScrollView(
-                padding: const EdgeInsets.only(
-                  left: 20, right: 20, top: 24, bottom: 140,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildWarningBanner(),
-                    if (vm.searchError != null || vm.planError != null || vm.loadError != null)
+              RefreshIndicator(
+                onRefresh: _onRefresh,
+                color: AppColors.green,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.only(
+                    left: 20, right: 20, top: 24, bottom: 140,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildWarningBanner(),
+                      if (vm.searchError != null || vm.planError != null || vm.loadError != null)
+                        const SizedBox(height: 24),
+
+                      _buildSearchBar(),
                       const SizedBox(height: 24),
 
-                    _buildSearchBar(),
-                    const SizedBox(height: 24),
+                      _buildNearbySuggestions(),
+                      if (widget.dayStops != null && widget.dayStops!.isNotEmpty)
+                        const SizedBox(height: 24),
 
-                    _buildNearbySuggestions(),
-                    if (widget.dayStops != null && widget.dayStops!.isNotEmpty)
+                      // Unified List Area: Show Search Results OR Bookmarks
+                      if (vm.hasSearched)
+                        _buildSearchResults()
+                      else ...[
+                        _buildRecommendationsSection(),
+                        _buildRichBookmarksSection(),
+                      ],
+
                       const SizedBox(height: 24),
 
-                    // Unified List Area: Show Search Results OR Bookmarks
-                    if (vm.hasSearched)
-                      _buildSearchResults()
-                    else ...[
-                      _buildRecommendationsSection(),
-                      _buildRichBookmarksSection(),
+                      // Scheduling Details Area
+                      if (vm.selectedPlace != null) ...[
+                        const Divider(color: AppColors.moduleBorder, height: 32, thickness: 1),
+                        _buildPlaceDetails(),
+                        const SizedBox(height: 24),
+                        if (vm.hasPlan) _buildSchedule(),
+                        const SizedBox(height: 24),
+                      ]
                     ],
-
-                    const SizedBox(height: 24),
-
-                    // Scheduling Details Area
-                    if (vm.selectedPlace != null) ...[
-                      const Divider(color: AppColors.moduleBorder, height: 32, thickness: 1),
-                      _buildPlaceDetails(),
-                      const SizedBox(height: 24),
-                      if (vm.hasPlan) _buildSchedule(),
-                      const SizedBox(height: 24),
-                    ]
-                  ],
+                  ),
                 ),
               ),
               _buildStickyFooter(),
@@ -250,7 +269,10 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
             icon: const Icon(Icons.clear, size: 18),
             onPressed: () {
               _searchController.clear();
-              _viewModel.query = '';
+              // Resets query + stale search results + hasSearched so the
+              // day-aware recommendations/bookmarks view returns without
+              // hitting the search API.
+              _viewModel.clearSearch();
               setState(() {});
             },
           )
@@ -805,7 +827,8 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
 
   Widget _buildStickyFooter() {
     final vm = _viewModel;
-    final canAdd = vm.hasPlan && vm.planResult!.success && !vm.isPlanning;
+    final canAdd =
+        vm.hasPlan && vm.planResult!.success && !vm.isPlanning && !vm.isSaving;
 
     return Positioned(
       bottom: 0, left: 0, right: 0,
@@ -863,7 +886,11 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                     ),
                     onPressed: canAdd ? () => _onAdd(context) : null,
                     child: Text(
-                      vm.isPlanning ? 'Planning...' : 'Add to Itinerary',
+                      vm.isPlanning
+                          ? 'Planning...'
+                          : vm.isSaving
+                              ? 'Adding...'
+                              : 'Add to Itinerary',
                       style: const TextStyle(
                         fontFamily: 'Inter', fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -879,12 +906,15 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     );
   }
 
-  /// Confirm → return the validated proposed day to the caller. The
-  /// temporary itinerary is updated by the HOST (EditItinerary state) —
-  /// nothing is persisted here. The final Save process persists later.
+  /// Confirm → PREVIEW mode: return the validated proposed day to the
+  /// caller (the host applies it as TEMPORARY itinerary state — nothing
+  /// is persisted here; the final Save persists later).
+  /// DATABASE mode (no temporary day supplied): the host reloads from the
+  /// repository when this returns `true`, so the proposed day is applied
+  /// through the repository (this day's stops only).
   Future<void> _onAdd(BuildContext context) async {
     final vm = _viewModel;
-    if (vm.isPlanning) return; // no action while planning runs
+    if (vm.isPlanning || vm.isSaving) return; // no action while busy
 
     final proposedDay = vm.confirmedProposedDay();
     if (proposedDay == null) {
@@ -925,8 +955,33 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     );
     if (confirmed != true || !mounted) return;
 
-    // Return the validated proposed day — NO database write here.
-    Navigator.pop(context, (dayIndex: vm.dayIndex, day: proposedDay));
+    if (widget.dayStops != null) {
+      // Preview mode — return the validated proposed day. NO DB write.
+      debugPrint('[ADD_CUSTOM_SAVE] Preview mode — returning proposed '
+          'day to host (no persistence here)');
+      Navigator.pop(context, (dayIndex: vm.dayIndex, day: proposedDay));
+      return;
+    }
+
+    // Database mode — apply ONLY this day's stops.
+    final applied = await vm.applyProposedDay();
+    if (!mounted) return;
+    if (applied) {
+      debugPrint('[ADD_CUSTOM_SAVE] Database mode — proposed day applied; '
+          'popping true so the host reloads');
+      Navigator.pop(context, true);
+    } else {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              vm.planError ??
+                  'Unable to add this place. Please try again.',
+            ),
+          ),
+        );
+    }
   }
 
   Widget _buildRecommendationsSection() {
