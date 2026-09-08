@@ -221,6 +221,8 @@ class AppLocalizations {
     'Turn on location services to discover nearby attractions.',
     'recommendation.locationPermissionRequired':
     'Location permission is required to find nearby attractions.',
+    'recommendation.locationTimedOut':
+    'Unable to get your current location. Check your location settings and try again.',
     'recommendation.arLocationsUnavailable':
     'AR locations are temporarily unavailable.',
     'recommendation.unableToLoad':
@@ -509,6 +511,7 @@ class AppLocalizations {
     'recommendation.arExperiencesAvailableMany': '{count} 个 AR 体验可用',
     'recommendation.locationServicesOff': '请开启定位服务以发现附近的景点。',
     'recommendation.locationPermissionRequired': '需要定位权限才能查找附近的景点。',
+    'recommendation.locationTimedOut': '无法获取您的当前位置。请检查定位设置后重试。',
     'recommendation.arLocationsUnavailable': 'AR 地点暂时不可用。',
     'recommendation.unableToLoad': '无法加载附近的景点，请重试。',
     'recommendation.closeDetailsTooltip': '关闭详情',
@@ -806,6 +809,8 @@ class AppLocalizations {
     'Hidupkan perkhidmatan lokasi untuk menemui tarikan berhampiran.',
     'recommendation.locationPermissionRequired':
     'Kebenaran lokasi diperlukan untuk mencari tarikan berhampiran.',
+    'recommendation.locationTimedOut':
+    'Tidak dapat mendapatkan lokasi semasa anda. Semak tetapan lokasi dan cuba lagi.',
     'recommendation.arLocationsUnavailable':
     'Lokasi AR tidak tersedia buat sementara waktu.',
     'recommendation.unableToLoad':
@@ -1135,6 +1140,8 @@ class AppLocalizations {
     'recommendation.locationPermissionRequired':
     'Se requiere permiso de ubicación para encontrar atracciones '
         'cercanas.',
+    'recommendation.locationTimedOut':
+    'No se pudo obtener su ubicación actual. Compruebe los ajustes de ubicación e inténtelo de nuevo.',
     'recommendation.arLocationsUnavailable':
     'Las ubicaciones de RA no están disponibles temporalmente.',
     'recommendation.unableToLoad':
@@ -1444,6 +1451,8 @@ class AppLocalizations {
     'आस-पास के आकर्षण खोजने के लिए स्थान सेवाएँ चालू करें।',
     'recommendation.locationPermissionRequired':
     'आस-पास के आकर्षण खोजने के लिए स्थान अनुमति आवश्यक है।',
+    'recommendation.locationTimedOut':
+    'आपका वर्तमान स्थान प्राप्त नहीं हो सका। स्थान सेटिंग जांचें और फिर प्रयास करें।',
     'recommendation.arLocationsUnavailable': 'AR स्थान अस्थायी रूप से अनुपलब्ध हैं।',
     'recommendation.unableToLoad':
     'आस-पास के आकर्षण लोड नहीं हो सके। कृपया पुनः प्रयास करें।',

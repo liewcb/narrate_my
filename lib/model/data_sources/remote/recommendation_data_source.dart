@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_localizations.dart';
@@ -16,13 +18,15 @@ class RecommendationRemoteDataSource {
   }) async {
     try {
       final accessToken = _supabase.auth.currentSession?.accessToken;
-      final response = await _supabase.functions.invoke(
-        'recommend-nearby',
-        body: {'latitude': latitude, 'longitude': longitude},
-        headers: accessToken == null
-            ? null
-            : {'Authorization': 'Bearer $accessToken'},
-      );
+      final response = await _supabase.functions
+          .invoke(
+            'recommend-nearby',
+            body: {'latitude': latitude, 'longitude': longitude},
+            headers: accessToken == null
+                ? null
+                : {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(const Duration(seconds: 60));
 
       if (response.status < 200 || response.status >= 300) {
         throw RecommendationRemoteException(

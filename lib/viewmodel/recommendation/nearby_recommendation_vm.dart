@@ -92,13 +92,20 @@ class NearbyRecommendationVm extends ChangeNotifier {
       if (locationOverride != null) {
         location = locationOverride;
       } else {
-        final position = await _locationService.getCurrentPosition();
+        debugPrint('Nearby recommendations: requesting device location.');
+        final position = await _locationService.getCurrentPosition().timeout(
+          const Duration(seconds: 20),
+        );
+        debugPrint('Nearby recommendations: device location acquired.');
         location = Coordinates(
           latitude: position.latitude,
           longitude: position.longitude,
         );
       }
       _currentLocation = location;
+      // Reveal the map as soon as GPS succeeds. The recommendation request can
+      // continue loading on top of it instead of looking like a stuck GPS call.
+      _notifyIfActive();
       _startLocationMonitoring();
 
       _recommendations = await _repository.getNearbyRecommendations(
@@ -126,7 +133,14 @@ class NearbyRecommendationVm extends ChangeNotifier {
           'recommendation.arLocationsUnavailable',
         );
       }
-    } catch (e) {
+    } on TimeoutException catch (error, stackTrace) {
+      debugPrint(
+        'Nearby recommendations: device location timed out.\n'
+        '$error\n$stackTrace',
+      );
+      _errorMessage = AppLocalizations.t('recommendation.locationTimedOut');
+    } catch (e, stackTrace) {
+      debugPrint('Nearby recommendations failed: $e\n$stackTrace');
       _errorMessage = e is _NearbyLocationException
           ? e.message
           : e is RecommendationResolutionException

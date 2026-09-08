@@ -73,7 +73,9 @@ class ARRecommendationVm extends ChangeNotifier {
     var latitude = marker.latitude;
     var longitude = marker.longitude;
     try {
-      final position = await _locationService.getCurrentPosition();
+      final position = await _locationService.getCurrentPosition().timeout(
+        const Duration(seconds: 20),
+      );
       latitude = position.latitude;
       longitude = position.longitude;
     } catch (_) {
