@@ -53,19 +53,19 @@ class AppLocalizations {
     // register_messages.dart
     'register.m1': 'Your account has been registered successfully.',
     'register.m2':
-        'A one-time password (OTP) has been sent to your phone number. '
-            'Please enter it within 5 minutes.',
+    'A one-time password (OTP) has been sent to your phone number. '
+        'Please enter it within 5 minutes.',
     'register.m3': 'Unable to sign in with Google. Please try again.',
     'register.m4':
-        'This phone number is already registered. Please log in using your existing account.',
+    'This phone number is already registered. Please log in using your existing account.',
     'register.m5': 'Please enter a valid phone number.',
     'register.m6': 'The OTP entered is incorrect or has expired. Please try again.',
     'register.m7': 'This Username is already taken. Please choose a different Username.',
     'register.m8':
-        'Password must contain at least 8 characters, including at least one letter and one number.',
+    'Password must contain at least 8 characters, including at least one letter and one number.',
     'register.m9': 'Too many requests. Please try again later.',
     'register.m10':
-        'Passwords do not match. Please enter the same password in both fields.',
+    'Passwords do not match. Please enter the same password in both fields.',
     'register.m11': 'Please enter your full name.',
     'register.m12': 'Please select your date of birth.',
     'register.m13': 'Date of birth cannot be in the future.',
@@ -75,30 +75,30 @@ class AppLocalizations {
     // login_messages.dart
     'login.m1': 'Login successful. Start enjoying your trip with NarrateMy.',
     'login.m2':
-        'A one-time password (OTP) has been sent to your phone number. '
-            'Please enter it within 5 minutes.',
+    'A one-time password (OTP) has been sent to your phone number. '
+        'Please enter it within 5 minutes.',
     'login.m3': 'Unable to sign in with Google. Please try again.',
     'login.m4':
-        'No account was found. Please check your login details or register a new account.',
+    'No account was found. Please check your login details or register a new account.',
     'login.m5': 'The OTP entered is incorrect or has expired. Please try again.',
     'login.m6': 'The Username or password entered is incorrect.',
     'login.m7':
-        'Too many failed login attempts. Your account has been locked for 30 minutes. '
-            'Please try again later or reset your password.',
+    'Too many failed login attempts. Your account has been locked for 30 minutes. '
+        'Please try again later or reset your password.',
     'login.m8':
-        'Too many OTP requests or verification attempts have been made. Please try again later.',
+    'Too many OTP requests or verification attempts have been made. Please try again later.',
     'login.m9': 'Please enter your username and password.',
 
     // password_reset_messages.dart
     'passwordReset.m1': 'Enter your registered phone number to reset your password.',
     'passwordReset.m2':
-        'A one-time password (OTP) has been sent to your phone number. '
-            'Please enter it within 5 minutes.',
+    'A one-time password (OTP) has been sent to your phone number. '
+        'Please enter it within 5 minutes.',
     'passwordReset.m3': 'Your password has been reset successfully. You may now log in.',
     'passwordReset.m4': 'This phone number is not registered.',
     'passwordReset.m5': 'The OTP entered is incorrect or has expired. Please try again.',
     'passwordReset.m6':
-        'Password must contain at least 8 characters, including at least one letter and one number.',
+    'Password must contain at least 8 characters, including at least one letter and one number.',
     'passwordReset.m7': 'The passwords entered do not match. Please try again.',
     'passwordReset.m8': 'Too many requests. Please try again later.',
 
@@ -114,29 +114,29 @@ class AppLocalizations {
     'profile.m9': 'This phone number is already registered to another account.',
     'profile.m10': 'The OTP entered is incorrect or has expired. Please try again.',
     'profile.m11':
-        'A one-time password (OTP) has been sent to your phone number. '
-            'Please enter it within 5 minutes.',
+    'A one-time password (OTP) has been sent to your phone number. '
+        'Please enter it within 5 minutes.',
     'profile.m12':
-        'Your Google account has been linked successfully. You can now sign in with Google.',
+    'Your Google account has been linked successfully. You can now sign in with Google.',
     'profile.m13': 'Unable to link your Google account. Please try again.',
     'profile.m14': 'This Google account is already linked to another NarrateMy account.',
     'profile.m15': 'Your password has been changed successfully.',
     'profile.m16': 'The current password entered is incorrect.',
     'profile.m17':
-        'Password must contain at least 8 characters, including at least one letter and one number.',
+    'Password must contain at least 8 characters, including at least one letter and one number.',
     'profile.m18': 'The new passwords entered do not match.',
     'profile.m19':
-        'Are you sure you want to unlink your Google account? '
-            'You will no longer be able to sign in with Google.',
+    'Are you sure you want to unlink your Google account? '
+        'You will no longer be able to sign in with Google.',
     'profile.m20': 'Your Google account has been unlinked.',
     'profile.m21': 'You must verify a phone number before unlinking your Google account.',
     'profile.m22':
-        'Delete your account? Your profile, preferences, and bookmarks will '
-            'be deactivated immediately and permanently removed after 30 '
-            'days. Logging back in before then restores your account.',
+    'Delete your account? Your profile, preferences, and bookmarks will '
+        'be deactivated immediately and permanently removed after 30 '
+        'days. Logging back in before then restores your account.',
     'profile.m23':
-        'Your account has been deactivated. It will be permanently deleted '
-            'in 30 days unless you log back in.',
+    'Your account has been deactivated. It will be permanently deleted '
+        'in 30 days unless you log back in.',
     'profile.m24': 'Unable to delete your account. Please try again.',
     'profile.m25': 'Unable to update your profile picture. Please try again.',
 
@@ -157,6 +157,7 @@ class AppLocalizations {
     'ui.newPassword': 'New Password',
     'ui.confirmNewPassword': 'Confirm New Password',
     'ui.fullName': 'Full Name',
+    'ui.bio': 'Bio',
     'ui.phoneNumber': 'Phone Number',
     'ui.password': 'Password',
     'ui.username': 'Username',
@@ -173,8 +174,8 @@ class AppLocalizations {
     'ui.unlinkGoogleAccount': 'Unlink Google Account',
     'ui.guestBrowsing': "You're browsing as a guest",
     'ui.guestSubtitle':
-        'Log in or create an account to save your preferences, bookmarks, '
-            'and preferred language.',
+    'Log in or create an account to save your preferences, bookmarks, '
+        'and preferred language.',
     'ui.forgotPassword': 'Forgot Password?',
     'ui.dontHaveAccount': "Don't have an account?",
     'ui.alreadyHaveAccount': 'Already have an account?',
@@ -215,19 +216,19 @@ class AppLocalizations {
     'recommendation.arExperienceCountMany': '{count} AR experiences',
     'recommendation.arExperiencesAvailableOne': '1 AR experience available',
     'recommendation.arExperiencesAvailableMany':
-        '{count} AR experiences available',
+    '{count} AR experiences available',
     'recommendation.locationServicesOff':
-        'Turn on location services to discover nearby attractions.',
+    'Turn on location services to discover nearby attractions.',
     'recommendation.locationPermissionRequired':
-        'Location permission is required to find nearby attractions.',
+    'Location permission is required to find nearby attractions.',
     'recommendation.arLocationsUnavailable':
-        'AR locations are temporarily unavailable.',
+    'AR locations are temporarily unavailable.',
     'recommendation.unableToLoad':
-        'Unable to load nearby attractions. Please try again.',
+    'Unable to load nearby attractions. Please try again.',
     'recommendation.closeDetailsTooltip': 'Close details',
     'recommendation.loginToBookmarkTitle': 'Log in to bookmark',
     'recommendation.loginToBookmarkBody':
-        'You need to log in before you can save attractions to your bookmarks.',
+    'You need to log in before you can save attractions to your bookmarks.',
     'recommendation.no': 'No',
     'recommendation.logIn': 'Log in',
     'recommendation.attractionDetailsLabel': 'ATTRACTION DETAILS',
@@ -238,33 +239,33 @@ class AppLocalizations {
     'recommendation.bookmark': 'Bookmark',
     'recommendation.arLocationLabel': 'AR LOCATION',
     'recommendation.arSharedLocationNotice':
-        '{count} AR attractions share this exact location',
+    '{count} AR attractions share this exact location',
     'recommendation.noArInfoLinked':
-        'AR experience information has not been linked yet.',
+    'AR experience information has not been linked yet.',
     'recommendation.openAr': 'Open AR',
     'recommendation.visitToUnlockAr': 'Visit location to unlock AR',
     'recommendation.availabilityWithinArea':
-        'You are within an AR activation area. Open the AR camera to '
-            'interact with this location.',
+    'You are within an AR activation area. Open the AR camera to '
+        'interact with this location.',
     'recommendation.availabilityVisitSite':
-        'Visit this location to use its AR experiences.',
+    'Visit this location to use its AR experiences.',
     'recommendation.availabilityNearestPoint':
-        'AR works on site. The nearest activation point is {distance} away.',
+    'AR works on site. The nearest activation point is {distance} away.',
     'recommendation.availableNow': 'Available now',
     'recommendation.awayDistance': '{distance} away',
     'recommendation.resolutionFailed':
-        'Recommendations were found, but their map locations could not be '
-            'verified. Please try again.',
+    'Recommendations were found, but their map locations could not be '
+        'verified. Please try again.',
     'recommendation.quotaReached':
-        'AI recommendation quota has been reached. Please try again later.',
+    'AI recommendation quota has been reached. Please try again later.',
     'recommendation.remoteUnavailable':
-        'Unable to retrieve nearby recommendations.',
+    'Unable to retrieve nearby recommendations.',
     'nav.ar': 'AR',
     'nav.itinerary': 'Itinerary',
     'nav.nearby': 'Nearby',
     'nav.profile': 'Profile',
     'ar.permissionRequired':
-        'Camera and Location access are required to use the AR feature.',
+    'Camera and Location access are required to use the AR feature.',
     'ar.enableInSettings': 'Enable in Settings',
     'ar.cameraStartError': 'Something went wrong starting the AR camera.',
     'ar.retry': 'Retry',
@@ -275,13 +276,20 @@ class AppLocalizations {
     'ar.markerDetectedOne': '1 heritage marker detected nearby',
     'ar.markersDetectedMany': '{count} heritage markers detected nearby',
     'ar.attractionsBand': '<{ceiling}M ATTRACTIONS',
+    'ar.availableSection': 'AVAILABLE',
+    'ar.nearbySection': 'NEARBY',
+    'ar.markerAvailableBadge': 'Available',
+    'ar.directionLeft': 'Left',
+    'ar.directionRight': 'Right',
+    'ar.directionAhead': 'Ahead',
+    'ar.directionBehind': 'Behind',
     'ar.loading3d': 'Loading 3D {landmarkName}...',
     'ar.compilingGeometry': 'Compiling 3D WebGL geometry & textures',
     'ar.view360': '360° View',
     'ar.model3dUnavailableTitle': '3D Model Unavailable',
     'ar.model3dUnavailableBody':
-        'The representative 3D model could not be loaded. Storytelling can '
-            'continue without the 3D model.',
+    'The representative 3D model could not be loaded. Storytelling can '
+        'continue without the 3D model.',
     'ar.moveDeviceTapSurface': 'Move device & tap surface to place Manja',
     'ar.storytelling': 'Storytelling',
     'ar.watchVideo': 'Watch Video',
@@ -297,8 +305,8 @@ class AppLocalizations {
     'ar.continueYourExperience': 'CONTINUE YOUR EXPERIENCE',
     'ar.findingNextExperiences': 'Finding the best next experiences…',
     'ar.noPlacementSurface':
-        'No suitable placement surface detected. Please move your device to '
-            'scan the surrounding area.',
+    'No suitable placement surface detected. Please move your device to '
+        'scan the surrounding area.',
     'ar.actionPause': 'Pause',
     'ar.actionReplay': 'Replay Story',
     'ar.actionResume': 'Resume',
@@ -313,8 +321,8 @@ class AppLocalizations {
     'ar.no3dModelForLandmark': 'No 3D model available for {landmarkName}',
     'ar.endStory': 'End Story',
     'ar.model3dMissingError':
-        'Error: No 3D model found in database (model_3d_url is missing) for '
-            '{landmarkName}.',
+    'Error: No 3D model found in database (model_3d_url is missing) for '
+        '{landmarkName}.',
     'ar.loadingVideo': 'Loading video...',
     'ar.rewind10s': 'Rewind 10s',
     'ar.forward10s': 'Forward 10s',
@@ -323,11 +331,11 @@ class AppLocalizations {
     'ar.close': 'Close',
     'ar.videoUnavailableTitle': 'Video Unavailable',
     'ar.videoUnavailableBody':
-        'The related video is currently unavailable. Please try again '
-            'later.',
+    'The related video is currently unavailable. Please try again '
+        'later.',
     'ar.retryPlayback': 'Retry Playback',
     'ar.noFollowUpAttractions':
-        'No suitable follow-up attractions were found.',
+    'No suitable follow-up attractions were found.',
     'pref.attr.heritage': 'Heritage',
     'pref.attr.nature': 'Nature',
     'pref.attr.food': 'Food',
@@ -354,16 +362,16 @@ class AppLocalizations {
     'pref.access.mobility': 'Mobility Assistance',
     'pref.access.visual': 'Visual Assistance',
     'pref.access.wheelchairDesc':
-        'Prioritize ramps, lifts, and step-free routes',
+    'Prioritize ramps, lifts, and step-free routes',
     'pref.access.mobilityDesc':
-        'Favor shorter routes and seating along the way',
+    'Favor shorter routes and seating along the way',
     'pref.access.visualDesc': 'Highlight audio guides and tactile cues',
     'ui.dietaryRestrictionsTitle': 'Dietary Restrictions & Allergies',
     'onboarding.skip': 'Skip',
     'onboarding.title': 'Personalize your journey',
     'onboarding.subtitle':
-        "Tell us what you're into so we can tailor recommendations — you "
-            'can always change this later in Profile.',
+    "Tell us what you're into so we can tailor recommendations — you "
+        'can always change this later in Profile.',
     'onboarding.attractionsQuestion': 'What kind of attractions do you enjoy?',
     'onboarding.finishSetup': 'Finish setup',
   };
@@ -446,6 +454,7 @@ class AppLocalizations {
     'ui.newPassword': '新密码',
     'ui.confirmNewPassword': '确认新密码',
     'ui.fullName': '全名',
+    'ui.bio': '个人简介',
     'ui.phoneNumber': '电话号码',
     'ui.password': '密码',
     'ui.username': '用户名',
@@ -519,10 +528,10 @@ class AppLocalizations {
     'recommendation.openAr': '打开 AR',
     'recommendation.visitToUnlockAr': '前往该地点以解锁 AR',
     'recommendation.availabilityWithinArea':
-        '您已进入 AR 激活区域，打开 AR 相机即可与该地点互动。',
+    '您已进入 AR 激活区域，打开 AR 相机即可与该地点互动。',
     'recommendation.availabilityVisitSite': '前往该地点即可使用其 AR 体验。',
     'recommendation.availabilityNearestPoint':
-        'AR 仅限现场使用，最近的激活点距离 {distance}。',
+    'AR 仅限现场使用，最近的激活点距离 {distance}。',
     'recommendation.availableNow': '现在可用',
     'recommendation.awayDistance': '距离 {distance}',
     'recommendation.resolutionFailed': '已找到推荐景点，但无法验证其地图位置，请重试。',
@@ -543,6 +552,13 @@ class AppLocalizations {
     'ar.markerDetectedOne': '附近检测到1个文化遗产标记',
     'ar.markersDetectedMany': '附近检测到{count}个文化遗产标记',
     'ar.attractionsBand': '<{ceiling}米内的景点',
+    'ar.availableSection': '可探索',
+    'ar.nearbySection': '附近',
+    'ar.markerAvailableBadge': '可探索',
+    'ar.directionLeft': '左',
+    'ar.directionRight': '右',
+    'ar.directionAhead': '前方',
+    'ar.directionBehind': '后方',
     'ar.loading3d': '正在加载{landmarkName}的3D模型...',
     'ar.compilingGeometry': '正在编译3D WebGL几何图形和纹理',
     'ar.view360': '360°视图',
@@ -577,7 +593,7 @@ class AppLocalizations {
     'ar.no3dModelForLandmark': '{landmarkName}暂无可用3D模型',
     'ar.endStory': '结束故事',
     'ar.model3dMissingError':
-        '错误：数据库中未找到{landmarkName}的3D模型（缺少model_3d_url）。',
+    '错误：数据库中未找到{landmarkName}的3D模型（缺少model_3d_url）。',
     'ar.loadingVideo': '正在加载视频...',
     'ar.rewind10s': '快退10秒',
     'ar.forward10s': '快进10秒',
@@ -627,20 +643,20 @@ class AppLocalizations {
   static const Map<String, String> _ms = {
     'register.m1': 'Akaun anda telah berjaya didaftarkan.',
     'register.m2':
-        'Kata laluan sekali guna (OTP) telah dihantar ke nombor telefon anda. '
-            'Sila masukkannya dalam masa 5 minit.',
+    'Kata laluan sekali guna (OTP) telah dihantar ke nombor telefon anda. '
+        'Sila masukkannya dalam masa 5 minit.',
     'register.m3': 'Tidak dapat log masuk dengan Google. Sila cuba lagi.',
     'register.m4':
-        'Nombor telefon ini telah didaftarkan. Sila log masuk menggunakan akaun sedia ada anda.',
+    'Nombor telefon ini telah didaftarkan. Sila log masuk menggunakan akaun sedia ada anda.',
     'register.m5': 'Sila masukkan nombor telefon yang sah.',
     'register.m6': 'OTP yang dimasukkan tidak betul atau telah tamat tempoh. Sila cuba lagi.',
     'register.m7': 'Nama pengguna ini telah digunakan. Sila pilih Nama Pengguna lain.',
     'register.m8':
-        'Kata laluan mesti mengandungi sekurang-kurangnya 8 aksara, '
-            'termasuk sekurang-kurangnya satu huruf dan satu nombor.',
+    'Kata laluan mesti mengandungi sekurang-kurangnya 8 aksara, '
+        'termasuk sekurang-kurangnya satu huruf dan satu nombor.',
     'register.m9': 'Terlalu banyak permintaan. Sila cuba lagi kemudian.',
     'register.m10':
-        'Kata laluan tidak sepadan. Sila masukkan kata laluan yang sama dalam kedua-dua ruangan.',
+    'Kata laluan tidak sepadan. Sila masukkan kata laluan yang sama dalam kedua-dua ruangan.',
     'register.m11': 'Sila masukkan nama penuh anda.',
     'register.m12': 'Sila pilih tarikh lahir anda.',
     'register.m13': 'Tarikh lahir tidak boleh pada masa hadapan.',
@@ -649,30 +665,30 @@ class AppLocalizations {
 
     'login.m1': 'Log masuk berjaya. Mulakan perjalanan anda bersama NarrateMy.',
     'login.m2':
-        'Kata laluan sekali guna (OTP) telah dihantar ke nombor telefon anda. '
-            'Sila masukkannya dalam masa 5 minit.',
+    'Kata laluan sekali guna (OTP) telah dihantar ke nombor telefon anda. '
+        'Sila masukkannya dalam masa 5 minit.',
     'login.m3': 'Tidak dapat log masuk dengan Google. Sila cuba lagi.',
     'login.m4':
-        'Tiada akaun ditemui. Sila semak butiran log masuk anda atau daftar akaun baharu.',
+    'Tiada akaun ditemui. Sila semak butiran log masuk anda atau daftar akaun baharu.',
     'login.m5': 'OTP yang dimasukkan tidak betul atau telah tamat tempoh. Sila cuba lagi.',
     'login.m6': 'Nama Pengguna atau kata laluan yang dimasukkan tidak betul.',
     'login.m7':
-        'Terlalu banyak percubaan log masuk gagal. Akaun anda telah dikunci selama 30 minit. '
-            'Sila cuba lagi kemudian atau tetapkan semula kata laluan anda.',
+    'Terlalu banyak percubaan log masuk gagal. Akaun anda telah dikunci selama 30 minit. '
+        'Sila cuba lagi kemudian atau tetapkan semula kata laluan anda.',
     'login.m8':
-        'Terlalu banyak permintaan OTP atau percubaan pengesahan telah dibuat. Sila cuba lagi kemudian.',
+    'Terlalu banyak permintaan OTP atau percubaan pengesahan telah dibuat. Sila cuba lagi kemudian.',
     'login.m9': 'Sila masukkan nama pengguna dan kata laluan anda.',
 
     'passwordReset.m1': 'Masukkan nombor telefon berdaftar anda untuk menetapkan semula kata laluan anda.',
     'passwordReset.m2':
-        'Kata laluan sekali guna (OTP) telah dihantar ke nombor telefon anda. '
-            'Sila masukkannya dalam masa 5 minit.',
+    'Kata laluan sekali guna (OTP) telah dihantar ke nombor telefon anda. '
+        'Sila masukkannya dalam masa 5 minit.',
     'passwordReset.m3': 'Kata laluan anda telah berjaya ditetapkan semula. Anda kini boleh log masuk.',
     'passwordReset.m4': 'Nombor telefon ini tidak berdaftar.',
     'passwordReset.m5': 'OTP yang dimasukkan tidak betul atau telah tamat tempoh. Sila cuba lagi.',
     'passwordReset.m6':
-        'Kata laluan mesti mengandungi sekurang-kurangnya 8 aksara, '
-            'termasuk sekurang-kurangnya satu huruf dan satu nombor.',
+    'Kata laluan mesti mengandungi sekurang-kurangnya 8 aksara, '
+        'termasuk sekurang-kurangnya satu huruf dan satu nombor.',
     'passwordReset.m7': 'Kata laluan yang dimasukkan tidak sepadan. Sila cuba lagi.',
     'passwordReset.m8': 'Terlalu banyak permintaan. Sila cuba lagi kemudian.',
 
@@ -687,29 +703,29 @@ class AppLocalizations {
     'profile.m9': 'Nombor telefon ini telah didaftarkan pada akaun lain.',
     'profile.m10': 'OTP yang dimasukkan tidak betul atau telah tamat tempoh. Sila cuba lagi.',
     'profile.m11':
-        'Kata laluan sekali guna (OTP) telah dihantar ke nombor telefon anda. '
-            'Sila masukkannya dalam masa 5 minit.',
+    'Kata laluan sekali guna (OTP) telah dihantar ke nombor telefon anda. '
+        'Sila masukkannya dalam masa 5 minit.',
     'profile.m12': 'Akaun Google anda telah berjaya dipautkan. Anda kini boleh log masuk dengan Google.',
     'profile.m13': 'Tidak dapat memautkan akaun Google anda. Sila cuba lagi.',
     'profile.m14': 'Akaun Google ini telah dipautkan dengan akaun NarrateMy yang lain.',
     'profile.m15': 'Kata laluan anda telah berjaya ditukar.',
     'profile.m16': 'Kata laluan semasa yang dimasukkan tidak betul.',
     'profile.m17':
-        'Kata laluan mesti mengandungi sekurang-kurangnya 8 aksara, '
-            'termasuk sekurang-kurangnya satu huruf dan satu nombor.',
+    'Kata laluan mesti mengandungi sekurang-kurangnya 8 aksara, '
+        'termasuk sekurang-kurangnya satu huruf dan satu nombor.',
     'profile.m18': 'Kata laluan baharu yang dimasukkan tidak sepadan.',
     'profile.m19':
-        'Adakah anda pasti mahu menyahpautkan akaun Google anda? '
-            'Anda tidak lagi boleh log masuk dengan Google.',
+    'Adakah anda pasti mahu menyahpautkan akaun Google anda? '
+        'Anda tidak lagi boleh log masuk dengan Google.',
     'profile.m20': 'Akaun Google anda telah dinyahpautkan.',
     'profile.m21': 'Anda mesti mengesahkan nombor telefon sebelum menyahpautkan akaun Google anda.',
     'profile.m22':
-        'Padam akaun anda? Profil, keutamaan, dan penanda halaman anda akan '
-            'dinyahaktifkan serta-merta dan dipadamkan secara kekal selepas '
-            '30 hari. Log masuk semula sebelum itu akan memulihkan akaun anda.',
+    'Padam akaun anda? Profil, keutamaan, dan penanda halaman anda akan '
+        'dinyahaktifkan serta-merta dan dipadamkan secara kekal selepas '
+        '30 hari. Log masuk semula sebelum itu akan memulihkan akaun anda.',
     'profile.m23':
-        'Akaun anda telah dinyahaktifkan. Ia akan dipadamkan secara kekal '
-            'dalam masa 30 hari melainkan anda log masuk semula.',
+    'Akaun anda telah dinyahaktifkan. Ia akan dipadamkan secara kekal '
+        'dalam masa 30 hari melainkan anda log masuk semula.',
     'profile.m24': 'Tidak dapat memadamkan akaun anda. Sila cuba lagi.',
     'profile.m25': 'Tidak dapat mengemas kini gambar profil anda. Sila cuba lagi.',
 
@@ -729,6 +745,7 @@ class AppLocalizations {
     'ui.newPassword': 'Kata Laluan Baharu',
     'ui.confirmNewPassword': 'Sahkan Kata Laluan Baharu',
     'ui.fullName': 'Nama Penuh',
+    'ui.bio': 'Bio',
     'ui.phoneNumber': 'Nombor Telefon',
     'ui.password': 'Kata Laluan',
     'ui.username': 'Nama Pengguna',
@@ -745,8 +762,8 @@ class AppLocalizations {
     'ui.unlinkGoogleAccount': 'Nyahpaut Akaun Google',
     'ui.guestBrowsing': 'Anda melayari sebagai tetamu',
     'ui.guestSubtitle':
-        'Log masuk atau cipta akaun untuk menyimpan keutamaan, penanda halaman, '
-            'dan bahasa pilihan anda.',
+    'Log masuk atau cipta akaun untuk menyimpan keutamaan, penanda halaman, '
+        'dan bahasa pilihan anda.',
     'ui.forgotPassword': 'Lupa Kata Laluan?',
     'ui.dontHaveAccount': 'Tiada akaun?',
     'ui.alreadyHaveAccount': 'Sudah mempunyai akaun?',
@@ -774,7 +791,7 @@ class AppLocalizations {
     'recommendation.refreshTooltip': 'Muat semula tarikan berhampiran',
     'recommendation.hintFinding': 'Mencari tarikan berhampiran anda...',
     'recommendation.hintTapToView':
-        'Ketik mana-mana tarikan untuk melihat butiran',
+    'Ketik mana-mana tarikan untuk melihat butiran',
     'recommendation.hintNoneFound': 'Tiada tarikan yang boleh dipetakan ditemui',
     'recommendation.tryAgain': 'Cuba lagi',
     'recommendation.findingLocation': 'Mencari lokasi semasa anda...',
@@ -784,20 +801,20 @@ class AppLocalizations {
     'recommendation.arExperienceCountMany': '{count} pengalaman AR',
     'recommendation.arExperiencesAvailableOne': '1 pengalaman AR tersedia',
     'recommendation.arExperiencesAvailableMany':
-        '{count} pengalaman AR tersedia',
+    '{count} pengalaman AR tersedia',
     'recommendation.locationServicesOff':
-        'Hidupkan perkhidmatan lokasi untuk menemui tarikan berhampiran.',
+    'Hidupkan perkhidmatan lokasi untuk menemui tarikan berhampiran.',
     'recommendation.locationPermissionRequired':
-        'Kebenaran lokasi diperlukan untuk mencari tarikan berhampiran.',
+    'Kebenaran lokasi diperlukan untuk mencari tarikan berhampiran.',
     'recommendation.arLocationsUnavailable':
-        'Lokasi AR tidak tersedia buat sementara waktu.',
+    'Lokasi AR tidak tersedia buat sementara waktu.',
     'recommendation.unableToLoad':
-        'Tidak dapat memuatkan tarikan berhampiran. Sila cuba lagi.',
+    'Tidak dapat memuatkan tarikan berhampiran. Sila cuba lagi.',
     'recommendation.closeDetailsTooltip': 'Tutup butiran',
     'recommendation.loginToBookmarkTitle': 'Log masuk untuk menanda buku',
     'recommendation.loginToBookmarkBody':
-        'Anda perlu log masuk sebelum boleh menyimpan tarikan ke penanda '
-            'buku anda.',
+    'Anda perlu log masuk sebelum boleh menyimpan tarikan ke penanda '
+        'buku anda.',
     'recommendation.no': 'Tidak',
     'recommendation.logIn': 'Log masuk',
     'recommendation.attractionDetailsLabel': 'BUTIRAN TARIKAN',
@@ -808,34 +825,34 @@ class AppLocalizations {
     'recommendation.bookmark': 'Tanda buku',
     'recommendation.arLocationLabel': 'LOKASI AR',
     'recommendation.arSharedLocationNotice':
-        '{count} tarikan AR berkongsi lokasi yang sama ini',
+    '{count} tarikan AR berkongsi lokasi yang sama ini',
     'recommendation.noArInfoLinked':
-        'Maklumat pengalaman AR belum dipautkan lagi.',
+    'Maklumat pengalaman AR belum dipautkan lagi.',
     'recommendation.openAr': 'Buka AR',
     'recommendation.visitToUnlockAr': 'Lawati lokasi untuk membuka kunci AR',
     'recommendation.availabilityWithinArea':
-        'Anda berada dalam kawasan pengaktifan AR. Buka kamera AR untuk '
-            'berinteraksi dengan lokasi ini.',
+    'Anda berada dalam kawasan pengaktifan AR. Buka kamera AR untuk '
+        'berinteraksi dengan lokasi ini.',
     'recommendation.availabilityVisitSite':
-        'Lawati lokasi ini untuk menggunakan pengalaman AR-nya.',
+    'Lawati lokasi ini untuk menggunakan pengalaman AR-nya.',
     'recommendation.availabilityNearestPoint':
-        'AR hanya berfungsi di lokasi. Titik pengaktifan terdekat ialah '
-            '{distance} dari sini.',
+    'AR hanya berfungsi di lokasi. Titik pengaktifan terdekat ialah '
+        '{distance} dari sini.',
     'recommendation.availableNow': 'Tersedia sekarang',
     'recommendation.awayDistance': '{distance} dari sini',
     'recommendation.resolutionFailed':
-        'Cadangan telah ditemui, tetapi lokasi petanya tidak dapat '
-            'disahkan. Sila cuba lagi.',
+    'Cadangan telah ditemui, tetapi lokasi petanya tidak dapat '
+        'disahkan. Sila cuba lagi.',
     'recommendation.quotaReached':
-        'Kuota cadangan AI telah dicapai. Sila cuba lagi kemudian.',
+    'Kuota cadangan AI telah dicapai. Sila cuba lagi kemudian.',
     'recommendation.remoteUnavailable':
-        'Tidak dapat mendapatkan cadangan berhampiran.',
+    'Tidak dapat mendapatkan cadangan berhampiran.',
     'nav.ar': 'AR',
     'nav.itinerary': 'Itinerari',
     'nav.nearby': 'Berdekatan',
     'nav.profile': 'Profil',
     'ar.permissionRequired':
-        'Akses Kamera dan Lokasi diperlukan untuk menggunakan ciri AR.',
+    'Akses Kamera dan Lokasi diperlukan untuk menggunakan ciri AR.',
     'ar.enableInSettings': 'Dayakan dalam Tetapan',
     'ar.cameraStartError': 'Terdapat masalah semasa memulakan kamera AR.',
     'ar.retry': 'Cuba Lagi',
@@ -846,15 +863,22 @@ class AppLocalizations {
     'ar.markerDetectedOne': '1 penanda warisan dikesan berdekatan',
     'ar.markersDetectedMany': '{count} penanda warisan dikesan berdekatan',
     'ar.attractionsBand': 'TARIKAN <{ceiling}M',
+    'ar.availableSection': 'TERSEDIA',
+    'ar.nearbySection': 'BERDEKATAN',
+    'ar.markerAvailableBadge': 'Tersedia',
+    'ar.directionLeft': 'Kiri',
+    'ar.directionRight': 'Kanan',
+    'ar.directionAhead': 'Depan',
+    'ar.directionBehind': 'Belakang',
     'ar.loading3d': 'Memuatkan model 3D {landmarkName}...',
     'ar.compilingGeometry': 'Menghimpun geometri & tekstur WebGL 3D',
     'ar.view360': 'Pandangan 360°',
     'ar.model3dUnavailableTitle': 'Model 3D Tidak Tersedia',
     'ar.model3dUnavailableBody':
-        'Model 3D perwakilan tidak dapat dimuatkan. Penceritaan boleh '
-            'diteruskan tanpa model 3D.',
+    'Model 3D perwakilan tidak dapat dimuatkan. Penceritaan boleh '
+        'diteruskan tanpa model 3D.',
     'ar.moveDeviceTapSurface':
-        'Gerakkan peranti & ketik permukaan untuk meletakkan Manja',
+    'Gerakkan peranti & ketik permukaan untuk meletakkan Manja',
     'ar.storytelling': 'Penceritaan',
     'ar.watchVideo': 'Tonton Video',
     'ar.recommend': 'Cadangan',
@@ -869,14 +893,14 @@ class AppLocalizations {
     'ar.continueYourExperience': 'TERUSKAN PENGALAMAN ANDA',
     'ar.findingNextExperiences': 'Mencari pengalaman seterusnya yang terbaik…',
     'ar.noPlacementSurface':
-        'Tiada permukaan penempatan yang sesuai dikesan. Sila gerakkan '
-            'peranti anda untuk mengimbas kawasan sekeliling.',
+    'Tiada permukaan penempatan yang sesuai dikesan. Sila gerakkan '
+        'peranti anda untuk mengimbas kawasan sekeliling.',
     'ar.actionPause': 'Jeda',
     'ar.actionReplay': 'Main Semula Cerita',
     'ar.actionResume': 'Sambung',
     'ar.actionPlay': 'Main',
     'ar.tapGroundContinue':
-        'Ketik tanah untuk meletakkan Manja & teruskan cerita',
+    'Ketik tanah untuk meletakkan Manja & teruskan cerita',
     'ar.storyCompleted': 'Cerita Selesai',
     'ar.paused': 'Dijeda',
     'ar.tapPlayToBegin': 'Ketik Main untuk bermula',
@@ -886,8 +910,8 @@ class AppLocalizations {
     'ar.no3dModelForLandmark': 'Tiada model 3D tersedia untuk {landmarkName}',
     'ar.endStory': 'Tamatkan Cerita',
     'ar.model3dMissingError':
-        'Ralat: Tiada model 3D ditemui dalam pangkalan data (model_3d_url '
-            'tiada) untuk {landmarkName}.',
+    'Ralat: Tiada model 3D ditemui dalam pangkalan data (model_3d_url '
+        'tiada) untuk {landmarkName}.',
     'ar.loadingVideo': 'Memuatkan video...',
     'ar.rewind10s': 'Undur 10s',
     'ar.forward10s': 'Maju 10s',
@@ -896,8 +920,8 @@ class AppLocalizations {
     'ar.close': 'Tutup',
     'ar.videoUnavailableTitle': 'Video Tidak Tersedia',
     'ar.videoUnavailableBody':
-        'Video berkaitan tidak tersedia buat masa ini. Sila cuba lagi '
-            'kemudian.',
+    'Video berkaitan tidak tersedia buat masa ini. Sila cuba lagi '
+        'kemudian.',
     'ar.retryPlayback': 'Cuba Main Semula',
     'ar.noFollowUpAttractions': 'Tiada tarikan susulan yang sesuai ditemui.',
     'pref.attr.heritage': 'Warisan',
@@ -926,38 +950,38 @@ class AppLocalizations {
     'pref.access.mobility': 'Bantuan Mobiliti',
     'pref.access.visual': 'Bantuan Penglihatan',
     'pref.access.wheelchairDesc':
-        'Utamakan susur, lif, dan laluan tanpa anak tangga',
+    'Utamakan susur, lif, dan laluan tanpa anak tangga',
     'pref.access.mobilityDesc':
-        'Utamakan laluan lebih pendek dan tempat duduk sepanjang perjalanan',
+    'Utamakan laluan lebih pendek dan tempat duduk sepanjang perjalanan',
     'pref.access.visualDesc':
-        'Utamakan panduan audio dan isyarat sentuhan',
+    'Utamakan panduan audio dan isyarat sentuhan',
     'ui.dietaryRestrictionsTitle': 'Sekatan Diet & Alahan',
     'onboarding.skip': 'Langkau',
     'onboarding.title': 'Peribadikan perjalanan anda',
     'onboarding.subtitle':
-        'Beritahu kami minat anda supaya kami dapat menyesuaikan cadangan '
-            '— anda boleh menukarnya kemudian di Profil.',
+    'Beritahu kami minat anda supaya kami dapat menyesuaikan cadangan '
+        '— anda boleh menukarnya kemudian di Profil.',
     'onboarding.attractionsQuestion':
-        'Apakah jenis tarikan yang anda gemari?',
+    'Apakah jenis tarikan yang anda gemari?',
     'onboarding.finishSetup': 'Selesaikan persediaan',
   };
 
   static const Map<String, String> _es = {
     'register.m1': 'Su cuenta se ha registrado correctamente.',
     'register.m2':
-        'Se ha enviado una contraseña de un solo uso (OTP) a su número de teléfono. '
-            'Introdúzcala en un plazo de 5 minutos.',
+    'Se ha enviado una contraseña de un solo uso (OTP) a su número de teléfono. '
+        'Introdúzcala en un plazo de 5 minutos.',
     'register.m3': 'No se pudo iniciar sesión con Google. Inténtelo de nuevo.',
     'register.m4':
-        'Este número de teléfono ya está registrado. Inicie sesión con su cuenta existente.',
+    'Este número de teléfono ya está registrado. Inicie sesión con su cuenta existente.',
     'register.m5': 'Introduzca un número de teléfono válido.',
     'register.m6': 'El OTP introducido es incorrecto o ha caducado. Inténtelo de nuevo.',
     'register.m7': 'Este nombre de usuario ya está en uso. Elija un nombre de usuario diferente.',
     'register.m8':
-        'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
+    'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
     'register.m9': 'Demasiadas solicitudes. Inténtelo de nuevo más tarde.',
     'register.m10':
-        'Las contraseñas no coinciden. Introduzca la misma contraseña en ambos campos.',
+    'Las contraseñas no coinciden. Introduzca la misma contraseña en ambos campos.',
     'register.m11': 'Introduzca su nombre completo.',
     'register.m12': 'Seleccione su fecha de nacimiento.',
     'register.m13': 'La fecha de nacimiento no puede ser en el futuro.',
@@ -966,29 +990,29 @@ class AppLocalizations {
 
     'login.m1': 'Inicio de sesión exitoso. Comience a disfrutar de su viaje con NarrateMy.',
     'login.m2':
-        'Se ha enviado una contraseña de un solo uso (OTP) a su número de teléfono. '
-            'Introdúzcala en un plazo de 5 minutos.',
+    'Se ha enviado una contraseña de un solo uso (OTP) a su número de teléfono. '
+        'Introdúzcala en un plazo de 5 minutos.',
     'login.m3': 'No se pudo iniciar sesión con Google. Inténtelo de nuevo.',
     'login.m4':
-        'No se encontró ninguna cuenta. Verifique sus datos de inicio de sesión o registre una cuenta nueva.',
+    'No se encontró ninguna cuenta. Verifique sus datos de inicio de sesión o registre una cuenta nueva.',
     'login.m5': 'El OTP introducido es incorrecto o ha caducado. Inténtelo de nuevo.',
     'login.m6': 'El nombre de usuario o la contraseña introducidos son incorrectos.',
     'login.m7':
-        'Demasiados intentos de inicio de sesión fallidos. Su cuenta ha sido bloqueada durante 30 minutos. '
-            'Inténtelo de nuevo más tarde o restablezca su contraseña.',
+    'Demasiados intentos de inicio de sesión fallidos. Su cuenta ha sido bloqueada durante 30 minutos. '
+        'Inténtelo de nuevo más tarde o restablezca su contraseña.',
     'login.m8':
-        'Se han realizado demasiadas solicitudes de OTP o intentos de verificación. Inténtelo de nuevo más tarde.',
+    'Se han realizado demasiadas solicitudes de OTP o intentos de verificación. Inténtelo de nuevo más tarde.',
     'login.m9': 'Introduzca su nombre de usuario y contraseña.',
 
     'passwordReset.m1': 'Introduzca su número de teléfono registrado para restablecer su contraseña.',
     'passwordReset.m2':
-        'Se ha enviado una contraseña de un solo uso (OTP) a su número de teléfono. '
-            'Introdúzcala en un plazo de 5 minutos.',
+    'Se ha enviado una contraseña de un solo uso (OTP) a su número de teléfono. '
+        'Introdúzcala en un plazo de 5 minutos.',
     'passwordReset.m3': 'Su contraseña se ha restablecido correctamente. Ahora puede iniciar sesión.',
     'passwordReset.m4': 'Este número de teléfono no está registrado.',
     'passwordReset.m5': 'El OTP introducido es incorrecto o ha caducado. Inténtelo de nuevo.',
     'passwordReset.m6':
-        'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
+    'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
     'passwordReset.m7': 'Las contraseñas introducidas no coinciden. Inténtelo de nuevo.',
     'passwordReset.m8': 'Demasiadas solicitudes. Inténtelo de nuevo más tarde.',
 
@@ -1003,30 +1027,30 @@ class AppLocalizations {
     'profile.m9': 'Este número de teléfono ya está registrado en otra cuenta.',
     'profile.m10': 'El OTP introducido es incorrecto o ha caducado. Inténtelo de nuevo.',
     'profile.m11':
-        'Se ha enviado una contraseña de un solo uso (OTP) a su número de teléfono. '
-            'Introdúzcala en un plazo de 5 minutos.',
+    'Se ha enviado una contraseña de un solo uso (OTP) a su número de teléfono. '
+        'Introdúzcala en un plazo de 5 minutos.',
     'profile.m12':
-        'Su cuenta de Google se ha vinculado correctamente. Ahora puede iniciar sesión con Google.',
+    'Su cuenta de Google se ha vinculado correctamente. Ahora puede iniciar sesión con Google.',
     'profile.m13': 'No se pudo vincular su cuenta de Google. Inténtelo de nuevo.',
     'profile.m14': 'Esta cuenta de Google ya está vinculada a otra cuenta de NarrateMy.',
     'profile.m15': 'Su contraseña se ha cambiado correctamente.',
     'profile.m16': 'La contraseña actual introducida es incorrecta.',
     'profile.m17':
-        'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
+    'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
     'profile.m18': 'Las nuevas contraseñas introducidas no coinciden.',
     'profile.m19':
-        '¿Está seguro de que desea desvincular su cuenta de Google? '
-            'Ya no podrá iniciar sesión con Google.',
+    '¿Está seguro de que desea desvincular su cuenta de Google? '
+        'Ya no podrá iniciar sesión con Google.',
     'profile.m20': 'Su cuenta de Google ha sido desvinculada.',
     'profile.m21': 'Debe verificar un número de teléfono antes de desvincular su cuenta de Google.',
     'profile.m22':
-        '¿Eliminar su cuenta? Su perfil, preferencias y marcadores se '
-            'desactivarán de inmediato y se eliminarán permanentemente '
-            'después de 30 días. Iniciar sesión antes de ese plazo restaura '
-            'su cuenta.',
+    '¿Eliminar su cuenta? Su perfil, preferencias y marcadores se '
+        'desactivarán de inmediato y se eliminarán permanentemente '
+        'después de 30 días. Iniciar sesión antes de ese plazo restaura '
+        'su cuenta.',
     'profile.m23':
-        'Su cuenta ha sido desactivada. Se eliminará permanentemente en 30 '
-            'días a menos que vuelva a iniciar sesión.',
+    'Su cuenta ha sido desactivada. Se eliminará permanentemente en 30 '
+        'días a menos que vuelva a iniciar sesión.',
     'profile.m24': 'No se pudo eliminar su cuenta. Inténtelo de nuevo.',
     'profile.m25': 'No se pudo actualizar su foto de perfil. Inténtelo de nuevo.',
 
@@ -1046,6 +1070,7 @@ class AppLocalizations {
     'ui.newPassword': 'Nueva Contraseña',
     'ui.confirmNewPassword': 'Confirmar Nueva Contraseña',
     'ui.fullName': 'Nombre Completo',
+    'ui.bio': 'Biografía',
     'ui.phoneNumber': 'Número de Teléfono',
     'ui.password': 'Contraseña',
     'ui.username': 'Nombre de Usuario',
@@ -1062,8 +1087,8 @@ class AppLocalizations {
     'ui.unlinkGoogleAccount': 'Desvincular Cuenta de Google',
     'ui.guestBrowsing': 'Está navegando como invitado',
     'ui.guestSubtitle':
-        'Inicie sesión o cree una cuenta para guardar sus preferencias, marcadores '
-            'e idioma preferido.',
+    'Inicie sesión o cree una cuenta para guardar sus preferencias, marcadores '
+        'e idioma preferido.',
     'ui.forgotPassword': '¿Olvidó su Contraseña?',
     'ui.dontHaveAccount': '¿No tiene una cuenta?',
     'ui.alreadyHaveAccount': '¿Ya tiene una cuenta?',
@@ -1091,9 +1116,9 @@ class AppLocalizations {
     'recommendation.refreshTooltip': 'Actualizar atracciones cercanas',
     'recommendation.hintFinding': 'Buscando atracciones cerca de usted...',
     'recommendation.hintTapToView':
-        'Toque cualquier atracción para ver los detalles',
+    'Toque cualquier atracción para ver los detalles',
     'recommendation.hintNoneFound':
-        'No se encontraron atracciones que se puedan mostrar en el mapa',
+    'No se encontraron atracciones que se puedan mostrar en el mapa',
     'recommendation.tryAgain': 'Intentar de nuevo',
     'recommendation.findingLocation': 'Buscando su ubicación actual...',
     'recommendation.retry': 'Reintentar',
@@ -1101,25 +1126,25 @@ class AppLocalizations {
     'recommendation.arExperienceCountOne': '1 experiencia de RA',
     'recommendation.arExperienceCountMany': '{count} experiencias de RA',
     'recommendation.arExperiencesAvailableOne':
-        '1 experiencia de RA disponible',
+    '1 experiencia de RA disponible',
     'recommendation.arExperiencesAvailableMany':
-        '{count} experiencias de RA disponibles',
+    '{count} experiencias de RA disponibles',
     'recommendation.locationServicesOff':
-        'Active los servicios de ubicación para descubrir atracciones '
-            'cercanas.',
+    'Active los servicios de ubicación para descubrir atracciones '
+        'cercanas.',
     'recommendation.locationPermissionRequired':
-        'Se requiere permiso de ubicación para encontrar atracciones '
-            'cercanas.',
+    'Se requiere permiso de ubicación para encontrar atracciones '
+        'cercanas.',
     'recommendation.arLocationsUnavailable':
-        'Las ubicaciones de RA no están disponibles temporalmente.',
+    'Las ubicaciones de RA no están disponibles temporalmente.',
     'recommendation.unableToLoad':
-        'No se pudieron cargar las atracciones cercanas. Inténtelo de nuevo.',
+    'No se pudieron cargar las atracciones cercanas. Inténtelo de nuevo.',
     'recommendation.closeDetailsTooltip': 'Cerrar detalles',
     'recommendation.loginToBookmarkTitle':
-        'Inicie sesión para guardar en marcadores',
+    'Inicie sesión para guardar en marcadores',
     'recommendation.loginToBookmarkBody':
-        'Debe iniciar sesión antes de poder guardar atracciones en sus '
-            'marcadores.',
+    'Debe iniciar sesión antes de poder guardar atracciones en sus '
+        'marcadores.',
     'recommendation.no': 'No',
     'recommendation.logIn': 'Iniciar sesión',
     'recommendation.attractionDetailsLabel': 'DETALLES DE LA ATRACCIÓN',
@@ -1130,36 +1155,36 @@ class AppLocalizations {
     'recommendation.bookmark': 'Guardar',
     'recommendation.arLocationLabel': 'UBICACIÓN DE RA',
     'recommendation.arSharedLocationNotice':
-        '{count} atracciones de RA comparten esta misma ubicación',
+    '{count} atracciones de RA comparten esta misma ubicación',
     'recommendation.noArInfoLinked':
-        'La información de la experiencia de RA aún no se ha vinculado.',
+    'La información de la experiencia de RA aún no se ha vinculado.',
     'recommendation.openAr': 'Abrir RA',
     'recommendation.visitToUnlockAr': 'Visite el lugar para desbloquear la RA',
     'recommendation.availabilityWithinArea':
-        'Se encuentra dentro de una zona de activación de RA. Abra la '
-            'cámara de RA para interactuar con este lugar.',
+    'Se encuentra dentro de una zona de activación de RA. Abra la '
+        'cámara de RA para interactuar con este lugar.',
     'recommendation.availabilityVisitSite':
-        'Visite este lugar para usar sus experiencias de RA.',
+    'Visite este lugar para usar sus experiencias de RA.',
     'recommendation.availabilityNearestPoint':
-        'La RA solo funciona en el lugar. El punto de activación más '
-            'cercano está a {distance}.',
+    'La RA solo funciona en el lugar. El punto de activación más '
+        'cercano está a {distance}.',
     'recommendation.availableNow': 'Disponible ahora',
     'recommendation.awayDistance': 'A {distance}',
     'recommendation.resolutionFailed':
-        'Se encontraron recomendaciones, pero no se pudieron verificar sus '
-            'ubicaciones en el mapa. Inténtelo de nuevo.',
+    'Se encontraron recomendaciones, pero no se pudieron verificar sus '
+        'ubicaciones en el mapa. Inténtelo de nuevo.',
     'recommendation.quotaReached':
-        'Se ha alcanzado la cuota de recomendaciones de IA. Inténtelo de '
-            'nuevo más tarde.',
+    'Se ha alcanzado la cuota de recomendaciones de IA. Inténtelo de '
+        'nuevo más tarde.',
     'recommendation.remoteUnavailable':
-        'No se pudieron obtener las recomendaciones cercanas.',
+    'No se pudieron obtener las recomendaciones cercanas.',
     'nav.ar': 'RA',
     'nav.itinerary': 'Itinerario',
     'nav.nearby': 'Cercanos',
     'nav.profile': 'Perfil',
     'ar.permissionRequired':
-        'Se requiere acceso a la cámara y la ubicación para usar la función '
-            'de RA.',
+    'Se requiere acceso a la cámara y la ubicación para usar la función '
+        'de RA.',
     'ar.enableInSettings': 'Habilitar en Configuración',
     'ar.cameraStartError': 'Ocurrió un problema al iniciar la cámara de RA.',
     'ar.retry': 'Reintentar',
@@ -1169,17 +1194,24 @@ class AppLocalizations {
     'ar.noMarkersNearby': 'No se detectaron marcadores patrimoniales cercanos',
     'ar.markerDetectedOne': '1 marcador patrimonial detectado cerca',
     'ar.markersDetectedMany':
-        '{count} marcadores patrimoniales detectados cerca',
+    '{count} marcadores patrimoniales detectados cerca',
     'ar.attractionsBand': 'ATRACCIONES A <{ceiling}M',
+    'ar.availableSection': 'DISPONIBLE',
+    'ar.nearbySection': 'CERCA',
+    'ar.markerAvailableBadge': 'Disponible',
+    'ar.directionLeft': 'Izquierda',
+    'ar.directionRight': 'Derecha',
+    'ar.directionAhead': 'Adelante',
+    'ar.directionBehind': 'Detrás',
     'ar.loading3d': 'Cargando modelo 3D de {landmarkName}...',
     'ar.compilingGeometry': 'Compilando geometría y texturas 3D WebGL',
     'ar.view360': 'Vista 360°',
     'ar.model3dUnavailableTitle': 'Modelo 3D No Disponible',
     'ar.model3dUnavailableBody':
-        'No se pudo cargar el modelo 3D representativo. La narración puede '
-            'continuar sin el modelo 3D.',
+    'No se pudo cargar el modelo 3D representativo. La narración puede '
+        'continuar sin el modelo 3D.',
     'ar.moveDeviceTapSurface':
-        'Mueve el dispositivo y toca la superficie para colocar a Manja',
+    'Mueve el dispositivo y toca la superficie para colocar a Manja',
     'ar.storytelling': 'Narración',
     'ar.watchVideo': 'Ver Video',
     'ar.recommend': 'Recomendar',
@@ -1193,16 +1225,16 @@ class AppLocalizations {
     'ar.closeRecommendations': 'Cerrar recomendaciones',
     'ar.continueYourExperience': 'CONTINÚA TU EXPERIENCIA',
     'ar.findingNextExperiences':
-        'Buscando las mejores experiencias siguientes…',
+    'Buscando las mejores experiencias siguientes…',
     'ar.noPlacementSurface':
-        'No se detectó una superficie adecuada para colocar. Mueve tu '
-            'dispositivo para escanear el área circundante.',
+    'No se detectó una superficie adecuada para colocar. Mueve tu '
+        'dispositivo para escanear el área circundante.',
     'ar.actionPause': 'Pausar',
     'ar.actionReplay': 'Repetir Historia',
     'ar.actionResume': 'Reanudar',
     'ar.actionPlay': 'Reproducir',
     'ar.tapGroundContinue':
-        'Toca el suelo para colocar a Manja y continuar la historia',
+    'Toca el suelo para colocar a Manja y continuar la historia',
     'ar.storyCompleted': 'Historia Completada',
     'ar.paused': 'Pausado',
     'ar.tapPlayToBegin': 'Toca Reproducir para comenzar',
@@ -1212,8 +1244,8 @@ class AppLocalizations {
     'ar.no3dModelForLandmark': 'No hay modelo 3D disponible para {landmarkName}',
     'ar.endStory': 'Terminar Historia',
     'ar.model3dMissingError':
-        'Error: No se encontró ningún modelo 3D en la base de datos (falta '
-            'model_3d_url) para {landmarkName}.',
+    'Error: No se encontró ningún modelo 3D en la base de datos (falta '
+        'model_3d_url) para {landmarkName}.',
     'ar.loadingVideo': 'Cargando video...',
     'ar.rewind10s': 'Retroceder 10s',
     'ar.forward10s': 'Adelantar 10s',
@@ -1222,11 +1254,11 @@ class AppLocalizations {
     'ar.close': 'Cerrar',
     'ar.videoUnavailableTitle': 'Video No Disponible',
     'ar.videoUnavailableBody':
-        'El video relacionado no está disponible actualmente. Inténtalo de '
-            'nuevo más tarde.',
+    'El video relacionado no está disponible actualmente. Inténtalo de '
+        'nuevo más tarde.',
     'ar.retryPlayback': 'Reintentar Reproducción',
     'ar.noFollowUpAttractions':
-        'No se encontraron atracciones de seguimiento adecuadas.',
+    'No se encontraron atracciones de seguimiento adecuadas.',
     'pref.attr.heritage': 'Patrimonio',
     'pref.attr.nature': 'Naturaleza',
     'pref.attr.food': 'Comida',
@@ -1249,22 +1281,22 @@ class AppLocalizations {
     'pref.restriction.nutAllergy': 'Alergia a Frutos Secos',
     'pref.restriction.shellfishAllergy': 'Alergia a Mariscos',
     'pref.restriction.dairyFree':
-        'Sin Lácteos / Intolerante a la Lactosa',
+    'Sin Lácteos / Intolerante a la Lactosa',
     'pref.access.wheelchair': 'Accesible en Silla de Ruedas',
     'pref.access.mobility': 'Asistencia de Movilidad',
     'pref.access.visual': 'Asistencia Visual',
     'pref.access.wheelchairDesc':
-        'Priorizar rampas, ascensores y rutas sin escalones',
+    'Priorizar rampas, ascensores y rutas sin escalones',
     'pref.access.mobilityDesc':
-        'Priorizar rutas más cortas y asientos en el camino',
+    'Priorizar rutas más cortas y asientos en el camino',
     'pref.access.visualDesc':
-        'Destacar audioguías y señales táctiles',
+    'Destacar audioguías y señales táctiles',
     'ui.dietaryRestrictionsTitle': 'Restricciones Dietéticas y Alergias',
     'onboarding.skip': 'Omitir',
     'onboarding.title': 'Personaliza tu viaje',
     'onboarding.subtitle':
-        'Cuéntanos qué te interesa para adaptar las recomendaciones — '
-            'siempre puedes cambiarlo después en tu Perfil.',
+    'Cuéntanos qué te interesa para adaptar las recomendaciones — '
+        'siempre puedes cambiarlo después en tu Perfil.',
     'onboarding.attractionsQuestion': '¿Qué tipo de atracciones te gustan?',
     'onboarding.finishSetup': 'Finalizar configuración',
   };
@@ -1293,8 +1325,8 @@ class AppLocalizations {
     'login.m5': 'दर्ज किया गया OTP गलत है या समाप्त हो गया है। कृपया पुनः प्रयास करें।',
     'login.m6': 'दर्ज किया गया उपयोगकर्ता नाम या पासवर्ड गलत है।',
     'login.m7':
-        'बहुत अधिक असफल लॉगिन प्रयास। आपका खाता 30 मिनट के लिए लॉक कर दिया गया है। '
-            'कृपया बाद में पुनः प्रयास करें या अपना पासवर्ड रीसेट करें।',
+    'बहुत अधिक असफल लॉगिन प्रयास। आपका खाता 30 मिनट के लिए लॉक कर दिया गया है। '
+        'कृपया बाद में पुनः प्रयास करें या अपना पासवर्ड रीसेट करें।',
     'login.m8': 'बहुत अधिक OTP अनुरोध या सत्यापन प्रयास किए गए हैं। कृपया बाद में पुनः प्रयास करें।',
     'login.m9': 'कृपया अपना उपयोगकर्ता नाम और पासवर्ड दर्ज करें।',
 
@@ -1326,16 +1358,16 @@ class AppLocalizations {
     'profile.m17': 'पासवर्ड में कम से कम 8 अक्षर होने चाहिए, जिसमें कम से कम एक अक्षर और एक अंक शामिल हो।',
     'profile.m18': 'दर्ज किए गए नए पासवर्ड मेल नहीं खाते।',
     'profile.m19':
-        'क्या आप वाकई अपना Google खाता अनलिंक करना चाहते हैं? आप अब Google से साइन इन नहीं कर पाएंगे।',
+    'क्या आप वाकई अपना Google खाता अनलिंक करना चाहते हैं? आप अब Google से साइन इन नहीं कर पाएंगे।',
     'profile.m20': 'आपका Google खाता अनलिंक कर दिया गया है।',
     'profile.m21': 'अपना Google खाता अनलिंक करने से पहले आपको एक फ़ोन नंबर सत्यापित करना होगा।',
     'profile.m22':
-        'अपना खाता हटाएं? आपकी प्रोफ़ाइल, प्राथमिकताएँ और बुकमार्क तुरंत निष्क्रिय कर दिए '
-            'जाएंगे और 30 दिनों बाद स्थायी रूप से हटा दिए जाएंगे। इससे पहले फिर से लॉग इन '
-            'करने पर आपका खाता पुनर्स्थापित हो जाएगा।',
+    'अपना खाता हटाएं? आपकी प्रोफ़ाइल, प्राथमिकताएँ और बुकमार्क तुरंत निष्क्रिय कर दिए '
+        'जाएंगे और 30 दिनों बाद स्थायी रूप से हटा दिए जाएंगे। इससे पहले फिर से लॉग इन '
+        'करने पर आपका खाता पुनर्स्थापित हो जाएगा।',
     'profile.m23':
-        'आपका खाता निष्क्रिय कर दिया गया है। जब तक आप फिर से लॉग इन नहीं करते, यह 30 '
-            'दिनों में स्थायी रूप से हटा दिया जाएगा।',
+    'आपका खाता निष्क्रिय कर दिया गया है। जब तक आप फिर से लॉग इन नहीं करते, यह 30 '
+        'दिनों में स्थायी रूप से हटा दिया जाएगा।',
     'profile.m24': 'आपका खाता हटाने में असमर्थ। कृपया पुनः प्रयास करें।',
     'profile.m25': 'आपकी प्रोफ़ाइल तस्वीर अपडेट करने में असमर्थ। कृपया पुनः प्रयास करें।',
 
@@ -1355,6 +1387,7 @@ class AppLocalizations {
     'ui.newPassword': 'नया पासवर्ड',
     'ui.confirmNewPassword': 'नए पासवर्ड की पुष्टि करें',
     'ui.fullName': 'पूरा नाम',
+    'ui.bio': 'बायो',
     'ui.phoneNumber': 'फ़ोन नंबर',
     'ui.password': 'पासवर्ड',
     'ui.username': 'उपयोगकर्ता नाम',
@@ -1408,16 +1441,16 @@ class AppLocalizations {
     'recommendation.arExperiencesAvailableOne': '1 AR अनुभव उपलब्ध',
     'recommendation.arExperiencesAvailableMany': '{count} AR अनुभव उपलब्ध',
     'recommendation.locationServicesOff':
-        'आस-पास के आकर्षण खोजने के लिए स्थान सेवाएँ चालू करें।',
+    'आस-पास के आकर्षण खोजने के लिए स्थान सेवाएँ चालू करें।',
     'recommendation.locationPermissionRequired':
-        'आस-पास के आकर्षण खोजने के लिए स्थान अनुमति आवश्यक है।',
+    'आस-पास के आकर्षण खोजने के लिए स्थान अनुमति आवश्यक है।',
     'recommendation.arLocationsUnavailable': 'AR स्थान अस्थायी रूप से अनुपलब्ध हैं।',
     'recommendation.unableToLoad':
-        'आस-पास के आकर्षण लोड नहीं हो सके। कृपया पुनः प्रयास करें।',
+    'आस-पास के आकर्षण लोड नहीं हो सके। कृपया पुनः प्रयास करें।',
     'recommendation.closeDetailsTooltip': 'विवरण बंद करें',
     'recommendation.loginToBookmarkTitle': 'बुकमार्क करने के लिए लॉग इन करें',
     'recommendation.loginToBookmarkBody':
-        'आकर्षणों को अपने बुकमार्क में सहेजने से पहले आपको लॉग इन करना होगा।',
+    'आकर्षणों को अपने बुकमार्क में सहेजने से पहले आपको लॉग इन करना होगा।',
     'recommendation.no': 'नहीं',
     'recommendation.logIn': 'लॉग इन करें',
     'recommendation.attractionDetailsLabel': 'आकर्षण विवरण',
@@ -1428,29 +1461,29 @@ class AppLocalizations {
     'recommendation.bookmark': 'बुकमार्क करें',
     'recommendation.arLocationLabel': 'AR स्थान',
     'recommendation.arSharedLocationNotice':
-        '{count} AR आकर्षण इसी स्थान पर स्थित हैं',
+    '{count} AR आकर्षण इसी स्थान पर स्थित हैं',
     'recommendation.noArInfoLinked': 'AR अनुभव की जानकारी अभी तक जोड़ी नहीं गई है।',
     'recommendation.openAr': 'AR खोलें',
     'recommendation.visitToUnlockAr': 'AR अनलॉक करने के लिए स्थान पर जाएँ',
     'recommendation.availabilityWithinArea':
-        'आप एक AR सक्रियण क्षेत्र में हैं। इस स्थान से बातचीत करने के लिए AR कैमरा खोलें।',
+    'आप एक AR सक्रियण क्षेत्र में हैं। इस स्थान से बातचीत करने के लिए AR कैमरा खोलें।',
     'recommendation.availabilityVisitSite':
-        'इसके AR अनुभवों का उपयोग करने के लिए इस स्थान पर जाएँ।',
+    'इसके AR अनुभवों का उपयोग करने के लिए इस स्थान पर जाएँ।',
     'recommendation.availabilityNearestPoint':
-        'AR केवल स्थान पर ही काम करता है। निकटतम सक्रियण बिंदु {distance} दूर है।',
+    'AR केवल स्थान पर ही काम करता है। निकटतम सक्रियण बिंदु {distance} दूर है।',
     'recommendation.availableNow': 'अभी उपलब्ध',
     'recommendation.awayDistance': '{distance} दूर',
     'recommendation.resolutionFailed':
-        'सिफ़ारिशें मिलीं, लेकिन उनके मानचित्र स्थानों की पुष्टि नहीं हो सकी। कृपया पुनः प्रयास करें।',
+    'सिफ़ारिशें मिलीं, लेकिन उनके मानचित्र स्थानों की पुष्टि नहीं हो सकी। कृपया पुनः प्रयास करें।',
     'recommendation.quotaReached':
-        'AI सिफ़ारिश कोटा समाप्त हो गया है। कृपया बाद में पुनः प्रयास करें।',
+    'AI सिफ़ारिश कोटा समाप्त हो गया है। कृपया बाद में पुनः प्रयास करें।',
     'recommendation.remoteUnavailable': 'आस-पास की सिफ़ारिशें प्राप्त नहीं हो सकीं।',
     'nav.ar': 'एआर',
     'nav.itinerary': 'यात्रा कार्यक्रम',
     'nav.nearby': 'आस-पास',
     'nav.profile': 'प्रोफ़ाइल',
     'ar.permissionRequired':
-        'एआर सुविधा का उपयोग करने के लिए कैमरा और स्थान की अनुमति आवश्यक है।',
+    'एआर सुविधा का उपयोग करने के लिए कैमरा और स्थान की अनुमति आवश्यक है।',
     'ar.enableInSettings': 'सेटिंग्स में सक्षम करें',
     'ar.cameraStartError': 'एआर कैमरा शुरू करने में कोई समस्या हुई।',
     'ar.retry': 'पुनः प्रयास करें',
@@ -1461,14 +1494,21 @@ class AppLocalizations {
     'ar.markerDetectedOne': 'आस-पास 1 विरासत चिह्न मिला',
     'ar.markersDetectedMany': 'आस-पास {count} विरासत चिह्न मिले',
     'ar.attractionsBand': '<{ceiling}मी के भीतर आकर्षण',
+    'ar.availableSection': 'उपलब्ध',
+    'ar.nearbySection': 'आस-पास',
+    'ar.markerAvailableBadge': 'उपलब्ध',
+    'ar.directionLeft': 'बाएं',
+    'ar.directionRight': 'दाएं',
+    'ar.directionAhead': 'आगे',
+    'ar.directionBehind': 'पीछे',
     'ar.loading3d': '{landmarkName} का 3D मॉडल लोड हो रहा है...',
     'ar.compilingGeometry': '3D WebGL ज्यामिति और टेक्सचर तैयार किए जा रहे हैं',
     'ar.view360': '360° दृश्य',
     'ar.model3dUnavailableTitle': '3D मॉडल उपलब्ध नहीं है',
     'ar.model3dUnavailableBody':
-        'प्रतिनिधि 3D मॉडल लोड नहीं हो सका। कहानी 3D मॉडल के बिना जारी रह सकती है।',
+    'प्रतिनिधि 3D मॉडल लोड नहीं हो सका। कहानी 3D मॉडल के बिना जारी रह सकती है।',
     'ar.moveDeviceTapSurface':
-        'मंजा रखने के लिए डिवाइस को हिलाएं और सतह पर टैप करें',
+    'मंजा रखने के लिए डिवाइस को हिलाएं और सतह पर टैप करें',
     'ar.storytelling': 'कहानी सुनाना',
     'ar.watchVideo': 'वीडियो देखें',
     'ar.recommend': 'सिफ़ारिश करें',
@@ -1483,14 +1523,14 @@ class AppLocalizations {
     'ar.continueYourExperience': 'अपना अनुभव जारी रखें',
     'ar.findingNextExperiences': 'सर्वोत्तम अगला अनुभव खोजा जा रहा है…',
     'ar.noPlacementSurface':
-        'कोई उपयुक्त प्लेसमेंट सतह नहीं मिली। कृपया आस-पास के क्षेत्र को '
-            'स्कैन करने के लिए अपना डिवाइस हिलाएं।',
+    'कोई उपयुक्त प्लेसमेंट सतह नहीं मिली। कृपया आस-पास के क्षेत्र को '
+        'स्कैन करने के लिए अपना डिवाइस हिलाएं।',
     'ar.actionPause': 'रोकें',
     'ar.actionReplay': 'कहानी फिर से चलाएं',
     'ar.actionResume': 'फिर से शुरू करें',
     'ar.actionPlay': 'चलाएं',
     'ar.tapGroundContinue':
-        'मंजा रखने और कहानी जारी रखने के लिए ज़मीन पर टैप करें',
+    'मंजा रखने और कहानी जारी रखने के लिए ज़मीन पर टैप करें',
     'ar.storyCompleted': 'कहानी पूर्ण हुई',
     'ar.paused': 'रुका हुआ',
     'ar.tapPlayToBegin': 'शुरू करने के लिए चलाएं पर टैप करें',
@@ -1500,8 +1540,8 @@ class AppLocalizations {
     'ar.no3dModelForLandmark': '{landmarkName} के लिए कोई 3D मॉडल उपलब्ध नहीं है',
     'ar.endStory': 'कहानी समाप्त करें',
     'ar.model3dMissingError':
-        'त्रुटि: {landmarkName} के लिए डेटाबेस में कोई 3D मॉडल नहीं मिला '
-            '(model_3d_url गायब है)।',
+    'त्रुटि: {landmarkName} के लिए डेटाबेस में कोई 3D मॉडल नहीं मिला '
+        '(model_3d_url गायब है)।',
     'ar.loadingVideo': 'वीडियो लोड हो रहा है...',
     'ar.rewind10s': '10 सेकंड पीछे',
     'ar.forward10s': '10 सेकंड आगे',
@@ -1510,7 +1550,7 @@ class AppLocalizations {
     'ar.close': 'बंद करें',
     'ar.videoUnavailableTitle': 'वीडियो उपलब्ध नहीं है',
     'ar.videoUnavailableBody':
-        'संबंधित वीडियो फ़िलहाल उपलब्ध नहीं है। कृपया बाद में पुनः प्रयास करें।',
+    'संबंधित वीडियो फ़िलहाल उपलब्ध नहीं है। कृपया बाद में पुनः प्रयास करें।',
     'ar.retryPlayback': 'पुनः प्लेबैक करें',
     'ar.noFollowUpAttractions': 'कोई उपयुक्त अनुवर्ती आकर्षण नहीं मिला।',
     'pref.attr.heritage': 'विरासत',
@@ -1545,7 +1585,7 @@ class AppLocalizations {
     'onboarding.skip': 'छोड़ें',
     'onboarding.title': 'अपनी यात्रा को व्यक्तिगत बनाएं',
     'onboarding.subtitle':
-        'हमें बताएं कि आपकी रुचि किसमें है ताकि हम सिफारिशें तैयार कर सकें — आप इसे बाद में प्रोफ़ाइल में हमेशा बदल सकते हैं।',
+    'हमें बताएं कि आपकी रुचि किसमें है ताकि हम सिफारिशें तैयार कर सकें — आप इसे बाद में प्रोफ़ाइल में हमेशा बदल सकते हैं।',
     'onboarding.attractionsQuestion': 'आपको किस प्रकार के आकर्षण पसंद हैं?',
     'onboarding.finishSetup': 'सेटअप पूरा करें',
   };
