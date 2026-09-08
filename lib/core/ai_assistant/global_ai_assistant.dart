@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,6 +15,13 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Coordinates visibility of the app-wide AI assistant button.
 class GlobalAiAssistantController extends ChangeNotifier {
+  GlobalAiAssistantController({Stream<bool>? authStateChanges}) {
+    _authStateSubscription = authStateChanges?.listen((isLoggedIn) {
+      if (!isLoggedIn) clearSessionState();
+    });
+  }
+
+  StreamSubscription<bool>? _authStateSubscription;
   bool _assistantOpen = false;
   bool _storytellingActive = false;
   bool _profileActive = false;
@@ -23,6 +32,7 @@ class GlobalAiAssistantController extends ChangeNotifier {
   String? _conversationSummaryLanguageCode;
   final Map<int, _AiAttractionSelection> _attractionPreviews = {};
   int _nextPreviewToken = 0;
+  int _sessionRevision = 0;
 
   bool get shouldShowButton =>
       !_assistantOpen && !_storytellingActive && !_profileActive;
@@ -32,6 +42,7 @@ class GlobalAiAssistantController extends ChangeNotifier {
   String? get conversationSummary => _conversationSummary;
   String? get conversationSummaryLanguageCode =>
       _conversationSummaryLanguageCode;
+  int get sessionRevision => _sessionRevision;
 
   /// Replaces the previous selection. Only the latest attraction is carried
   /// into a newly opened chat.
@@ -175,6 +186,25 @@ class GlobalAiAssistantController extends ChangeNotifier {
   }
 
   void clearConversationSummary() => saveConversationSummary(null);
+
+  /// Clears account-scoped assistant state when the active user signs out.
+  /// A different user or guest must never inherit the previous user's place
+  /// context, bookmark target, preview, or conversation summary.
+  void clearSessionState() {
+    _sessionRevision += 1;
+    _attractionContext = null;
+    _bookmarkPlace = null;
+    _conversationSummary = null;
+    _conversationSummaryLanguageCode = null;
+    _attractionPreviews.clear();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authStateSubscription?.cancel();
+    super.dispose();
+  }
 
   static String? _clean(String? value) {
     final cleaned = value?.trim();

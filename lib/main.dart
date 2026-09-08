@@ -7,6 +7,7 @@ import 'core/routes/app_routes.dart';
 import 'core/services/database_manager.dart';
 import 'core/theme/app_theme.dart';
 import 'model/business_logic/shared_services/trip_draft_notifier.dart';
+import 'model/repositories/adapters/profile/profile_adapter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,7 +38,12 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => TripDraftNotifier()),
         ChangeNotifierProvider(create: (_) => AccessibilityVm()),
         ChangeNotifierProvider(create: (_) => LocaleVm()),
-        ChangeNotifierProvider(create: (_) => GlobalAiAssistantController()),
+        ChangeNotifierProvider(
+          create: (_) => GlobalAiAssistantController(
+            authStateChanges:
+                SupabaseProfileRepositoryAdapter().authStateChanges,
+          ),
+        ),
       ],
       child: Builder(
         builder: (context) {

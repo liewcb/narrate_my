@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/ai_assistant/global_ai_assistant.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
@@ -94,8 +95,10 @@ class _ProfileHomeView extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !context.mounted) return;
+    final assistantController = context.read<GlobalAiAssistantController>();
     await vm.logout();
+    assistantController.clearSessionState();
     // ignore: use_build_context_synchronously
     _afterLogout(context);
   }

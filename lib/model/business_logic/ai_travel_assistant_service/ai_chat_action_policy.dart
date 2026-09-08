@@ -6,7 +6,7 @@ enum AiNearbyScope { none, contextPlace, userCurrentLocation }
 class AiChatActionPolicy {
   const AiChatActionPolicy._();
 
-  /// Converts supported Malay and Mandarin intent phrases into the same
+  /// Converts supported non-English intent phrases into the same
   /// internal English vocabulary used by the deterministic action rules.
   /// Place names remain in the original question used for Google search.
   static String normalizeForIntent(String value) {
@@ -20,6 +20,15 @@ class AiChatActionPolicy {
         RegExp(replacement.key, caseSensitive: false),
         replacement.value,
       );
+    }
+    for (final replacement in _spanishIntentReplacements.entries) {
+      normalized = normalized.replaceAll(
+        RegExp(replacement.key, caseSensitive: false),
+        replacement.value,
+      );
+    }
+    for (final replacement in _hindiIntentReplacements.entries) {
+      normalized = normalized.replaceAll(replacement.key, replacement.value);
     }
 
     return normalized
@@ -40,14 +49,31 @@ class AiChatActionPolicy {
     }
 
     final normalized = normalizeForIntent(original);
-    final isMapRequest = RegExp(
-      r"\bwhere\s*(?:s|is)\b|\bdirections?\b|\bnavigate\b|"
-      r'\broute\s+to\b|\bhow\s+(?:do|can)\s+i\s+get\s+to\b',
+    final isTravelRequest = RegExp(
+      r'^(?:i\s+)?(?:(?:want|would\s+like)\s+to\s+)?'
+      r'(?:go|visit)(?:\s+to)?\b',
     ).hasMatch(normalized);
+    final isMapRequest =
+        RegExp(
+          r"\bwhere\s*(?:s|is)\b|\bdirections?\b|\bnavigate\b|"
+          r'\broute\s+to\b|\bhow\s+(?:do|can)\s+i\s+get\s+to\b',
+        ).hasMatch(normalized) ||
+        isTravelRequest;
     if (!isMapRequest) return null;
 
     var destination = original;
     final prefixes = <RegExp>[
+      RegExp(r'^(?:我想|我要|想|请|請)?(?:去|前往)\s*'),
+      RegExp(r'^(?:请|請)?(?:带我去|帶我去)\s*'),
+      RegExp(
+        r'^(?:saya\s+)?(?:(?:mahu|nak|ingin)\s+)?pergi\s+(?:ke\s+)?',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'^(?:i\s+)?(?:(?:want|would\s+like)\s+to\s+)?'
+        r'(?:go|visit)\s+(?:to\s+)?',
+        caseSensitive: false,
+      ),
       RegExp(r"^where\s*(?:'s|is)\s+(?:the\s+)?", caseSensitive: false),
       RegExp(r'^(?:di|kat)\s+mana\s+', caseSensitive: false),
       RegExp(r'^how\s+(?:do|can)\s+i\s+get\s+to\s+', caseSensitive: false),
@@ -61,7 +87,24 @@ class AiChatActionPolicy {
       destination = destination.replaceFirst(prefix, '');
     }
     destination = destination.replaceAll(RegExp(r'[?!.]+$'), '').trim();
-    return destination.isEmpty ? question.trim() : destination;
+    return destination.isEmpty ? null : destination;
+  }
+
+  /// Menu, dish, and general "what can I eat" questions are informational.
+  /// They should use the active context for the answer without launching a
+  /// broad place search or showing unrelated bookmark cards.
+  static bool isFoodInformationOnly(String question) {
+    final normalized = normalizeForIntent(question);
+    final mentionsFood = RegExp(
+      r'\b(?:food|menu|dish|dishes|eat|meal|meals|cuisine)\b',
+    ).hasMatch(normalized);
+    if (!mentionsFood) return false;
+
+    final requestsPlaces = RegExp(
+      r'\b(?:near|nearby|recommend|suggest|best|popular|find|where|'
+      r'directions?|navigate|route|go|visit|bookmark)\b',
+    ).hasMatch(normalized);
+    return !requestsPlaces;
   }
 
   static bool questionRefersToContext(
@@ -163,6 +206,8 @@ const _mandarinIntentReplacements = <String, String>{
   '離我近': ' nearby me ',
   '这个地方附近': ' nearby here ',
   '這個地方附近': ' nearby here ',
+  '这地方附近': ' nearby here ',
+  '這地方附近': ' nearby here ',
   '这里附近': ' nearby here ',
   '這裡附近': ' nearby here ',
   '这附近': ' nearby here ',
@@ -183,6 +228,8 @@ const _mandarinIntentReplacements = <String, String>{
   '怎麼去': ' directions to ',
   '这个地方': ' this place ',
   '這個地方': ' this place ',
+  '这地方': ' this place ',
+  '這地方': ' this place ',
   '这里': ' here ',
   '這裡': ' here ',
   '附近': ' nearby ',
@@ -195,6 +242,11 @@ const _mandarinIntentReplacements = <String, String>{
   '最好': ' best ',
   '美食': ' food ',
   '食物': ' food ',
+  '菜单': ' menu ',
+  '菜單': ' menu ',
+  '餐点': ' meal ',
+  '餐點': ' meal ',
+  '吃': ' eat ',
   '咖啡': ' coffee ',
   '饮料': ' drinks ',
   '飲料': ' drinks ',
@@ -202,6 +254,7 @@ const _mandarinIntentReplacements = <String, String>{
   '大桥': ' bridge ',
   '大橋': ' bridge ',
   '它': ' it ',
+  '去': ' visit ',
 };
 
 const _malayIntentReplacements = <String, String>{
@@ -215,6 +268,9 @@ const _malayIntentReplacements = <String, String>{
   r'\b(?:cadangkan|syorkan|disyorkan|sarankan|saran)\b': ' recommend ',
   r'\brestoran\b': ' restaurant ',
   r'\bmakanan\b': ' food ',
+  r'\bmenu\b': ' menu ',
+  r'\bhidangan\b': ' dish ',
+  r'\bmakan\b': ' eat ',
   r'\bkafe\b': ' cafe ',
   r'\bkopi\b': ' coffee ',
   r'\bminuman\b': ' drinks ',
@@ -222,6 +278,24 @@ const _malayIntentReplacements = <String, String>{
   r'\bdi\s+sini\b': ' here ',
   r'\bkat\s+sini\b': ' here ',
   r'\b(?:di|kat)\s+mana\b': ' where is ',
+  r'\bpergi\s+(?:ke\s+)?': ' visit ',
+};
+
+const _spanishIntentReplacements = <String, String>{
+  r'\bcomida\b': ' food ',
+  r'\bcomer\b': ' eat ',
+  r'\bmen[uú]\b': ' menu ',
+  r'\bplatos?\b': ' dish ',
+  r'\bcocina\b': ' cuisine ',
+};
+
+const _hindiIntentReplacements = <String, String>{
+  'खाना': ' food ',
+  'भोजन': ' food ',
+  'मेनू': ' menu ',
+  'व्यंजन': ' dish ',
+  'खाऊँ': ' eat ',
+  'खाना चाहता': ' eat ',
 };
 
 const _contextNearbyFollowerWords = <String>{

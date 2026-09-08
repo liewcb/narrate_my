@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:narrate_my/core/ai_assistant/global_ai_assistant.dart';
@@ -151,6 +153,52 @@ void main() {
     controller.clearConversationSummary();
     expect(controller.conversationSummary, isNull);
     expect(controller.conversationSummaryLanguageCode, isNull);
+  });
+
+  test('logout clears context, bookmark, preview, and saved summary', () {
+    final controller = GlobalAiAssistantController();
+    addTearDown(controller.dispose);
+    controller.selectPlace(
+      attraction('A1', 'Sala Kuala Lumpur'),
+      source: 'recommendation',
+    );
+    controller.saveConversationSummary(
+      'Saved chat summary',
+      languageCode: 'en',
+    );
+    controller.previewPlace(
+      attraction('A2', 'Petrosains'),
+      source: 'recommendation',
+    );
+
+    controller.clearSessionState();
+    controller.commitActiveAttractionPreview();
+
+    expect(controller.attractionContext, isNull);
+    expect(controller.bookmarkPlace, isNull);
+    expect(controller.conversationSummary, isNull);
+    expect(controller.conversationSummaryLanguageCode, isNull);
+  });
+
+  test('auth sign-out event clears the assistant session automatically', () {
+    final authStates = StreamController<bool>(sync: true);
+    final controller = GlobalAiAssistantController(
+      authStateChanges: authStates.stream,
+    );
+    addTearDown(authStates.close);
+    addTearDown(controller.dispose);
+    controller.selectPlace(
+      attraction('A1', 'Royal Selangor Visitor Centre'),
+      source: 'recommendation',
+    );
+    controller.saveConversationSummary('Saved summary', languageCode: 'en');
+
+    authStates.add(false);
+
+    expect(controller.attractionContext, isNull);
+    expect(controller.bookmarkPlace, isNull);
+    expect(controller.conversationSummary, isNull);
+    expect(controller.sessionRevision, 1);
   });
 
   test('AI button moves above the AR action panel', () {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/ai_assistant/global_ai_assistant.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
@@ -169,7 +170,9 @@ class _PersonalInfoViewState extends State<_PersonalInfoView>
                 isLoading: vm.isSaving,
                 onPressed: () async {
                   final ok = await vm.sendPhoneChangeOtp(_newPhoneE164);
-                  if (ok && sheetContext.mounted) Navigator.of(sheetContext).pop(true);
+                  if (ok && sheetContext.mounted) {
+                    Navigator.of(sheetContext).pop(true);
+                  }
                 },
               ),
             ],
@@ -233,7 +236,9 @@ class _PersonalInfoViewState extends State<_PersonalInfoView>
       ),
     );
     if (confirmed != true || !mounted) return;
+    final assistantController = context.read<GlobalAiAssistantController>();
     final ok = await vm.deleteAccount();
+    if (ok) assistantController.clearSessionState();
     if (!mounted) return;
     if (ok) {
       ScaffoldMessenger.of(context)
