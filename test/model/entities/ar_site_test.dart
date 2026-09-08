@@ -147,5 +147,46 @@ void main() {
       expect(sites, hasLength(2));
       expect(sites.every((site) => site.experiences.length == 1), isTrue);
     });
+
+    test('enriches an exact-coordinate pin without grouping nearby pins', () {
+      final sites = groupNearbyARExperiencesByExactCoordinates(
+        const [
+          ARSiteExperience(
+            attractionId: 'AD200',
+            parentSiteId: 'ARS_MUSEUM',
+            markerId: 'MK200',
+            name: 'Museum Gallery',
+            latitude: 3.14,
+            longitude: 101.69,
+            activationRadiusMeters: 80,
+          ),
+        ],
+        parentSitesById: const {
+          'ARS_MUSEUM': ARSite(
+            siteId: 'ARS_MUSEUM',
+            name: 'Museum Parent Place',
+            latitude: 3.14,
+            longitude: 101.69,
+            address: 'Museum Road',
+            category: 'Museum',
+            googlePlaceIds: ['google-museum'],
+            matchAliases: ['National Museum'],
+          ),
+        },
+      );
+
+      expect(sites, hasLength(1));
+      expect(sites.single.name, 'Museum Gallery');
+      expect(sites.single.address, 'Museum Road');
+      expect(sites.single.googlePlaceIds, ['google-museum']);
+      expect(
+        sites.single.matchAliases,
+        containsAll([
+          'Museum Parent Place',
+          'National Museum',
+          'Museum Gallery',
+        ]),
+      );
+    });
   });
 }
