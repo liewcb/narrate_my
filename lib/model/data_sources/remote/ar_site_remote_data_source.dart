@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/config/app_config.dart';
@@ -47,6 +48,13 @@ class ARSiteRemoteDataSource {
         .select('attraction_id, site_id, marker_id, name')
         .inFilter('marker_id', nearbyMarkerIds);
 
+    final parentSitesById = await _fetchParentSites(
+      rows
+          .map((row) => row['site_id']?.toString().trim() ?? '')
+          .where((siteId) => siteId.isNotEmpty)
+          .toSet(),
+    );
+
     final experiences = <ARSiteExperience>[];
     for (final row in rows) {
       final dto = ARSiteExperienceDto.fromJson(Map<String, dynamic>.from(row));
@@ -54,7 +62,36 @@ class ARSiteRemoteDataSource {
       if (experience == null || experience.attractionId.isEmpty) continue;
       experiences.add(experience);
     }
-    return groupNearbyARExperiencesByExactCoordinates(experiences);
+    return groupNearbyARExperiencesByExactCoordinates(
+      experiences,
+      parentSitesById: parentSitesById,
+    );
+  }
+
+  Future<Map<String, ARSite>> _fetchParentSites(Set<String> siteIds) async {
+    if (siteIds.isEmpty) return const {};
+    try {
+      final rows = await _client
+          .from('ar_sites')
+          .select(
+            'site_id, display_name, latitude, longitude, address, category, '
+            'google_place_ids, match_aliases, match_radius_meters',
+          )
+          .inFilter('site_id', siteIds.toList());
+      return {
+        for (final row in rows)
+          if (row['site_id']?.toString().trim().isNotEmpty == true)
+            row['site_id'].toString(): ARSiteDto.fromJson(
+              Map<String, dynamic>.from(row),
+            ).toEntity(),
+      };
+    } catch (error) {
+      // AR markers should still load when optional parent-place metadata has
+      // not been configured yet. Photo/bookmark resolution can then fall back
+      // to the exact attraction name and coordinates.
+      debugPrint('Unable to enrich AR locations from ar_sites: $error');
+      return const {};
+    }
   }
 
   ARSiteExperience? _toExperience(
@@ -71,6 +108,7 @@ class ARSiteRemoteDataSource {
         AppConfig.fallbackActivationRadiusMeters;
     return ARSiteExperience(
       attractionId: attraction.attractionId,
+      parentSiteId: attraction.siteId.isEmpty ? null : attraction.siteId,
       markerId: attraction.markerId,
       name: attraction.name,
       latitude: markerLatitude,

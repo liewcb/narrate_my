@@ -105,6 +105,7 @@ class ARSite {
 
 class ARSiteExperience {
   final String attractionId;
+  final String? parentSiteId;
   final String markerId;
   final String name;
   final double latitude;
@@ -113,6 +114,7 @@ class ARSiteExperience {
 
   const ARSiteExperience({
     required this.attractionId,
+    this.parentSiteId,
     required this.markerId,
     required this.name,
     required this.latitude,
@@ -136,8 +138,9 @@ class ARSiteExperience {
 /// coordinate values from their Marker rows are identical. Nearby attractions
 /// with merely similar coordinates remain separate, regardless of `site_id`.
 List<ARSite> groupNearbyARExperiencesByExactCoordinates(
-  Iterable<ARSiteExperience> experiences,
-) {
+  Iterable<ARSiteExperience> experiences, {
+  Map<String, ARSite> parentSitesById = const {},
+}) {
   final byCoordinates = <(double, double), List<ARSiteExperience>>{};
   for (final experience in experiences) {
     final key = (experience.latitude, experience.longitude);
@@ -152,6 +155,14 @@ List<ARSite> groupNearbyARExperiencesByExactCoordinates(
 
     final first = coordinateExperiences.first;
     final isCombined = coordinateExperiences.length > 1;
+    final parentSiteIds = coordinateExperiences
+        .map((experience) => experience.parentSiteId)
+        .whereType<String>()
+        .where((siteId) => siteId.isNotEmpty)
+        .toSet();
+    final parentSite = parentSiteIds.length == 1
+        ? parentSitesById[parentSiteIds.single]
+        : null;
     final largestActivationRadius = coordinateExperiences
         .map((experience) => experience.activationRadiusMeters)
         .fold<double>(0, math.max);
@@ -171,11 +182,20 @@ List<ARSite> groupNearbyARExperiencesByExactCoordinates(
             : first.name,
         latitude: first.latitude,
         longitude: first.longitude,
-        category: isCombined ? 'AR location' : 'AR attraction',
-        matchAliases: coordinateExperiences
-            .map((experience) => experience.name)
-            .toList(growable: false),
-        matchRadiusMeters: math.max(150, largestActivationRadius),
+        address: parentSite?.address,
+        category:
+            parentSite?.category ??
+            (isCombined ? 'AR location' : 'AR attraction'),
+        googlePlaceIds: parentSite?.googlePlaceIds ?? const [],
+        matchAliases: <String>{
+          if (parentSite != null) parentSite.name,
+          ...?parentSite?.matchAliases,
+          ...coordinateExperiences.map((experience) => experience.name),
+        }.toList(growable: false),
+        matchRadiusMeters: math.max(
+          parentSite?.matchRadiusMeters ?? 150,
+          largestActivationRadius,
+        ),
         experiences: List.unmodifiable(coordinateExperiences),
       ),
     );

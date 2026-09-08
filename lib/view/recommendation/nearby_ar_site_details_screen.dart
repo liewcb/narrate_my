@@ -6,8 +6,13 @@ import '../../core/localization/app_localizations.dart';
 import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/google_maps_directions_button.dart';
+import '../../core/widgets/place_image.dart';
+import '../../model/data_sources/remote/ar_site_place_remote_data_source.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
+import '../../model/entities/place.dart';
+import '../../viewmodel/bookmark_vm.dart';
+import '../profile/auth/login_screen.dart';
 
 Future<void> showNearbyArSiteDetails(
   BuildContext context, {
@@ -26,124 +31,350 @@ Future<void> showNearbyArSiteDetails(
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     builder: (_) => FractionallySizedBox(
-      heightFactor: 0.72,
-      child: Material(
-        color: AppColors.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        clipBehavior: Clip.antiAlias,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.moduleBorder,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      AppLocalizations.t('recommendation.arLocationLabel'),
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: AppLocalizations.t('recommendation.closeDetailsTooltip'),
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                  ),
-                ],
-              ),
-              Text(
-                site.name,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w800,
-                  height: 1.12,
-                  fontSize: site.experiences.length > 1 ? 21 : null,
-                ),
-              ),
-              if (site.experiences.length > 1) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 11,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF2E8),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.layers_outlined,
-                        size: 16,
-                        color: AppColors.accent,
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          AppLocalizations.t(
-                            'recommendation.arSharedLocationNotice',
-                          ).replaceFirst('{count}', '${site.experiences.length}'),
-                          style: const TextStyle(
-                            color: AppColors.accentDark,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              const ARAvailableBadge(),
-              if (site.address != null) ...[
-                const SizedBox(height: 14),
-                Text(
-                  site.address!,
-                  style: const TextStyle(color: AppColors.inkSoft),
-                ),
-              ],
-              const SizedBox(height: 22),
-              GoogleMapsDirectionsButton(
-                destinationName: site.name,
-                latitude: site.latitude,
-                longitude: site.longitude,
-                googlePlaceId: site.googlePlaceIds.isEmpty
-                    ? null
-                    : site.googlePlaceIds.first,
-              ),
-              const SizedBox(height: 16),
-              ARAvailabilityPanel(
-                site: site,
-                userLocation: userLocation,
-                onOpenAr: onOpenAr,
-              ),
-            ],
-          ),
+      heightFactor: 0.82,
+      child: ChangeNotifierProvider(
+        create: (_) => BookmarkVm(),
+        child: _NearbyArSiteDetailsScreen(
+          site: site,
+          userLocation: userLocation,
+          onOpenAr: onOpenAr,
         ),
       ),
     ),
   );
+}
+
+class _NearbyArSiteDetailsScreen extends StatefulWidget {
+  final ARSite site;
+  final Coordinates userLocation;
+  final VoidCallback? onOpenAr;
+
+  const _NearbyArSiteDetailsScreen({
+    required this.site,
+    required this.userLocation,
+    this.onOpenAr,
+  });
+
+  @override
+  State<_NearbyArSiteDetailsScreen> createState() =>
+      _NearbyArSiteDetailsScreenState();
+}
+
+class _NearbyArSiteDetailsScreenState
+    extends State<_NearbyArSiteDetailsScreen> {
+  final ARSitePlaceRemoteDataSource _placeSource =
+      ARSitePlaceRemoteDataSource();
+  Place? _place;
+  bool _isLoadingPlace = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPlace();
+  }
+
+  Future<void> _loadPlace() async {
+    try {
+      final place = await _placeSource.resolvePlace(widget.site);
+      if (!mounted) return;
+      setState(() {
+        _place = place;
+        _isLoadingPlace = false;
+      });
+      if (place != null) {
+        await context.read<BookmarkVm>().load(place.placeId);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoadingPlace = false);
+    }
+  }
+
+  Future<void> _handleBookmark(BookmarkVm viewModel) async {
+    final place = _place;
+    if (place == null) return;
+    final result = await viewModel.toggleBookmark(
+      place,
+      itemType: 'attraction',
+    );
+    if (!mounted || result != BookmarkResult.loginRequired) return;
+
+    final shouldLogin = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AppLocalizations.t('recommendation.loginToBookmarkTitle')),
+        content: Text(AppLocalizations.t('recommendation.loginToBookmarkBody')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(AppLocalizations.t('recommendation.no')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(AppLocalizations.t('recommendation.logIn')),
+          ),
+        ],
+      ),
+    );
+    if (shouldLogin != true) {
+      viewModel.clearPendingBookmark();
+      return;
+    }
+    if (!mounted) return;
+    final loggedIn = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(returnOnSuccess: true),
+      ),
+    );
+    if (loggedIn == true && mounted) {
+      await viewModel.retryPendingBookmark();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
+    final bookmarkViewModel = context.watch<BookmarkVm>();
+    final address = widget.site.address ?? _place?.placeAddress;
+    final googlePlaceId =
+        _place?.placeId ??
+        (widget.site.googlePlaceIds.isEmpty
+            ? null
+            : widget.site.googlePlaceIds.first);
+
+    return Material(
+      color: AppColors.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.moduleBorder,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    AppLocalizations.t('recommendation.arLocationLabel'),
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: AppLocalizations.t(
+                    'recommendation.closeDetailsTooltip',
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                ),
+              ],
+            ),
+            Text(
+              widget.site.name,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w800,
+                height: 1.12,
+                fontSize: widget.site.experiences.length > 1 ? 21 : null,
+              ),
+            ),
+            if (widget.site.experiences.length > 1) ...[
+              const SizedBox(height: 10),
+              _SharedLocationNotice(count: widget.site.experiences.length),
+            ],
+            const SizedBox(height: 10),
+            const ARAvailableBadge(),
+            const SizedBox(height: 20),
+            AspectRatio(
+              aspectRatio: 16 / 8.5,
+              child: _isLoadingPlace
+                  ? Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.moduleBorder.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      alignment: Alignment.center,
+                      child: const CircularProgressIndicator(),
+                    )
+                  : PlaceImage(
+                      imageUrl: _place?.placeImageUrl,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+            ),
+            if (address?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 14),
+              Text(address!, style: const TextStyle(color: AppColors.inkSoft)),
+            ],
+            const SizedBox(height: 22),
+            GoogleMapsDirectionsButton(
+              destinationName: widget.site.name,
+              latitude: widget.site.latitude,
+              longitude: widget.site.longitude,
+              googlePlaceId: googlePlaceId,
+            ),
+            const SizedBox(height: 16),
+            ARAvailabilityPanel(
+              site: widget.site,
+              userLocation: widget.userLocation,
+              onOpenAr: widget.onOpenAr,
+            ),
+            const SizedBox(height: 24),
+            _ArBookmarkButton(
+              isBookmarked: bookmarkViewModel.isBookmarked,
+              isLoading:
+                  _isLoadingPlace ||
+                  bookmarkViewModel.isChecking ||
+                  bookmarkViewModel.isSaving,
+              isAvailable: _place != null,
+              onPressed: () => _handleBookmark(bookmarkViewModel),
+            ),
+            if (bookmarkViewModel.statusMessage != null) ...[
+              const SizedBox(height: 10),
+              _ArBookmarkStatusMessage(
+                message: bookmarkViewModel.statusMessage!,
+                isError: bookmarkViewModel.errorMessage != null,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SharedLocationNotice extends StatelessWidget {
+  final int count;
+
+  const _SharedLocationNotice({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF2E8),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.layers_outlined, size: 16, color: AppColors.accent),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              AppLocalizations.t(
+                'recommendation.arSharedLocationNotice',
+              ).replaceFirst('{count}', '$count'),
+              style: const TextStyle(
+                color: AppColors.accentDark,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ArBookmarkButton extends StatelessWidget {
+  final bool isBookmarked;
+  final bool isLoading;
+  final bool isAvailable;
+  final VoidCallback onPressed;
+
+  const _ArBookmarkButton({
+    required this.isBookmarked,
+    required this.isLoading,
+    required this.isAvailable,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isBookmarked ? AppColors.primary : AppColors.accent;
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: isLoading || !isAvailable ? null : onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color, width: 1.5),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(99),
+          ),
+        ),
+        icon: isLoading
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: color),
+              )
+            : Icon(
+                isBookmarked
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_border_rounded,
+              ),
+        label: Text(
+          isBookmarked
+              ? AppLocalizations.t('recommendation.bookmarked')
+              : AppLocalizations.t('recommendation.bookmark'),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArBookmarkStatusMessage extends StatelessWidget {
+  final String message;
+  final bool isError;
+
+  const _ArBookmarkStatusMessage({
+    required this.message,
+    required this.isError,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isError ? AppColors.error : AppColors.primary;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          isError ? Icons.error_outline_rounded : Icons.check_circle_outline,
+          color: color,
+          size: 18,
+        ),
+        const SizedBox(width: 7),
+        Flexible(
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: color, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class ARAvailableBadge extends StatelessWidget {
@@ -247,8 +478,9 @@ class ARAvailabilityPanel extends StatelessWidget {
         Text(
           site.experiences.length == 1
               ? AppLocalizations.t('recommendation.arExperienceCountOne')
-              : AppLocalizations.t('recommendation.arExperienceCountMany')
-                    .replaceFirst('{count}', '${site.experiences.length}'),
+              : AppLocalizations.t(
+                  'recommendation.arExperienceCountMany',
+                ).replaceFirst('{count}', '${site.experiences.length}'),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             color: AppColors.ink,
             fontWeight: FontWeight.w800,
