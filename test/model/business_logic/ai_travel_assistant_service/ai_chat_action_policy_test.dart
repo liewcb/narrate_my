@@ -61,5 +61,41 @@ void main() {
       AiChatActionPolicy.nearbyScope('Suggest some popular cafes'),
       AiNearbyScope.contextPlace,
     );
+    expect(
+      AiChatActionPolicy.nearbyScope(
+        'Any suggestions on restaurant for me for my dinner tonight',
+      ),
+      AiNearbyScope.contextPlace,
+    );
+  });
+
+  test('Malay place, map, and nearby wording uses the action policy', () {
+    expect(
+      AiChatActionPolicy.mapDestinationFromQuestion('Di mana Suria KLCC?'),
+      'Suria KLCC',
+    );
+    expect(
+      AiChatActionPolicy.nearbyScope('Cadangkan restoran berdekatan saya'),
+      AiNearbyScope.userCurrentLocation,
+    );
+    expect(
+      AiChatActionPolicy.nearbyScope('Cadangkan restoran berdekatan sini'),
+      AiNearbyScope.contextPlace,
+    );
+  });
+
+  test('Mandarin place, map, and nearby wording uses the action policy', () {
+    expect(
+      AiChatActionPolicy.mapDestinationFromQuestion('Suria KLCC在哪里？'),
+      'Suria KLCC',
+    );
+    expect(
+      AiChatActionPolicy.nearbyScope('推荐我附近的餐厅'),
+      AiNearbyScope.userCurrentLocation,
+    );
+    expect(
+      AiChatActionPolicy.nearbyScope('推荐这附近的餐厅'),
+      AiNearbyScope.contextPlace,
+    );
   });
 }

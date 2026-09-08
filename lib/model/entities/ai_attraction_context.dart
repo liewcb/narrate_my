@@ -8,6 +8,8 @@ class AiAttractionContext {
     this.attractionName,
     this.markerId,
     this.placeId,
+    this.latitude,
+    this.longitude,
     required this.source,
   });
 
@@ -15,6 +17,8 @@ class AiAttractionContext {
   final String? attractionName;
   final String? markerId;
   final String? placeId;
+  final double? latitude;
+  final double? longitude;
   final String source;
 
   Map<String, dynamic> toJson() => {
@@ -22,6 +26,8 @@ class AiAttractionContext {
     'attractionName': attractionName,
     'markerId': markerId,
     'placeId': placeId,
+    'latitude': latitude,
+    'longitude': longitude,
     'source': source,
   };
 }

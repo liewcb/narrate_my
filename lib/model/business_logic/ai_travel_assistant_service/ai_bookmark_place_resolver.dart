@@ -24,6 +24,9 @@ typedef AiNearbyPlaceLoader =
       required double radiusKm,
     });
 
+typedef AiTextPlaceLoader =
+    Future<List<Place>> Function({required String query});
+
 class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
   AiBookmarkPlaceResolver({
     GoogleMapsService? mapsService,
@@ -31,11 +34,16 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
     AiNearbyPlaceRemoteDataSource? nearbyPlaceSource,
     Future<List<Place>> Function()? knownPlacesLoader,
     AiNearbyPlaceLoader? nearbyPlaceLoader,
+    AiTextPlaceLoader? textPlaceLoader,
   }) : _mapsService = mapsService ?? GoogleMapsService(),
        _loadNearbyPlaces =
            nearbyPlaceLoader ??
            (nearbyPlaceSource ?? AiNearbyPlaceRemoteDataSource())
                .searchNearbyPlaces,
+       _loadTextPlaces =
+           textPlaceLoader ??
+           (nearbyPlaceSource ?? AiNearbyPlaceRemoteDataSource())
+               .searchTextPlaces,
        _loadKnownPlaces =
            knownPlacesLoader ??
            (knownPlacesSource ?? AiBookmarkPlaceRemoteDataSource())
@@ -43,6 +51,7 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
 
   final GoogleMapsService _mapsService;
   final AiNearbyPlaceLoader _loadNearbyPlaces;
+  final AiTextPlaceLoader _loadTextPlaces;
   final Future<List<Place>> Function() _loadKnownPlaces;
   List<Place>? _cachedKnownPlaces;
 
@@ -82,17 +91,35 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
     // before this broader intent check.
     if (!_looksPlaceRelated(trimmedQuestion)) return const [];
 
-    // The native Android Maps key does not automatically become available to
-    // Dart. Skip the REST call when this launch has no --dart-define key.
-    if (_mapsService.googleMapsApiKey.trim().isEmpty) return const [];
-
-    final query = _containsMalaysia(trimmedQuestion)
-        ? trimmedQuestion
-        : '$trimmedQuestion Malaysia';
-    final results = await _mapsService.searchTextPlaces(query: query);
-    final broadDiscovery = _isBroadDiscoveryQuestion(trimmedQuestion);
-    final questionWords = _meaningfulWords(trimmedQuestion);
-    final requestedLocationWords = _requestedLocationWords(trimmedQuestion);
+    // Remove conversational framing before Google Text Search. For example,
+    // `我想去suria klcc` and `Saya mahu pergi ke Suria KLCC` both search for
+    // `suria klcc`, while the verified English Google result remains the only
+    // value eligible to become chat context or a bookmark target.
+    final placeSearchTerms = _placeSearchTerms(trimmedQuestion);
+    if (placeSearchTerms.isEmpty) return const [];
+    final query = _containsMalaysia(placeSearchTerms)
+        ? placeSearchTerms
+        : '$placeSearchTerms Malaysia';
+    List<Place> results = const [];
+    try {
+      results = await _loadTextPlaces(query: query);
+    } catch (_) {
+      // The server-side search is authoritative. Retain the legacy client
+      // fallback for development launches that explicitly provide a Dart key.
+      if (_mapsService.googleMapsApiKey.trim().isNotEmpty) {
+        try {
+          results = await _mapsService.searchTextPlaces(query: query);
+        } catch (_) {
+          return const [];
+        }
+      }
+    }
+    final intentQuestion = AiChatActionPolicy.normalizeForIntent(
+      placeSearchTerms,
+    );
+    final broadDiscovery = _isBroadDiscoveryQuestion(intentQuestion);
+    final questionWords = _meaningfulWords(intentQuestion);
+    final requestedLocationWords = _requestedLocationWords(placeSearchTerms);
     final seenGoogleIds = <String>{};
     final candidates = <Place>[];
 
@@ -117,8 +144,9 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
       }
 
       if (!broadDiscovery &&
+          !_containsMandarinText(placeSearchTerms) &&
           !_matchesSpecificPlaceName(
-            trimmedQuestion,
+            intentQuestion,
             questionWords,
             requestedLocationWords,
             place.placeName,
@@ -131,6 +159,34 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
     }
 
     return List.unmodifiable(candidates);
+  }
+
+  String _placeSearchTerms(String question) {
+    var terms = question.trim();
+    final prefixes = <RegExp>[
+      RegExp(r'^(?:我想去|我要去|想去|请带我去|請帶我去|带我去|帶我去)\s*'),
+      RegExp(r'^(?:请|請)?(?:介绍|介紹)(?:一下)?\s*'),
+      RegExp(
+        r'^(?:saya\s+)?(?:mahu|nak|ingin)\s+pergi\s+(?:ke\s+)?',
+        caseSensitive: false,
+      ),
+      RegExp(r'^(?:di|kat)\s+mana\s+', caseSensitive: false),
+      RegExp(
+        r'^(?:i\s+want\s+to\s+)?(?:visit|go\s+to)\s+',
+        caseSensitive: false,
+      ),
+      RegExp(r"^where\s*(?:'s|is)\s+(?:the\s+)?", caseSensitive: false),
+      RegExp(r'^(?:tell\s+me\s+about|introduce)\s+', caseSensitive: false),
+    ];
+    for (final prefix in prefixes) {
+      terms = terms.replaceFirst(prefix, '');
+    }
+
+    terms = terms
+        .replaceFirst(RegExp(r'(?:在哪里|在哪裡|在哪儿|在哪兒|在哪)\s*[?？]?$'), '')
+        .replaceAll(RegExp(r'^[\s,，。！？?!.]+|[\s,，。！？?!.]+$'), '')
+        .trim();
+    return terms;
   }
 
   Future<List<Place>> _resolveNearbyQuestion(
@@ -185,7 +241,7 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
     List<Place> places,
     Coordinates origin,
   ) {
-    final normalizedQuestion = question.toLowerCase();
+    final normalizedQuestion = AiChatActionPolicy.normalizeForIntent(question);
     final ranked = <({Place place, double distanceKm})>[];
 
     for (final place in places) {
@@ -221,7 +277,7 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
       !(place.placeLatitude == 0 && place.placeLongitude == 0);
 
   String _nearbySearchQuery(String question) {
-    final normalized = question.toLowerCase();
+    final normalized = AiChatActionPolicy.normalizeForIntent(question);
     if (normalized.contains('restaurant') || normalized.contains('food')) {
       return 'restaurant';
     }
@@ -240,7 +296,7 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
   }
 
   List<String> _nearbyIncludedTypes(String question) {
-    final normalized = question.toLowerCase();
+    final normalized = AiChatActionPolicy.normalizeForIntent(question);
     if (normalized.contains('restaurant') || normalized.contains('food')) {
       return const ['restaurant'];
     }
@@ -259,10 +315,10 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
   }
 
   List<Place> _rankKnownPlaces(String question, List<Place> places) {
-    final normalizedQuestion = question.toLowerCase();
-    final questionWords = _meaningfulWords(question);
-    final broadDiscovery = _isBroadDiscoveryQuestion(question);
-    final requestedLocationWords = _requestedLocationWords(question);
+    final normalizedQuestion = AiChatActionPolicy.normalizeForIntent(question);
+    final questionWords = _meaningfulWords(normalizedQuestion);
+    final broadDiscovery = _isBroadDiscoveryQuestion(normalizedQuestion);
+    final requestedLocationWords = _requestedLocationWords(normalizedQuestion);
     final ranked = <({Place place, int score})>[];
 
     for (final place in places) {
@@ -292,7 +348,7 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
         // A partial match is unsafe for a specific request: "Suria KLCC"
         // must not resolve to Aquaria KLCC merely because both contain KLCC.
         if (!_matchesSpecificPlaceName(
-          question,
+          normalizedQuestion,
           questionWords,
           requestedLocationWords,
           place.placeName,
@@ -350,10 +406,11 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
   }
 
   Set<String> _requestedLocationWords(String question) {
+    final normalizedQuestion = AiChatActionPolicy.normalizeForIntent(question);
     final match = RegExp(
       r'\b(?:at|near\s*by|nearby|near|around|in)\s+([^?!.;,]+)',
       caseSensitive: false,
-    ).firstMatch(question);
+    ).firstMatch(normalizedQuestion);
     if (match == null) return const {};
 
     return _meaningfulWords(
@@ -381,24 +438,30 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
   }
 
   bool _matchesRequestedKind(String question, Place place) {
+    final normalizedQuestion = AiChatActionPolicy.normalizeForIntent(question);
     final searchable = <String>{
       ...place.placeTypes.map((type) => type.toLowerCase()),
       if (place.category != null) place.category!.toLowerCase(),
     }.join(' ');
 
-    if (question.contains('restaurant')) {
+    if (normalizedQuestion.contains('restaurant')) {
       return searchable.contains('restaurant');
     }
-    if (question.contains('food')) {
+    if (normalizedQuestion.contains('food')) {
       return searchable.contains('restaurant') || searchable.contains('food');
     }
-    if (question.contains('drink') || question.contains('bar')) {
+    if (normalizedQuestion.contains('drink') ||
+        normalizedQuestion.contains('bar')) {
       return searchable.contains('cafe') || searchable.contains('bar');
     }
-    if (question.contains('cafe')) return searchable.contains('cafe');
-    if (question.contains('museum')) return searchable.contains('museum');
-    if (question.contains('aquarium')) return searchable.contains('aquarium');
-    if (question.contains('park')) return searchable.contains('park');
+    if (normalizedQuestion.contains('cafe')) return searchable.contains('cafe');
+    if (normalizedQuestion.contains('museum')) {
+      return searchable.contains('museum');
+    }
+    if (normalizedQuestion.contains('aquarium')) {
+      return searchable.contains('aquarium');
+    }
+    if (normalizedQuestion.contains('park')) return searchable.contains('park');
     return true;
   }
 
@@ -423,7 +486,7 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
   }
 
   bool _looksPlaceRelated(String question) {
-    final normalized = question.toLowerCase();
+    final normalized = AiChatActionPolicy.normalizeForIntent(question);
     if (_placeIntentTerms.any(normalized.contains)) return true;
 
     final words = RegExp(
@@ -440,7 +503,7 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
   }
 
   bool _isBroadDiscoveryQuestion(String question) {
-    final normalized = question.toLowerCase();
+    final normalized = AiChatActionPolicy.normalizeForIntent(question);
     return _broadDiscoveryTerms.any(normalized.contains);
   }
 
@@ -460,6 +523,9 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
         .where((word) => word.length > 2 && !_searchStopWords.contains(word))
         .toSet();
   }
+
+  bool _containsMandarinText(String value) =>
+      RegExp(r'[\u3400-\u4DBF\u4E00-\u9FFF]').hasMatch(value);
 }
 
 const _bookmarkableGoogleTypes = <String>{
@@ -482,6 +548,7 @@ const _bookmarkableGoogleTypes = <String>{
   'night_club',
   'park',
   'place_of_worship',
+  'point_of_interest',
   'restaurant',
   'shopping_mall',
   'shopping',
@@ -493,6 +560,7 @@ const _bookmarkableGoogleTypes = <String>{
 const _placeIntentTerms = <String>{
   'about ',
   'attraction',
+  'bridge',
   'cafe',
   'food',
   'landmark',
@@ -562,6 +630,7 @@ const _searchStopWords = <String>{
   'what',
   'when',
   'where',
+  'want',
   'with',
   'would',
   'you',

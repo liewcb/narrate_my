@@ -20,6 +20,7 @@ class GlobalAiAssistantController extends ChangeNotifier {
   AiAttractionContext? _attractionContext;
   Place? _bookmarkPlace;
   String? _conversationSummary;
+  String? _conversationSummaryLanguageCode;
   final Map<int, _AiAttractionSelection> _attractionPreviews = {};
   int _nextPreviewToken = 0;
 
@@ -29,6 +30,8 @@ class GlobalAiAssistantController extends ChangeNotifier {
   AiAttractionContext? get attractionContext => _attractionContext;
   Place? get bookmarkPlace => _bookmarkPlace;
   String? get conversationSummary => _conversationSummary;
+  String? get conversationSummaryLanguageCode =>
+      _conversationSummaryLanguageCode;
 
   /// Replaces the previous selection. Only the latest attraction is carried
   /// into a newly opened chat.
@@ -37,6 +40,8 @@ class GlobalAiAssistantController extends ChangeNotifier {
     required String attractionName,
     String? markerId,
     String? placeId,
+    double? latitude,
+    double? longitude,
     required String source,
     Place? bookmarkPlace,
   }) {
@@ -50,6 +55,8 @@ class GlobalAiAssistantController extends ChangeNotifier {
       attractionName: cleanName,
       markerId: _clean(markerId),
       placeId: _clean(placeId),
+      latitude: latitude,
+      longitude: longitude,
       source: source,
     );
     _bookmarkPlace = bookmarkPlace;
@@ -62,6 +69,8 @@ class GlobalAiAssistantController extends ChangeNotifier {
     selectAttraction(
       attractionName: place.placeName,
       placeId: place.placeId,
+      latitude: place.placeLatitude,
+      longitude: place.placeLongitude,
       source: source,
       bookmarkPlace: place,
     );
@@ -76,6 +85,8 @@ class GlobalAiAssistantController extends ChangeNotifier {
       context: AiAttractionContext(
         attractionName: place.placeName.trim(),
         placeId: _clean(place.placeId),
+        latitude: place.placeLatitude,
+        longitude: place.placeLongitude,
         source: source,
       ),
       bookmarkPlace: place,
@@ -102,6 +113,8 @@ class GlobalAiAssistantController extends ChangeNotifier {
       attractionId: marker.attractionId,
       attractionName: marker.name,
       markerId: marker.markerId,
+      latitude: marker.latitude,
+      longitude: marker.longitude,
       source: 'ar_marker',
     );
   }
@@ -113,6 +126,8 @@ class GlobalAiAssistantController extends ChangeNotifier {
       attractionName: recommendation.name,
       markerId: recommendation.markerId,
       placeId: recommendation.placeId,
+      latitude: place.placeLatitude,
+      longitude: place.placeLongitude,
       source: 'ar_recommendation',
       bookmarkPlace: place,
     );
@@ -132,6 +147,8 @@ class GlobalAiAssistantController extends ChangeNotifier {
       attractionId: experience.attractionId,
       attractionName: experience.name,
       markerId: experience.markerId,
+      latitude: experience.latitude,
+      longitude: experience.longitude,
       source: 'nearby_ar_site',
     );
   }
@@ -145,10 +162,15 @@ class GlobalAiAssistantController extends ChangeNotifier {
 
   /// Keeps the most recent recap available while the user navigates away from
   /// and back to chat. This is session state, not permanent account storage.
-  void saveConversationSummary(String? summary) {
+  void saveConversationSummary(String? summary, {String? languageCode}) {
     final cleaned = _clean(summary);
-    if (_conversationSummary == cleaned) return;
+    final cleanedLanguageCode = cleaned == null ? null : _clean(languageCode);
+    if (_conversationSummary == cleaned &&
+        _conversationSummaryLanguageCode == cleanedLanguageCode) {
+      return;
+    }
     _conversationSummary = cleaned;
+    _conversationSummaryLanguageCode = cleanedLanguageCode;
     notifyListeners();
   }
 
@@ -186,10 +208,19 @@ class GlobalAiAssistantController extends ChangeNotifier {
 
 /// Places one AI entry point above the root Navigator so pushed itinerary,
 /// recommendation, AR, authentication, and profile pages cannot cover it.
-class GlobalAiAssistantHost extends StatelessWidget {
+class GlobalAiAssistantHost extends StatefulWidget {
   const GlobalAiAssistantHost({super.key, required this.child});
 
   final Widget child;
+
+  @override
+  State<GlobalAiAssistantHost> createState() => _GlobalAiAssistantHostState();
+}
+
+class _GlobalAiAssistantHostState extends State<GlobalAiAssistantHost> {
+  static const double _buttonSize = 56;
+  static const double _edgeMargin = 12;
+  Offset? _dragPosition;
 
   Future<void> _openAssistant(BuildContext context) async {
     final navigator = rootNavigatorKey.currentState;
@@ -200,6 +231,8 @@ class GlobalAiAssistantHost extends StatelessWidget {
     final attractionContext = controller.attractionContext;
     final bookmarkPlace = controller.bookmarkPlace;
     final conversationSummary = controller.conversationSummary;
+    final conversationSummaryLanguageCode =
+        controller.conversationSummaryLanguageCode;
     controller.setAssistantOpen(true);
     try {
       await navigator.push<void>(
@@ -210,9 +243,13 @@ class GlobalAiAssistantHost extends StatelessWidget {
             attractionName: attractionContext?.attractionName,
             markerId: attractionContext?.markerId,
             placeId: attractionContext?.placeId,
+            contextLatitude: attractionContext?.latitude,
+            contextLongitude: attractionContext?.longitude,
             contextSource: attractionContext?.source ?? 'none',
             bookmarkPlace: bookmarkPlace,
             initialConversationSummary: conversationSummary,
+            initialConversationSummaryLanguageCode:
+                conversationSummaryLanguageCode,
           ),
         ),
       );
@@ -230,33 +267,103 @@ class GlobalAiAssistantHost extends StatelessWidget {
       (controller) => controller.assistantBottomOffset,
     );
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        child,
-        if (showButton)
-          Positioned(
-            left: 20,
-            bottom: bottomOffset,
-            child: SafeArea(
-              top: false,
-              child: Semantics(
-                button: true,
-                label: 'Ask Manja, your AI Travel Assistant',
-                child: FloatingActionButton(
-                  // The button is above the root Navigator, so it must not use
-                  // Hero or Tooltip features that look for a Navigator Overlay
-                  // ancestor. Semantics preserves its accessible label.
-                  heroTag: null,
-                  backgroundColor: const Color(0xFF2E6B67),
-                  foregroundColor: Colors.white,
-                  onPressed: () => _openAssistant(context),
-                  child: const Icon(Icons.chat_bubble_outline),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final mediaPadding = MediaQuery.paddingOf(context);
+        final minimumX = mediaPadding.left + _edgeMargin;
+        final maximumX =
+            (constraints.maxWidth -
+                    mediaPadding.right -
+                    _edgeMargin -
+                    _buttonSize)
+                .clamp(minimumX, double.infinity)
+                .toDouble();
+        final minimumY = mediaPadding.top + _edgeMargin;
+        final maximumY =
+            (constraints.maxHeight -
+                    mediaPadding.bottom -
+                    bottomOffset -
+                    _buttonSize)
+                .clamp(minimumY, double.infinity)
+                .toDouble();
+        final defaultPosition = Offset(minimumX + 8, maximumY);
+        final position = _clampPosition(
+          _dragPosition ?? defaultPosition,
+          minimumX: minimumX,
+          maximumX: maximumX,
+          minimumY: minimumY,
+          maximumY: maximumY,
+        );
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            widget.child,
+            if (showButton)
+              Positioned(
+                key: const ValueKey('global-ai-assistant-position'),
+                left: position.dx,
+                top: position.dy,
+                child: GestureDetector(
+                  onPanUpdate: (details) {
+                    setState(() {
+                      _dragPosition = _clampPosition(
+                        position + details.delta,
+                        minimumX: minimumX,
+                        maximumX: maximumX,
+                        minimumY: minimumY,
+                        maximumY: maximumY,
+                      );
+                    });
+                  },
+                  onPanEnd: (_) {
+                    final current = _dragPosition ?? position;
+                    final midpoint = (minimumX + maximumX) / 2;
+                    setState(() {
+                      _dragPosition = Offset(
+                        current.dx <= midpoint ? minimumX : maximumX,
+                        current.dy.clamp(minimumY, maximumY).toDouble(),
+                      );
+                    });
+                  },
+                  child: Semantics(
+                    button: true,
+                    label: 'Ask Manja, your AI Travel Assistant',
+                    hint: 'Tap to open or drag to move',
+                    child: FloatingActionButton(
+                      key: const ValueKey('global-ai-assistant-button'),
+                      // The button is above the root Navigator, so it must not
+                      // use Hero or Tooltip features that need its Overlay.
+                      heroTag: null,
+                      elevation: 8,
+                      highlightElevation: 10,
+                      backgroundColor: const Color(0xFF2E6B67),
+                      foregroundColor: Colors.white,
+                      shape: const CircleBorder(
+                        side: BorderSide(color: Color(0x66FFFFFF)),
+                      ),
+                      onPressed: () => _openAssistant(context),
+                      child: const Icon(Icons.chat_bubble_outline, size: 24),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
+    );
+  }
+
+  Offset _clampPosition(
+    Offset position, {
+    required double minimumX,
+    required double maximumX,
+    required double minimumY,
+    required double maximumY,
+  }) {
+    return Offset(
+      position.dx.clamp(minimumX, maximumX).toDouble(),
+      position.dy.clamp(minimumY, maximumY).toDouble(),
     );
   }
 }

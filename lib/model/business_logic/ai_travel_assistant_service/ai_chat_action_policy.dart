@@ -6,18 +6,50 @@ enum AiNearbyScope { none, contextPlace, userCurrentLocation }
 class AiChatActionPolicy {
   const AiChatActionPolicy._();
 
+  /// Converts supported Malay and Mandarin intent phrases into the same
+  /// internal English vocabulary used by the deterministic action rules.
+  /// Place names remain in the original question used for Google search.
+  static String normalizeForIntent(String value) {
+    var normalized = value.toLowerCase();
+
+    for (final replacement in _mandarinIntentReplacements.entries) {
+      normalized = normalized.replaceAll(replacement.key, replacement.value);
+    }
+    for (final replacement in _malayIntentReplacements.entries) {
+      normalized = normalized.replaceAll(
+        RegExp(replacement.key, caseSensitive: false),
+        replacement.value,
+      );
+    }
+
+    return normalized
+        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   static String? mapDestinationFromQuestion(String? question) {
     if (question == null) return null;
-    final normalized = question.trim().toLowerCase();
+    final original = question.trim();
+    final mandarinDestination = RegExp(
+      r'^(.+?)(?:在哪里|在哪裡|在哪儿|在哪兒|在哪)\s*[?？]?$',
+    ).firstMatch(original);
+    if (mandarinDestination != null) {
+      final destination = mandarinDestination.group(1)?.trim();
+      if (destination != null && destination.isNotEmpty) return destination;
+    }
+
+    final normalized = normalizeForIntent(original);
     final isMapRequest = RegExp(
-      r"\bwhere\s*(?:'s|is)\b|\bdirections?\b|\bnavigate\b|"
+      r"\bwhere\s*(?:s|is)\b|\bdirections?\b|\bnavigate\b|"
       r'\broute\s+to\b|\bhow\s+(?:do|can)\s+i\s+get\s+to\b',
     ).hasMatch(normalized);
     if (!isMapRequest) return null;
 
-    var destination = question.trim();
+    var destination = original;
     final prefixes = <RegExp>[
       RegExp(r"^where\s*(?:'s|is)\s+(?:the\s+)?", caseSensitive: false),
+      RegExp(r'^(?:di|kat)\s+mana\s+', caseSensitive: false),
       RegExp(r'^how\s+(?:do|can)\s+i\s+get\s+to\s+', caseSensitive: false),
       RegExp(
         r'^(?:can\s+you\s+)?(?:show|give)\s+(?:me\s+)?directions?\s+to\s+',
@@ -46,7 +78,7 @@ class AiChatActionPolicy {
       return true;
     }
 
-    final normalizedQuestion = _normalizeEnglishReference(question);
+    final normalizedQuestion = normalizeForIntent(question);
     return RegExp(
       r'\b(?:this|that)\s+(?:place|attraction|location|landmark)\b|'
       r'\b(?:it|its|here|there)\b',
@@ -55,7 +87,7 @@ class AiChatActionPolicy {
 
   static bool isContextReference(String? destination) {
     if (destination == null) return false;
-    final normalized = _normalizeEnglishReference(destination);
+    final normalized = normalizeForIntent(destination);
     return RegExp(
       r'^(?:the\s+)?(?:this|that)\s+(?:place|attraction|location|landmark)$|'
       r'^(?:it|here|there)$',
@@ -65,10 +97,7 @@ class AiChatActionPolicy {
   /// A relative request cannot be ranked safely until the chat is given an
   /// actual city or device coordinates. Suppress unrelated database cards.
   static bool requiresCurrentLocation(String question) {
-    final normalized = question
-        .toLowerCase()
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    final normalized = normalizeForIntent(question);
     return RegExp(
       r'\b(?:near\s*by|nearby|near|around|close\s+to)\s+(?:to\s+)?(?:me|my\s+(?:current\s+)?location|current\s+location)\b|'
       r'\bfrom\s+my\s+(?:current\s+)?location\b',
@@ -78,7 +107,7 @@ class AiChatActionPolicy {
   /// Resolves otherwise ambiguous nearby wording before either Gemini or the
   /// place-card resolver receives the question.
   static AiNearbyScope nearbyScope(String question) {
-    final normalized = _normalizeEnglishReference(question);
+    final normalized = normalizeForIntent(question);
     if (requiresCurrentLocation(normalized)) {
       return AiNearbyScope.userCurrentLocation;
     }
@@ -114,15 +143,86 @@ class AiChatActionPolicy {
     // inherit a previously selected place.
     return AiNearbyScope.none;
   }
-
-  static String _normalizeEnglishReference(String value) {
-    return value
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
 }
+
+const _mandarinIntentReplacements = <String, String>{
+  '我想去': ' i want to visit ',
+  '我要去': ' i want to visit ',
+  '想去': ' want to visit ',
+  '带我去': ' navigate to ',
+  '帶我去': ' navigate to ',
+  '介绍': ' tell me about ',
+  '介紹': ' tell me about ',
+  '我当前位置附近': ' nearby me ',
+  '我目前位置附近': ' nearby me ',
+  '在我附近': ' nearby me ',
+  '我附近': ' nearby me ',
+  '离我很近': ' nearby me ',
+  '離我很近': ' nearby me ',
+  '离我近': ' nearby me ',
+  '離我近': ' nearby me ',
+  '这个地方附近': ' nearby here ',
+  '這個地方附近': ' nearby here ',
+  '这里附近': ' nearby here ',
+  '這裡附近': ' nearby here ',
+  '这附近': ' nearby here ',
+  '這附近': ' nearby here ',
+  '咖啡馆': ' cafe ',
+  '咖啡館': ' cafe ',
+  '餐厅': ' restaurant ',
+  '餐廳': ' restaurant ',
+  '餐馆': ' restaurant ',
+  '餐館': ' restaurant ',
+  '饭店': ' restaurant ',
+  '飯店': ' restaurant ',
+  '在哪里': ' where is ',
+  '在哪裡': ' where is ',
+  '在哪儿': ' where is ',
+  '在哪兒': ' where is ',
+  '怎么去': ' directions to ',
+  '怎麼去': ' directions to ',
+  '这个地方': ' this place ',
+  '這個地方': ' this place ',
+  '这里': ' here ',
+  '這裡': ' here ',
+  '附近': ' nearby ',
+  '推荐': ' recommend ',
+  '推薦': ' recommend ',
+  '建议': ' suggest ',
+  '建議': ' suggest ',
+  '热门': ' popular ',
+  '熱門': ' popular ',
+  '最好': ' best ',
+  '美食': ' food ',
+  '食物': ' food ',
+  '咖啡': ' coffee ',
+  '饮料': ' drinks ',
+  '飲料': ' drinks ',
+  '酒吧': ' bar ',
+  '大桥': ' bridge ',
+  '大橋': ' bridge ',
+  '它': ' it ',
+};
+
+const _malayIntentReplacements = <String, String>{
+  r'\b(?:saya\s+)?(?:mahu|nak|ingin)\s+pergi\s+(?:ke\s+)?': ' visit ',
+  r'\b(?:berdekatan|berhampiran|dekat)(?:\s+dengan)?\s+(?:lokasi\s+)?saya\b':
+      ' nearby me ',
+  r'\bsekitar\s+(?:lokasi\s+)?saya\b': ' nearby me ',
+  r'\b(?:berdekatan|berhampiran|dekat)(?:\s+dengan)?\s+(?:tempat\s+ini|di\s+sini|sini)\b':
+      ' nearby here ',
+  r'\bsekitar\s+(?:tempat\s+ini|di\s+sini|sini)\b': ' nearby here ',
+  r'\b(?:cadangkan|syorkan|disyorkan|sarankan|saran)\b': ' recommend ',
+  r'\brestoran\b': ' restaurant ',
+  r'\bmakanan\b': ' food ',
+  r'\bkafe\b': ' cafe ',
+  r'\bkopi\b': ' coffee ',
+  r'\bminuman\b': ' drinks ',
+  r'\btempat\s+ini\b': ' this place ',
+  r'\bdi\s+sini\b': ' here ',
+  r'\bkat\s+sini\b': ' here ',
+  r'\b(?:di|kat)\s+mana\b': ' where is ',
+};
 
 const _contextNearbyFollowerWords = <String>{
   'attraction',

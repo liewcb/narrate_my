@@ -40,6 +40,24 @@ void main() {
     placeRating: 4.8,
     placeTypes: ['restaurant', 'food'],
   );
+  const penangBridge = Place(
+    placeId: 'google-penang-bridge',
+    placeName: 'Penang Bridge',
+    placeAddress: 'Penang, Malaysia',
+    placeLatitude: 5.3544,
+    placeLongitude: 100.315,
+    placeRating: 4.5,
+    placeTypes: ['point_of_interest', 'establishment'],
+  );
+  const aFamosa = Place(
+    placeId: 'google-a-famosa',
+    placeName: 'A Famosa',
+    placeAddress: 'Bandar Hilir, Melaka, Malaysia',
+    placeLatitude: 2.1919,
+    placeLongitude: 102.2504,
+    placeRating: 4.4,
+    placeTypes: ['tourist_attraction', 'point_of_interest'],
+  );
 
   test('extra descriptive words still resolve the named attraction', () async {
     final resolver = AiBookmarkPlaceResolver(
@@ -69,6 +87,66 @@ void main() {
     expect(fullWording, contraction);
     expect(fullWording, isNotEmpty);
   });
+
+  test(
+    'direct bridge name uses verified server search when database has no row',
+    () async {
+      String? receivedQuery;
+      final resolver = AiBookmarkPlaceResolver(
+        knownPlacesLoader: () async => const [aFamosa],
+        textPlaceLoader: ({required query}) async {
+          receivedQuery = query;
+          return const [aFamosa, penangBridge];
+        },
+      );
+
+      final result = await resolver.resolveQuestion('penang bridge');
+
+      expect(receivedQuery, 'penang bridge');
+      expect(result, const [penangBridge]);
+    },
+  );
+
+  test('Malay direct-place wording resolves a verified bookmark', () async {
+    final resolver = AiBookmarkPlaceResolver(
+      knownPlacesLoader: () async => const [],
+      textPlaceLoader: ({required query}) async => const [suria],
+    );
+
+    final result = await resolver.resolveQuestion('Di mana Suria KLCC?');
+
+    expect(result, const [suria]);
+  });
+
+  test('Mandarin direct-place wording resolves a verified bookmark', () async {
+    final resolver = AiBookmarkPlaceResolver(
+      knownPlacesLoader: () async => const [],
+      textPlaceLoader: ({required query}) async => const [penangBridge],
+    );
+
+    final result = await resolver.resolveQuestion('槟城大桥在哪里？');
+
+    expect(result, const [penangBridge]);
+  });
+
+  test(
+    'Mandarin want-to-visit wording searches only the canonical place terms',
+    () async {
+      String? receivedQuery;
+      final resolver = AiBookmarkPlaceResolver(
+        knownPlacesLoader: () async => const [],
+        textPlaceLoader: ({required query}) async {
+          receivedQuery = query;
+          return const [suria];
+        },
+      );
+
+      final result = await resolver.resolveQuestion('我想去suria klcc');
+
+      expect(receivedQuery, 'suria klcc Malaysia');
+      expect(result, const [suria]);
+    },
+  );
 
   test('near me does not load unrelated database places', () async {
     var loadCount = 0;

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:narrate_my/core/localization/app_localizations.dart';
 import 'package:narrate_my/model/business_logic/ai_travel_assistant_service/ai_bookmark_place_resolver.dart';
 import 'package:narrate_my/model/entities/ai_attraction_context.dart';
 import 'package:narrate_my/model/entities/ai_chat_message.dart';
@@ -19,6 +20,7 @@ class _FakeRepository implements AiTravelAssistantRepository {
 class _SummaryRepository implements AiTravelAssistantRepository {
   int callCount = 0;
   List<AiChatMessage> lastHistory = const [];
+  String? lastQuestion;
 
   @override
   Future<String> askQuestion({
@@ -27,8 +29,9 @@ class _SummaryRepository implements AiTravelAssistantRepository {
     AiAttractionContext? attractionContext,
   }) async {
     callCount += 1;
+    lastQuestion = question;
     lastHistory = List<AiChatMessage>.from(conversationHistory);
-    if (question.startsWith('Update the saved travel summary')) {
+    if (question.startsWith('Summarize this conversation')) {
       return 'Updated conversation summary';
     }
     return 'Here is the answer about $question.';
@@ -77,6 +80,9 @@ class _FailingRepository implements AiTravelAssistantRepository {
 }
 
 void main() {
+  setUp(() => AppLocalizations.currentCode = 'en');
+  tearDown(() => AppLocalizations.currentCode = 'en');
+
   const batuCaves = Place(
     placeId: 'google-batu-caves',
     placeName: 'Batu Caves',
@@ -108,6 +114,7 @@ void main() {
   test(
     'a new question resolves actions even when chat has initial context',
     () async {
+      Place? savedContextPlace;
       final vm = AiTravelAssistantViewModel(
         repository: _FakeRepository(),
         bookmarkPlaceResolver: _FakePlaceResolver(const [klcc]),
@@ -117,6 +124,7 @@ void main() {
           source: 'recommendation',
         ),
         initialBookmarkPlace: batuCaves,
+        onContextPlaceResolved: (place) => savedContextPlace = place,
       );
       addTearDown(vm.dispose);
 
@@ -125,6 +133,7 @@ void main() {
       expect(vm.bookmarkCandidates, const [klcc]);
       expect(vm.attractionContext?.attractionName, 'Suria KLCC');
       expect(vm.contextBookmarkPlace, klcc);
+      expect(savedContextPlace, klcc);
     },
   );
 
@@ -224,6 +233,58 @@ void main() {
     expect(vm.bookmarkCandidates, const [restaurant]);
   });
 
+  test('dinner recommendation uses AR context coordinates', () async {
+    final repository = _ContextRecordingRepository();
+    final resolver = _FakePlaceResolver(const [restaurant]);
+    const markerCoordinates = Coordinates(
+      latitude: 3.2151,
+      longitude: 101.7264,
+    );
+    final vm = AiTravelAssistantViewModel(
+      repository: repository,
+      bookmarkPlaceResolver: resolver,
+      initialContext: const AiAttractionContext(
+        attractionName: 'TAR UMT Block B',
+        markerId: 'MK-TARUMT',
+        latitude: 3.2151,
+        longitude: 101.7264,
+        source: 'ar_marker',
+      ),
+    );
+    addTearDown(vm.dispose);
+
+    await vm.sendQuestion(
+      'Any suggestions on restaurant for me for my dinner tonight',
+    );
+
+    expect(resolver.receivedNearbyOrigin, markerCoordinates);
+    expect(repository.receivedQuestion, contains(restaurant.placeName));
+    expect(vm.bookmarkCandidates, const [restaurant]);
+  });
+
+  test(
+    'bookmark and map actions remain attached to previous answers',
+    () async {
+      final vm = AiTravelAssistantViewModel(
+        repository: _FakeRepository(),
+        bookmarkPlaceResolver: _FakePlaceResolver(const [klcc]),
+      );
+      addTearDown(vm.dispose);
+
+      await vm.sendQuestion('Where is KLCC?');
+      final firstResponseIndex = vm.actionMessageIndex!;
+      final firstActions = vm.actionsForMessage(firstResponseIndex);
+      expect(firstActions?.bookmarkPlaces, const [klcc]);
+      expect(firstActions?.mapDestination, 'KLCC');
+
+      await vm.sendQuestion('Tell me its history');
+
+      final preservedActions = vm.actionsForMessage(firstResponseIndex);
+      expect(preservedActions?.bookmarkPlaces, const [klcc]);
+      expect(preservedActions?.mapDestination, 'KLCC');
+    },
+  );
+
   test(
     'failed answer does not attach resolved places to an older reply',
     () async {
@@ -256,6 +317,7 @@ void main() {
       repository: repository,
       bookmarkPlaceResolver: _FakePlaceResolver(const []),
       initialConversationSummary: 'Previous conversation summary',
+      initialConversationSummaryLanguageCode: 'en',
       resolveBookmarkPlacesFromQuestions: false,
     );
     addTearDown(vm.dispose);
@@ -279,6 +341,63 @@ void main() {
       ),
       isTrue,
     );
+  });
+
+  test('selected profile language controls greeting and AI response', () async {
+    AppLocalizations.currentCode = 'zh';
+    final repository = _ContextRecordingRepository();
+    final vm = AiTravelAssistantViewModel(
+      repository: repository,
+      bookmarkPlaceResolver: _FakePlaceResolver(const []),
+    );
+    addTearDown(vm.dispose);
+
+    expect(vm.messages.single.text, '我是 Manja，您的 AI 旅行助手！');
+
+    await vm.sendQuestion('Tell me about Suria KLCC');
+
+    expect(
+      repository.receivedQuestion,
+      startsWith('Reply in Mandarin Chinese.'),
+    );
+  });
+
+  test(
+    'mixed Mandarin wording saves the verified English place context',
+    () async {
+      Place? savedContext;
+      final vm = AiTravelAssistantViewModel(
+        repository: _FakeRepository(),
+        bookmarkPlaceResolver: _FakePlaceResolver(const [klcc]),
+        onContextPlaceResolved: (place) => savedContext = place,
+      );
+      addTearDown(vm.dispose);
+
+      await vm.sendQuestion('我想去suria klcc');
+
+      expect(vm.attractionContext?.attractionName, 'Suria KLCC');
+      expect(vm.attractionContext?.placeId, 'google-klcc');
+      expect(savedContext, klcc);
+    },
+  );
+
+  test('saved summary refreshes in the newly selected language', () async {
+    AppLocalizations.currentCode = 'ms';
+    final repository = _SummaryRepository();
+    final vm = AiTravelAssistantViewModel(
+      repository: repository,
+      bookmarkPlaceResolver: _FakePlaceResolver(const []),
+      initialConversationSummary: 'An English summary',
+      initialConversationSummaryLanguageCode: 'en',
+      resolveBookmarkPlacesFromQuestions: false,
+    );
+    addTearDown(vm.dispose);
+
+    await vm.generateSummary();
+
+    expect(repository.callCount, 1);
+    expect(repository.lastQuestion, contains('Write in Malay'));
+    expect(vm.conversationSummaryLanguageCode, 'ms');
   });
 
   test(

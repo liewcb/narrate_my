@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/localization/app_localizations.dart';
 import '../../core/services/permission_service.dart';
 import '../../model/business_logic/ai_travel_assistant_service/ai_bookmark_place_resolver.dart';
 import '../../model/business_logic/ai_travel_assistant_service/ai_chat_action_policy.dart';
@@ -20,7 +21,9 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
     AiAttractionContext? initialContext,
     Place? initialBookmarkPlace,
     String? initialConversationSummary,
+    String? initialConversationSummaryLanguageCode,
     AiCurrentLocationLoader? currentLocationLoader,
+    this.onContextPlaceResolved,
     this.resolveBookmarkPlacesFromQuestions = true,
   }) : _service = AiTravelAssistantService(
          repository ?? SupabaseAiTravelAssistantRepositoryAdapter(),
@@ -31,13 +34,20 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
        _contextBookmarkPlace = initialBookmarkPlace,
        _currentLocationLoader =
            currentLocationLoader ?? _loadDeviceCurrentLocation,
-       _conversationSummary = _cleanSummary(initialConversationSummary) {
+       _conversationSummary = _cleanSummary(initialConversationSummary),
+       _conversationSummaryLanguageCode = _cleanSummary(
+         initialConversationSummaryLanguageCode,
+       ) {
+    _summaryNeedsRefresh =
+        _conversationSummary != null &&
+        _conversationSummaryLanguageCode != AppLocalizations.currentCode;
     _messages = [_greeting()];
   }
 
   final AiTravelAssistantService _service;
   final AiBookmarkPlaceQuestionResolver _bookmarkPlaceResolver;
   final AiCurrentLocationLoader _currentLocationLoader;
+  final ValueChanged<Place>? onContextPlaceResolved;
   final bool resolveBookmarkPlacesFromQuestions;
 
   late List<AiChatMessage> _messages;
@@ -48,11 +58,13 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
   bool _isResolvingBookmarkPlaces = false;
   String? _errorMessage;
   String? _conversationSummary;
+  String? _conversationSummaryLanguageCode;
   bool _summaryNeedsRefresh = false;
   String? _summaryErrorMessage;
   List<Place> _bookmarkCandidates = const [];
   int? _actionMessageIndex;
   String? _actionQuestion;
+  final Map<int, AiChatResponseActions> _responseActions = {};
 
   List<AiChatMessage> get messages => List.unmodifiable(_messages);
   AiAttractionContext? get attractionContext => _attractionContext;
@@ -62,11 +74,15 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
   bool get isResolvingBookmarkPlaces => _isResolvingBookmarkPlaces;
   String? get errorMessage => _errorMessage;
   String? get conversationSummary => _conversationSummary;
+  String? get conversationSummaryLanguageCode =>
+      _conversationSummaryLanguageCode;
   bool get summaryNeedsRefresh => _summaryNeedsRefresh;
   String? get summaryErrorMessage => _summaryErrorMessage;
   List<Place> get bookmarkCandidates => List.unmodifiable(_bookmarkCandidates);
   int? get actionMessageIndex => _actionMessageIndex;
   String? get actionQuestion => _actionQuestion;
+  AiChatResponseActions? actionsForMessage(int messageIndex) =>
+      _responseActions[messageIndex];
   bool get canSummarize =>
       _messages.any((message) => message.sender == AiChatMessageSender.tourist);
 
@@ -122,6 +138,8 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
       } else if (nearbyScope == AiNearbyScope.contextPlace &&
           _hasValidCoordinates(_contextBookmarkPlace)) {
         nearbyOrigin = _contextBookmarkPlace!.coordinates;
+      } else if (nearbyScope == AiNearbyScope.contextPlace) {
+        nearbyOrigin = _contextCoordinates();
       }
 
       if (resolveBookmarkPlacesFromQuestions &&
@@ -146,13 +164,15 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
         question: normalizedQuestion,
         conversationHistory: historyBeforeQuestion,
         attractionContext: requestContext,
-        requestInstruction: nearbyScope == AiNearbyScope.none
-            ? null
-            : _nearbyRequestInstruction(
-                scope: nearbyScope,
-                origin: nearbyOrigin,
-                places: _bookmarkCandidates,
-              ),
+        requestInstruction: _responseInstruction(
+          nearbyInstruction: nearbyScope == AiNearbyScope.none
+              ? null
+              : _nearbyRequestInstruction(
+                  scope: nearbyScope,
+                  origin: nearbyOrigin,
+                  places: _bookmarkCandidates,
+                ),
+        ),
       );
       _messages.add(
         AiChatMessage(text: answer, sender: AiChatMessageSender.assistant),
@@ -181,6 +201,11 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
           _bookmarkCandidates = const [];
         }
       }
+      _storeResponseActions(
+        messageIndex: _actionMessageIndex!,
+        question: normalizedQuestion,
+        nearbyScope: nearbyScope,
+      );
     } on AiCurrentLocationException catch (error) {
       _clearPendingActions();
       _errorMessage = error.message;
@@ -208,24 +233,31 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
   Future<void> generateSummary() async {
     if (_isSending || _isSummarizing) return;
 
+    if (_conversationSummary != null &&
+        _conversationSummaryLanguageCode != AppLocalizations.currentCode) {
+      _summaryNeedsRefresh = true;
+    }
+
     if (!canSummarize) {
-      if (_conversationSummary != null) {
+      if (_conversationSummary != null && !_summaryNeedsRefresh) {
         _summaryErrorMessage = null;
         notifyListeners();
         return;
       }
-      _summaryErrorMessage =
-          'Send at least one question before creating a conversation summary.';
-      notifyListeners();
-      return;
+      if (_conversationSummary == null) {
+        _summaryErrorMessage =
+            'Send at least one question before creating a conversation summary.';
+        notifyListeners();
+        return;
+      }
     }
 
     if (_conversationSummary != null && !_summaryNeedsRefresh) return;
 
-    const summaryQuestion =
-        'Update the saved travel summary using newer messages. Return 3 to 5 '
-        'concise factual bullet points covering useful details, user preferences '
-        'or decisions, and unresolved questions. Do not invent facts.';
+    final summaryQuestion =
+        'Summarize this conversation in 3 to 5 factual bullet points. Include '
+        'useful travel details, preferences, decisions, and unresolved '
+        'questions. Do not invent facts. Write in $_preferredLanguageName.';
 
     final summaryHistory = <AiChatMessage>[
       if (_conversationSummary != null)
@@ -249,6 +281,7 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
         attractionContext: _attractionContext,
       );
       _conversationSummary = refreshedSummary;
+      _conversationSummaryLanguageCode = AppLocalizations.currentCode;
       _summaryNeedsRefresh = false;
 
       debugPrint('Summary: Edge Function response received');
@@ -271,11 +304,13 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
     _messages = [_greeting()];
     _errorMessage = null;
     _conversationSummary = null;
+    _conversationSummaryLanguageCode = null;
     _summaryNeedsRefresh = false;
     _summaryErrorMessage = null;
     _bookmarkCandidates = const [];
     _actionMessageIndex = null;
     _actionQuestion = null;
+    _responseActions.clear();
     _isResolvingBookmarkPlaces = false;
     notifyListeners();
   }
@@ -289,12 +324,18 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
   void _useResolvedPlaceAsContext(Place place) {
     if (!_isAttractionContextCandidate(place)) return;
 
+    final previousPlaceId = _contextBookmarkPlace?.placeId.trim();
     _contextBookmarkPlace = place;
     _attractionContext = AiAttractionContext(
       attractionName: place.placeName,
       placeId: place.placeId,
+      latitude: place.placeLatitude,
+      longitude: place.placeLongitude,
       source: 'chat_question',
     );
+    if (previousPlaceId != place.placeId.trim()) {
+      onContextPlaceResolved?.call(place);
+    }
   }
 
   bool _isAttractionContextCandidate(Place place) {
@@ -312,6 +353,62 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
       place.placeLongitude <= 180 &&
       !(place.placeLatitude == 0 && place.placeLongitude == 0);
 
+  Coordinates? _contextCoordinates() {
+    final latitude = _attractionContext?.latitude;
+    final longitude = _attractionContext?.longitude;
+    if (latitude == null || longitude == null) return null;
+    if (latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180) {
+      return null;
+    }
+    if (latitude == 0 && longitude == 0) return null;
+    return Coordinates(latitude: latitude, longitude: longitude);
+  }
+
+  void _storeResponseActions({
+    required int messageIndex,
+    required String question,
+    required AiNearbyScope nearbyScope,
+  }) {
+    final refersToContext = AiChatActionPolicy.questionRefersToContext(
+      question,
+      _attractionContext,
+    );
+    final contextTarget =
+        nearbyScope == AiNearbyScope.none &&
+            refersToContext &&
+            _contextBookmarkPlace != null &&
+            _contextBookmarkPlace!.placeId.trim().isNotEmpty
+        ? <Place>[_contextBookmarkPlace!]
+        : const <Place>[];
+    final bookmarkPlaces = _bookmarkCandidates.isNotEmpty
+        ? List<Place>.unmodifiable(_bookmarkCandidates)
+        : contextTarget;
+
+    final requestedDestination = AiChatActionPolicy.mapDestinationFromQuestion(
+      question,
+    );
+    final mapDestination = requestedDestination == null
+        ? null
+        : AiChatActionPolicy.isContextReference(requestedDestination)
+        ? _attractionContext?.attractionName
+        : requestedDestination;
+    final mapPlace = _bookmarkCandidates.length == 1
+        ? _bookmarkCandidates.single
+        : contextTarget.length == 1
+        ? contextTarget.single
+        : null;
+
+    if (bookmarkPlaces.isEmpty && mapDestination == null) return;
+    _responseActions[messageIndex] = AiChatResponseActions(
+      bookmarkPlaces: bookmarkPlaces,
+      mapDestination: mapDestination,
+      mapPlace: mapPlace,
+    );
+  }
+
   String _nearbyRequestInstruction({
     required AiNearbyScope scope,
     required Coordinates? origin,
@@ -322,17 +419,32 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
         : '${origin.latitude.toStringAsFixed(5)}, '
               '${origin.longitude.toStringAsFixed(5)}';
     final anchorInstruction = scope == AiNearbyScope.userCurrentLocation
-        ? 'Nearby origin: user GPS ($coordinateText). '
-              'Ignore any selected attraction.'
-        : 'Nearby origin: selected place '
+        ? 'Ignore any selected attraction. Origin: user GPS ($coordinateText).'
+        : 'Origin: selected place '
               '"${_attractionContext?.attractionName ?? 'unknown'}" '
               '($coordinateText).';
     final verifiedResults = places.isEmpty
-        ? 'No verified results; do not invent places.'
-        : 'Verified nearby places only: '
+        ? 'No verified nearby places; do not invent any.'
+        : 'Use only these verified nearby places: '
               '${places.map((place) => place.placeName).join('; ')}.';
-    return '$anchorInstruction $verifiedResults';
+    // Put verified names first for selected-place requests. The repository has
+    // a strict 200-character question limit, so any necessary truncation then
+    // affects the explanatory coordinates rather than a place name.
+    return scope == AiNearbyScope.userCurrentLocation
+        ? '$anchorInstruction $verifiedResults'
+        : '$verifiedResults $anchorInstruction';
   }
+
+  String _responseInstruction({String? nearbyInstruction}) {
+    final languageInstruction = 'Reply in $_preferredLanguageName.';
+    final nearby = nearbyInstruction?.trim();
+    return nearby == null || nearby.isEmpty
+        ? languageInstruction
+        : '$languageInstruction $nearby';
+  }
+
+  String get _preferredLanguageName =>
+      _languageNames[AppLocalizations.currentCode] ?? 'English';
 
   void _addSystemMessage(String message, {bool shouldNotify = true}) {
     _messages.add(
@@ -348,10 +460,18 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
   }
 
   AiChatMessage _greeting() => AiChatMessage(
-    text: 'Here’s Manja, Your AI Travel Assistant!',
+    text: AppLocalizations.t('ai.greeting'),
     sender: AiChatMessageSender.assistant,
   );
 }
+
+const _languageNames = <String, String>{
+  'en': 'English',
+  'zh': 'Mandarin Chinese',
+  'ms': 'Malay',
+  'es': 'Spanish',
+  'hi': 'Hindi',
+};
 
 const _attractionContextTypes = <String>{
   'amusement_park',
@@ -384,6 +504,18 @@ String? _cleanSummary(String? summary) {
 }
 
 typedef AiCurrentLocationLoader = Future<Coordinates> Function();
+
+class AiChatResponseActions {
+  const AiChatResponseActions({
+    this.bookmarkPlaces = const [],
+    this.mapDestination,
+    this.mapPlace,
+  });
+
+  final List<Place> bookmarkPlaces;
+  final String? mapDestination;
+  final Place? mapPlace;
+}
 
 class AiCurrentLocationException implements Exception {
   const AiCurrentLocationException(this.message);

@@ -3,9 +3,10 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ai_assistant/global_ai_assistant.dart';
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
-import '../../model/business_logic/ai_travel_assistant_service/ai_chat_action_policy.dart';
 import '../../model/entities/ai_attraction_context.dart';
 import '../../model/entities/ai_chat_message.dart';
 import '../../model/entities/place.dart';
@@ -22,21 +23,27 @@ class TravelAssistantScreen extends StatelessWidget {
     this.attractionName,
     this.markerId,
     this.placeId,
+    this.contextLatitude,
+    this.contextLongitude,
     this.contextSource = 'none',
     this.bookmarkPlace,
     this.initialConversationSummary,
+    this.initialConversationSummaryLanguageCode,
   });
 
   final String? attractionId;
   final String? attractionName;
   final String? markerId;
   final String? placeId;
+  final double? contextLatitude;
+  final double? contextLongitude;
   final String contextSource;
 
   /// A verified place supplied by Recommendation or Itinerary. Gemini text is
   /// never used to invent a bookmark target.
   final Place? bookmarkPlace;
   final String? initialConversationSummary;
+  final String? initialConversationSummaryLanguageCode;
 
   @override
   Widget build(BuildContext context) {
@@ -65,11 +72,25 @@ class TravelAssistantScreen extends StatelessWidget {
                 attractionName: resolvedAttractionName,
                 markerId: markerId,
                 placeId: resolvedPlaceId,
+                latitude: contextLatitude,
+                longitude: contextLongitude,
                 source: contextSource,
               )
             : null,
         initialBookmarkPlace: bookmarkPlace,
         initialConversationSummary: initialConversationSummary,
+        initialConversationSummaryLanguageCode:
+            initialConversationSummaryLanguageCode,
+        onContextPlaceResolved: (place) {
+          context.read<GlobalAiAssistantController>().selectAttraction(
+            attractionName: place.placeName,
+            placeId: place.placeId,
+            latitude: place.placeLatitude,
+            longitude: place.placeLongitude,
+            source: 'chat_question',
+            bookmarkPlace: place,
+          );
+        },
       ),
       child: const _TravelAssistantView(),
     );
@@ -102,20 +123,8 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
 
     final vm = context.read<AiTravelAssistantViewModel>();
     final shouldRefreshSavedSummary = vm.conversationSummary != null;
-    final previousContextPlaceId = vm.contextBookmarkPlace?.placeId;
     await vm.sendQuestion(question);
     if (!mounted) return;
-    final resolvedPlace = vm.contextBookmarkPlace;
-    if (resolvedPlace != null &&
-        resolvedPlace.placeId != previousContextPlaceId &&
-        vm.attractionContext?.source == 'chat_question') {
-      context.read<GlobalAiAssistantController>().selectAttraction(
-        attractionName: resolvedPlace.placeName,
-        placeId: resolvedPlace.placeId,
-        source: 'chat_question',
-        bookmarkPlace: resolvedPlace,
-      );
-    }
     if (shouldRefreshSavedSummary) {
       await vm.generateSummary();
       if (!mounted) return;
@@ -128,19 +137,16 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
     final shouldReset = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Reset conversation?'),
-        content: const Text(
-          'Your current chat messages will be cleared. '
-          'The selected attraction will stay available.',
-        ),
+        title: Text(AppLocalizations.t('ai.resetTitle')),
+        content: Text(AppLocalizations.t('ai.resetMessage')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.t('ai.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Reset'),
+            child: Text(AppLocalizations.t('ai.reset')),
           ),
         ],
       ),
@@ -157,12 +163,10 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
     _leaveDialogOpen = true;
     final shouldLeave = await showConfirmationDialog(
       context: context,
-      title: 'Leave AI chat?',
-      message:
-          'Your latest conversation summary will be saved when you leave. '
-          'Are you sure you want to continue?',
-      confirmLabel: 'Leave',
-      cancelLabel: 'Stay',
+      title: AppLocalizations.t('ai.leaveTitle'),
+      message: AppLocalizations.t('ai.leaveMessage'),
+      confirmLabel: AppLocalizations.t('ai.leave'),
+      cancelLabel: AppLocalizations.t('ai.stay'),
       confirmColor: AppColors.primary,
       icon: Icons.exit_to_app_rounded,
       iconBgColor: AppColors.accentSoft,
@@ -215,11 +219,13 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
   void _persistSummary(AiTravelAssistantViewModel vm) {
     context.read<GlobalAiAssistantController>().saveConversationSummary(
       vm.conversationSummary,
+      languageCode: vm.conversationSummaryLanguageCode,
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleVm>();
     final vm = context.watch<AiTravelAssistantViewModel>();
     final attractionName = vm.attractionContext?.attractionName?.trim();
 
@@ -261,7 +267,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
           Expanded(
             child: Semantics(
               button: true,
-              label: 'Show conversation summary',
+              label: AppLocalizations.t('ai.showSummary'),
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: vm.isSending || vm.isSummarizing
@@ -286,9 +292,9 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        const Text(
-                          'Travel Assistant',
-                          style: TextStyle(
+                        Text(
+                          AppLocalizations.t('ai.title'),
+                          style: const TextStyle(
                             color: AppColors.primary,
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
@@ -302,7 +308,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
             ),
           ),
           IconButton(
-            tooltip: 'Search conversation',
+            tooltip: AppLocalizations.t('ai.searchConversation'),
             icon: const Icon(Icons.search),
             onPressed: () => _searchConversation(vm.messages),
           ),
@@ -312,7 +318,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: IconButton(
-              tooltip: 'Reset conversation',
+              tooltip: AppLocalizations.t('ai.resetConversation'),
               icon: const Icon(Icons.refresh, color: AppColors.surface),
               onPressed: _resetConversation,
             ),
@@ -338,7 +344,9 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Discussing: $attractionName',
+              AppLocalizations.t(
+                'ai.discussing',
+              ).replaceAll('{place}', attractionName),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -354,41 +362,6 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
 
   Widget _buildMessageList(AiTravelAssistantViewModel vm) {
     final actionMessageIndex = vm.actionMessageIndex;
-    final actionQuestion = vm.actionQuestion;
-    final canUseContextActions = AiChatActionPolicy.questionRefersToContext(
-      actionQuestion,
-      vm.attractionContext,
-    );
-    final nearbyScope = actionQuestion == null
-        ? AiNearbyScope.none
-        : AiChatActionPolicy.nearbyScope(actionQuestion);
-    final bookmarkPlace = vm.contextBookmarkPlace;
-    final suppliedBookmarkTarget =
-        vm.attractionContext != null &&
-            nearbyScope == AiNearbyScope.none &&
-            canUseContextActions &&
-            bookmarkPlace != null &&
-            bookmarkPlace.placeId.trim().isNotEmpty
-        ? <Place>[bookmarkPlace]
-        : const <Place>[];
-    final bookmarkTargets = vm.bookmarkCandidates.isNotEmpty
-        ? vm.bookmarkCandidates
-        : suppliedBookmarkTarget;
-    final requestedMapDestination =
-        AiChatActionPolicy.mapDestinationFromQuestion(actionQuestion);
-    final isContextMapRequest = AiChatActionPolicy.isContextReference(
-      requestedMapDestination,
-    );
-    final mapDestination = requestedMapDestination == null
-        ? null
-        : isContextMapRequest
-        ? vm.attractionContext?.attractionName
-        : requestedMapDestination;
-    final mapPlace = vm.bookmarkCandidates.length == 1
-        ? vm.bookmarkCandidates.single
-        : suppliedBookmarkTarget.length == 1
-        ? suppliedBookmarkTarget.single
-        : null;
 
     return ListView.builder(
       controller: _scrollController,
@@ -398,31 +371,29 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
         if (index == vm.messages.length) return const _TypingBubble();
 
         final message = vm.messages[index];
+        final actions = vm.actionsForMessage(index);
         final showBookmarkAction =
-            bookmarkTargets.isNotEmpty &&
-            !vm.isSending &&
+            actions != null &&
+            actions.bookmarkPlaces.isNotEmpty &&
             message.sender == AiChatMessageSender.assistant &&
-            index == actionMessageIndex &&
             vm.messages.any(
               (item) => item.sender == AiChatMessageSender.tourist,
             );
         final showMapAction =
-            mapDestination != null &&
-            !vm.isSending &&
-            message.sender == AiChatMessageSender.assistant &&
-            index == actionMessageIndex;
+            actions?.mapDestination != null &&
+            message.sender == AiChatMessageSender.assistant;
 
         return _ChatBubble(
           message: message,
           bookmarkPlaces: showBookmarkAction
-              ? bookmarkTargets
+              ? actions.bookmarkPlaces
               : const <Place>[],
           isResolvingPlaces:
               message.sender == AiChatMessageSender.assistant &&
               index == actionMessageIndex &&
               vm.isResolvingBookmarkPlaces,
-          mapDestination: showMapAction ? mapDestination : null,
-          mapPlace: showMapAction ? mapPlace : null,
+          mapDestination: showMapAction ? actions?.mapDestination : null,
+          mapPlace: showMapAction ? actions?.mapPlace : null,
         );
       },
     );
@@ -446,11 +417,14 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
                 minLines: 1,
                 maxLines: 4,
                 onSubmitted: (_) => _sendMessage(),
-                decoration: const InputDecoration(
-                  hintText: 'Ask something... (e.g. History of A Famosa)',
-                  hintStyle: TextStyle(color: AppColors.inkFaint, fontSize: 15),
+                decoration: InputDecoration(
+                  hintText: AppLocalizations.t('ai.inputHint'),
+                  hintStyle: const TextStyle(
+                    color: AppColors.inkFaint,
+                    fontSize: 15,
+                  ),
                   border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
+                  contentPadding: const EdgeInsets.symmetric(
                     horizontal: 20,
                     vertical: 14,
                   ),
@@ -461,7 +435,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
           const SizedBox(width: 10),
           Semantics(
             button: true,
-            label: 'Send question',
+            label: AppLocalizations.t('ai.sendQuestion'),
             child: InkWell(
               onTap: isSending ? null : _sendMessage,
               borderRadius: BorderRadius.circular(30),
@@ -525,10 +499,10 @@ class _ConversationSummarySheet extends StatelessWidget {
             ),
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Summary',
-                    style: TextStyle(
+                    AppLocalizations.t('ai.summary'),
+                    style: const TextStyle(
                       color: AppColors.ink,
                       fontSize: 28,
                       fontWeight: FontWeight.w700,
@@ -536,7 +510,7 @@ class _ConversationSummarySheet extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Close summary',
+                  tooltip: AppLocalizations.t('ai.closeSummary'),
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
@@ -572,9 +546,9 @@ class _ConversationSummarySheet extends StatelessWidget {
     }
 
     if (summary == null || summary.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
-          'No conversation summary is available yet.',
+          AppLocalizations.t('ai.noSummary'),
           textAlign: TextAlign.center,
         ),
       );
@@ -712,18 +686,21 @@ class _ChatBubble extends StatelessWidget {
             ),
             if (isResolvingPlaces) ...[
               const SizedBox(height: 12),
-              const Row(
+              Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 15,
                     height: 15,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Text(
-                    'Checking verified places…',
-                    style: TextStyle(color: AppColors.inkSoft, fontSize: 12),
+                    AppLocalizations.t('ai.checkingPlaces'),
+                    style: const TextStyle(
+                      color: AppColors.inkSoft,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -775,7 +752,7 @@ class _GoogleMapsButton extends StatelessWidget {
     );
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open Google Maps.')),
+        SnackBar(content: Text(AppLocalizations.t('ai.mapsFailure'))),
       );
     }
   }
@@ -789,7 +766,7 @@ class _GoogleMapsButton extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: () => _openGoogleMaps(context),
         icon: const Icon(Icons.directions_rounded, size: 18),
-        label: const Text('Open in Google Maps'),
+        label: Text(AppLocalizations.t('ai.openMaps')),
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
           side: const BorderSide(color: AppColors.primary),
@@ -812,7 +789,9 @@ class _AiBookmarkPlaces extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          places.length == 1 ? 'Verified place' : 'Choose a verified place',
+          places.length == 1
+              ? AppLocalizations.t('ai.verifiedPlace')
+              : AppLocalizations.t('ai.chooseVerifiedPlace'),
           style: const TextStyle(
             color: AppColors.inkSoft,
             fontSize: 12,
@@ -897,18 +876,16 @@ class _AiBookmarkButton extends StatelessWidget {
     final shouldLogin = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Log in to bookmark'),
-        content: const Text(
-          'You need to log in before you can save this place to your bookmarks.',
-        ),
+        title: Text(AppLocalizations.t('ai.loginTitle')),
+        content: Text(AppLocalizations.t('ai.loginMessage')),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Not now'),
+            child: Text(AppLocalizations.t('ai.notNow')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Log in'),
+            child: Text(AppLocalizations.t('ai.login')),
           ),
         ],
       ),
@@ -969,7 +946,9 @@ class _AiBookmarkButton extends StatelessWidget {
                     size: 18,
                   ),
             label: Text(
-              isBookmarked ? 'Bookmarked' : 'Bookmark',
+              isBookmarked
+                  ? AppLocalizations.t('ai.bookmarked')
+                  : AppLocalizations.t('ai.bookmark'),
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
@@ -1033,7 +1012,7 @@ class _ConversationSearchDelegate extends SearchDelegate<void> {
   @override
   List<Widget>? buildActions(BuildContext context) => [
     IconButton(
-      tooltip: 'Clear search',
+      tooltip: AppLocalizations.t('ai.clearSearch'),
       icon: const Icon(Icons.clear),
       onPressed: () => query = '',
     ),
@@ -1041,7 +1020,7 @@ class _ConversationSearchDelegate extends SearchDelegate<void> {
 
   @override
   Widget? buildLeading(BuildContext context) => IconButton(
-    tooltip: 'Close search',
+    tooltip: AppLocalizations.t('ai.closeSearch'),
     icon: const Icon(Icons.arrow_back),
     onPressed: () => close(context, null),
   );
@@ -1055,12 +1034,10 @@ class _ConversationSearchDelegate extends SearchDelegate<void> {
   Widget _buildMatches() {
     final matches = _matches;
     if (query.trim().isEmpty) {
-      return const Center(child: Text('Search messages in this conversation.'));
+      return Center(child: Text(AppLocalizations.t('ai.searchPrompt')));
     }
     if (matches.isEmpty) {
-      return const Center(
-        child: Text('No matches found in this conversation.'),
-      );
+      return Center(child: Text(AppLocalizations.t('ai.noMatches')));
     }
     return ListView.separated(
       itemCount: matches.length,

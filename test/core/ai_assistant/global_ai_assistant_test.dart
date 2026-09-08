@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:narrate_my/core/ai_assistant/global_ai_assistant.dart';
+import 'package:narrate_my/model/entities/ar_object.dart';
 import 'package:narrate_my/model/entities/place.dart';
 import 'package:provider/provider.dart';
 
@@ -62,6 +63,25 @@ void main() {
     expect(controller.bookmarkPlace?.placeId, 'restaurant-1');
   });
 
+  test('AR marker context preserves coordinates for nearby search', () {
+    final controller = GlobalAiAssistantController();
+    addTearDown(controller.dispose);
+
+    controller.selectArMarker(
+      const ARMarker(
+        markerId: 'MK-TARUMT',
+        attractionId: 'AT-TARUMT',
+        latitude: 3.2151,
+        longitude: 101.7264,
+        activationRadiusMeters: 100,
+        name: 'TAR UMT Block B',
+      ),
+    );
+
+    expect(controller.attractionContext?.latitude, 3.2151);
+    expect(controller.attractionContext?.longitude, 101.7264);
+  });
+
   test('viewing a recommendation does not replace committed chat context', () {
     final controller = GlobalAiAssistantController();
     addTearDown(controller.dispose);
@@ -101,18 +121,36 @@ void main() {
     expect(controller.bookmarkPlace, petrosains);
   });
 
+  test('a closed preview cannot leak context into a neutral page', () {
+    final controller = GlobalAiAssistantController();
+    addTearDown(controller.dispose);
+    final previewToken = controller.previewPlace(
+      attraction('A2', 'Kuala Lumpur Convention Centre'),
+      source: 'recommendation',
+    );
+
+    controller.endAttractionPreview(previewToken);
+    controller.commitActiveAttractionPreview();
+
+    expect(controller.attractionContext, isNull);
+    expect(controller.bookmarkPlace, isNull);
+  });
+
   test('conversation summary remains available until replaced or cleared', () {
     final controller = GlobalAiAssistantController();
     addTearDown(controller.dispose);
 
-    controller.saveConversationSummary('First summary');
+    controller.saveConversationSummary('First summary', languageCode: 'en');
     expect(controller.conversationSummary, 'First summary');
+    expect(controller.conversationSummaryLanguageCode, 'en');
 
-    controller.saveConversationSummary('Updated summary');
+    controller.saveConversationSummary('Updated summary', languageCode: 'ms');
     expect(controller.conversationSummary, 'Updated summary');
+    expect(controller.conversationSummaryLanguageCode, 'ms');
 
     controller.clearConversationSummary();
     expect(controller.conversationSummary, isNull);
+    expect(controller.conversationSummaryLanguageCode, isNull);
   });
 
   test('AI button moves above the AR action panel', () {
@@ -156,6 +194,34 @@ void main() {
     expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
   });
 
+  testWidgets('global AI button can be dragged and snaps to a screen edge', (
+    tester,
+  ) async {
+    final controller = GlobalAiAssistantController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: MaterialApp(
+          navigatorKey: rootNavigatorKey,
+          builder: (context, child) => GlobalAiAssistantHost(child: child!),
+          home: const Scaffold(body: Text('Page content')),
+        ),
+      ),
+    );
+
+    final button = find.byKey(const ValueKey('global-ai-assistant-button'));
+    final initialPosition = tester.getTopLeft(button);
+
+    await tester.drag(button, const Offset(600, -180));
+    await tester.pump();
+
+    final movedPosition = tester.getTopLeft(button);
+    expect(movedPosition.dx, greaterThan(initialPosition.dx));
+    expect(movedPosition.dy, lessThan(initialPosition.dy));
+  });
+
   testWidgets('global AI button is hidden while Profile is active', (
     tester,
   ) async {
@@ -180,5 +246,33 @@ void main() {
     controller.setProfileActive(false);
     await tester.pump();
     expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+  });
+
+  testWidgets('global AI button can be dragged and snaps to a screen edge', (
+    tester,
+  ) async {
+    final controller = GlobalAiAssistantController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: MaterialApp(
+          navigatorKey: rootNavigatorKey,
+          builder: (context, child) => GlobalAiAssistantHost(child: child!),
+          home: const Scaffold(body: Text('Page content')),
+        ),
+      ),
+    );
+
+    final button = find.byKey(const ValueKey('global-ai-assistant-button'));
+    final originalPosition = tester.getTopLeft(button);
+
+    await tester.drag(button, const Offset(600, -180));
+    await tester.pumpAndSettle();
+
+    final movedPosition = tester.getTopLeft(button);
+    expect(movedPosition.dx, greaterThan(originalPosition.dx));
+    expect(movedPosition.dy, lessThan(originalPosition.dy));
   });
 }
