@@ -17,7 +17,6 @@ class ViewPlaceDetailViewModel extends ChangeNotifier {
   final ValueChanged<bool>? _onStatusChanged; // new
 
   Place? _place;
-  bool _isLoading = false;
   String? _error;
   bool _isStopped = false; // new
 
@@ -34,14 +33,12 @@ class ViewPlaceDetailViewModel extends ChangeNotifier {
   // ─── Getters ────────────────────────────────────────────────
 
   Place? get place => _place;
-  bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isStopped => _isStopped; // new
 
   // ─── Load ───────────────────────────────────────────────────
 
   Future<void> load() async {
-    _isLoading = _place == null;
     _error = null;
     notifyListeners();
 
@@ -59,7 +56,6 @@ class ViewPlaceDetailViewModel extends ChangeNotifier {
         _error = 'Unable to load place information. Please try again.';
       }
     } finally {
-      _isLoading = false;
       notifyListeners();
     }
   }

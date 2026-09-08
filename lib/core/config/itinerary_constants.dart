@@ -106,14 +106,23 @@ class ItineraryConstants {
   /// replacing attraction candidates.
   static const int minimumFoodCandidatesPerDay = 1;
 
-  /// Maximum number of candidates sent to DeepSeek for the AI candidate
+  /// Maximum number of candidates sent to the AI planner for the AI candidate
   /// evaluation / itinerary-planning pool.
   ///
   /// Keeps the prompt concise and avoids the timeouts caused by sending an
   /// unlimited candidate set (e.g. 103 candidates / ~40k-char prompts).
   /// The remaining scored candidates stay available as a RESERVE pool for
   /// feasibility-driven replacement during regeneration/repair.
-  static const int maxAiPlanningPoolSize = 45;
+  static const int maxAiPlanningPoolSize = 100;
+
+  static int stopsPerDay(String? pace) =>
+      const {'Slow': 3, 'Standard': 4, 'Fast': 5}[pace] ?? 4;
+
+  static int planningPoolSize(int days, {String? pace}) =>
+      (days.clamp(1, 7) * (stopsPerDay(pace) * 2 + 2)).clamp(
+        12,
+        maxAiPlanningPoolSize,
+      );
 
   // ============================================================
   // 4. DAILY STOP LIMITS
@@ -141,7 +150,7 @@ class ItineraryConstants {
   /// according to travel pace.
   ///
   /// DEPRECATED for candidate-target calculation: travel pace is a SOFT
-  /// scheduling preference for DeepSeek, NOT a places-per-day formula.
+  /// scheduling preference for the AI planner, NOT a places-per-day formula.
   /// Kept only for legacy services (daily allocation, old clusterPlaces).
   static const Map<String, int> paceToAttractionsPerDay = {
     'Slow': 2,
@@ -205,9 +214,9 @@ class ItineraryConstants {
     String? explorationTime,
   }) {
     final base =
-        (days * candidatePerDayRetrievalBaseline *
-                explorationRetrievalFactor(explorationTime))
-            .ceil();
+    (days * candidatePerDayRetrievalBaseline *
+        explorationRetrievalFactor(explorationTime))
+        .ceil();
     final buffered = (base * candidateOverfetchFactor).ceil() + mustVisitCount;
     return buffered < minCandidatesAbsolute
         ? minCandidatesAbsolute
@@ -215,11 +224,11 @@ class ItineraryConstants {
   }
 
   /// Minimum number of USABLE (post-filter) candidates that must remain
-  /// before clustering + DeepSeek scheduling can proceed.
+  /// before clustering + the AI planner scheduling can proceed.
   static const int minimumUsableCandidatePool = 12;
 
   /// Usable candidate target: the post-filter pool must be comfortably
-  /// larger than any plausible final itinerary so DeepSeek has alternatives.
+  /// larger than any plausible final itinerary so the AI planner has alternatives.
   ///
   /// Based on trip duration × baseline × a usability buffer.  Does NOT
   /// compound the full overfetch factor (that already sized the raw pool).
@@ -229,10 +238,10 @@ class ItineraryConstants {
     String? explorationTime,
   }) {
     final base =
-        (days * candidatePerDayRetrievalBaseline *
-                explorationRetrievalFactor(explorationTime) *
-                1.5)
-            .ceil();
+    (days * candidatePerDayRetrievalBaseline *
+        explorationRetrievalFactor(explorationTime) *
+        1.5)
+        .ceil();
     final usable = base + mustVisitCount;
     return usable < minimumUsableCandidatePool
         ? minimumUsableCandidatePool
@@ -355,7 +364,7 @@ class ItineraryConstants {
 
   static int bufferForPace(String pace) =>
       paceToBufferMinutes[_canonicalPace(pace)] ??
-      paceToBufferMinutes['Standard']!;
+          paceToBufferMinutes['Standard']!;
 
   // ------------------------------------------------------------
   // Travel-pace duration factor
@@ -371,7 +380,7 @@ class ItineraryConstants {
 
   static double durationFactorForPace(String pace) =>
       paceToDurationFactor[_canonicalPace(pace)] ??
-      paceToDurationFactor['Standard']!;
+          paceToDurationFactor['Standard']!;
 
   // ------------------------------------------------------------
   // Pace-aware preferred activity boundary (SOFT)
@@ -394,7 +403,7 @@ class ItineraryConstants {
   /// The fraction of the exploration window normally used for scheduling.
   static double preferredCapacityForPace(String pace) =>
       paceToPreferredCapacity[_canonicalPace(pace)] ??
-      paceToPreferredCapacity['Standard']!;
+          paceToPreferredCapacity['Standard']!;
 
   /// Compute the preferred (soft) activity end boundary in minutes-of-day
   /// for [window], using [pace].
@@ -442,7 +451,7 @@ class ItineraryConstants {
   // Travel-pace planning rules (for the AI prompt)
   // ------------------------------------------------------------
 
-static const String paceSlowRules = '''
+  static const String paceSlowRules = '''
 ════════════════════════════════════════════════════════════════
 MANDATORY TIME & PLACEMENT RULES (NON-NEGOTIABLE)
 ════════════════════════════════════════════════════════════════
@@ -502,10 +511,10 @@ MANDATORY TIME & PLACEMENT RULES — FAST PACE
   /// Resolve the pace rules for [pace], injecting the actual exploration
   /// window (e.g. "10:00 - 18:00") into the placeholders.
   static String paceRulesFor(
-    String pace, {
-    String explorationStart = 'exploration start',
-    String explorationEnd = 'exploration end',
-  }) {
+      String pace, {
+        String explorationStart = 'exploration start',
+        String explorationEnd = 'exploration end',
+      }) {
     String rules;
     switch (_canonicalPace(pace)) {
       case 'Slow':

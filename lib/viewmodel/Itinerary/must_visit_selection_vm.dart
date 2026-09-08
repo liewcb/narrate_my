@@ -8,7 +8,7 @@ import '../../core/services/database_manager.dart';
 import '../../core/services/google_maps_service.dart';
 import '../../model/business_logic/itinerary_service/candidate_retrieval_service.dart';
 import '../../model/business_logic/itinerary_service/candidate_retrieval_service.dart'
-as hotspot_svc;
+    as hotspot_svc;
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/destination.dart';
 import '../../model/entities/destination_hotspot.dart';
@@ -135,6 +135,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
   // ─── Bookmarks ──────────────────────────────────────────────
   List<WizardPlace> _bookmarks = [];
+
   List<WizardPlace> get bookmarks => List.unmodifiable(_bookmarks);
   bool isLoadingBookmarks = false;
   String? bookmarksError;
@@ -180,6 +181,13 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
   // ─── Destination cache ──────────────────────────────────────
   List<Destination> _cachedSelectedDestinations = [];
+
+  /// True when the LAST destination resolution attempt FAILED (transient
+  /// DB/network problem). While set, destination membership is UNKNOWN —
+  /// the VM shows an error state and never claims any place is valid
+  /// for the destination until a successful refresh (REQ: no silent
+  /// "allow everything" fallback).
+  bool _destinationsLoadFailed = false;
   String user_id = "";
 
   // ─── Static Google Places type maps ────────────────────────
@@ -282,20 +290,19 @@ class Step3AddPlaceVM extends ChangeNotifier {
   };
 
   Step3AddPlaceVM(
-      this.draft, {
-        userId,
-        GoogleMapsService? mapsService,
-        DestinationRepository? destinationRepository,
-        BookmarkRepository? bookmarkRepository,
-        CandidateRetrievalService? candidateService,
-      })  : _mapsService = mapsService ?? GoogleMapsService(),
-        _destinationRepository =
-            destinationRepository ?? DatabaseManager().destinationRepository,
-        _bookmarkRepository =
-            bookmarkRepository ?? DatabaseManager().bookmarkRepository,
-        user_id = userId,
-        _candidateService =
-            candidateService ?? CandidateRetrievalService() {
+    this.draft, {
+    userId,
+    GoogleMapsService? mapsService,
+    DestinationRepository? destinationRepository,
+    BookmarkRepository? bookmarkRepository,
+    CandidateRetrievalService? candidateService,
+  }) : _mapsService = mapsService ?? GoogleMapsService(),
+       _destinationRepository =
+           destinationRepository ?? DatabaseManager().destinationRepository,
+       _bookmarkRepository =
+           bookmarkRepository ?? DatabaseManager().bookmarkRepository,
+       user_id = userId,
+       _candidateService = candidateService ?? CandidateRetrievalService() {
     _ensureSelectedDestinations();
     // Restore must-visit selections from the draft so BACK
     // navigation (Step 4 → Step 3) keeps progress.
@@ -325,9 +332,11 @@ class Step3AddPlaceVM extends ChangeNotifier {
     if (searchQuery.isEmpty) return _bookmarks;
     final q = searchQuery.toLowerCase();
     return _bookmarks
-        .where((p) =>
-    p.name.toLowerCase().contains(q) ||
-        p.type.toLowerCase().contains(q))
+        .where(
+          (p) =>
+              p.name.toLowerCase().contains(q) ||
+              p.type.toLowerCase().contains(q),
+        )
         .toList();
   }
 
@@ -339,7 +348,9 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
   List<String> get mustVisitPlaces =>
       _mustVisitPlaceIds.map((id) => _mustVisitNameById[id] ?? id).toList();
+
   List<String> get mustVisitPlaceIds => List.unmodifiable(_mustVisitPlaceIds);
+
   Map<String, MustVisitPlaceInfo> get mustVisitPlaceInfo =>
       Map.unmodifiable(_mustVisitMeta);
 
@@ -349,16 +360,26 @@ class Step3AddPlaceVM extends ChangeNotifier {
   ];
 
   DestinationHotspot? get selectedHotspot => _selectedHotspot;
+
   double? get selectedHotspotRadiusKm => _selectedHotspot?.suggestedRadiusKm;
-  bool get isSelectionLimitReached => _mustVisitPlaceIds.length >= maxMustVisits;
+
+  bool get isSelectionLimitReached =>
+      _mustVisitPlaceIds.length >= maxMustVisits;
 
   // ---------- Init / Load ----------
-  Future<void> _ensureSelectedDestinations() async {
+  /// Resolves the SELECTED destinations (identity = destination_id) and
+  /// caches them for membership checks. Failures are remembered via
+  /// [_destinationsLoadFailed] so nothing is ever treated as valid while
+  /// destination information is unknown — a refresh retries resolution.
+  Future<void> _ensureSelectedDestinations({bool force = false}) async {
+    if (!force && _cachedSelectedDestinations.isNotEmpty) return;
     try {
       _cachedSelectedDestinations = await _resolveSelectedDestinations();
+      _destinationsLoadFailed = false;
     } catch (e) {
       debugPrint('Failed to resolve destinations: $e');
       _cachedSelectedDestinations = [];
+      _destinationsLoadFailed = true;
     }
   }
 
@@ -369,19 +390,43 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
     try {
       await _ensureSelectedDestinations();
+
+      // Destination UNKNOWN → never claim any bookmark is valid.
+      if (_destinationsLoadFailed) {
+        _bookmarks = [];
+        bookmarksError =
+        'Could not verify your selected destinations. Pull to refresh '
+            'and try again.';
+        return;
+      }
+      if (_cachedSelectedDestinations.isEmpty && draft.destinations.isNotEmpty) {
+        _bookmarks = [];
+        bookmarksError =
+        'Your selected destinations could not be found. Pull to refresh '
+            'and try again.';
+        return;
+      }
+
       final dtos = await _bookmarkRepository.getBookmarksWithPlaces(user_id);
 
       final validBookmarks = <WizardPlace>[];
       final disabledBookmarks = <WizardPlace>[];
+      final seenBookmarkIds = <String>{};
 
       for (final dto in dtos) {
         final place = dto.place;
+
+        if (!_isValidPlaceRecord(place)) continue;
+        if (!seenBookmarkIds.add(place.placeId)) continue;
 
         // 1. Find which selected destination this bookmark belongs to
         Destination? matchedDest;
         for (final dest in _cachedSelectedDestinations) {
           final destCoords = (dest.latitude != null && dest.longitude != null)
-              ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
+              ? Coordinates(
+            latitude: dest.latitude!,
+            longitude: dest.longitude!,
+          )
               : null;
 
           if (_belongsToDestination(place, dest, destCoords)) {
@@ -390,25 +435,60 @@ class Step3AddPlaceVM extends ChangeNotifier {
           }
         }
 
-        // 2. If it belongs to a destination, attach the destinationId!
-        if (matchedDest != null) {
-          validBookmarks.add(_toWizardPlace(
-            place,
-            matchedDest.destinationName,
-            destinationId: matchedDest.destinationId, // ✅ Attach destination ID here!
-          ).copyWith(isEnabled: true));
+        if (matchedDest == null) {
+          // Outside all destinations → disabled
+          disabledBookmarks.add(
+            _toWizardPlace(
+              place,
+              'Outside Travel Area',
+            ).copyWith(isEnabled: false),
+          );
+          continue;
+        }
+
+        // 2. Hotspot filter: only show bookmarks within the destination's hotspot
+        final hotspot = await _hotspotForDestination(matchedDest.destinationId);
+        if (hotspot != null) {
+          final hotspotCoords = Coordinates(
+            latitude: hotspot.latitude,
+            longitude: hotspot.longitude,
+          );
+          final distanceKm =
+          _mapsService.distanceKm(hotspotCoords, place.coordinates);
+          // If outside the hotspot radius, skip this bookmark (filter it out)
+          if (distanceKm > hotspot.suggestedRadiusKm) {
+            continue;
+          }
+          // Inside hotspot → add as valid, optionally store distance/status
+          final status = hotspot_svc.classifyHotspotDistance(
+            distanceKm,
+            hotspot.suggestedRadiusKm,
+          );
+          validBookmarks.add(
+            _toWizardPlace(
+              place,
+              matchedDest.destinationName,
+              destinationId: matchedDest.destinationId,
+              distanceKm: distanceKm,
+              distanceStatus: status.label,
+            ).copyWith(isEnabled: true),
+          );
         } else {
-          // If it's completely outside the trip, keep it disabled
-          disabledBookmarks.add(_toWizardPlace(
-            place,
-            'Outside Travel Area',
-          ).copyWith(isEnabled: false));
+          // No hotspot configured for this destination – show the bookmark anyway
+          validBookmarks.add(
+            _toWizardPlace(
+              place,
+              matchedDest.destinationName,
+              destinationId: matchedDest.destinationId,
+            ).copyWith(isEnabled: true),
+          );
         }
       }
 
-      // Show valid ones if they exist, otherwise show disabled ones.
-      _bookmarks = validBookmarks.isNotEmpty ? validBookmarks : disabledBookmarks;
-
+      // Show valid ones if any, otherwise show disabled ones.
+      _bookmarks = validBookmarks.isNotEmpty
+          ? validBookmarks
+          : disabledBookmarks;
     } catch (e) {
       bookmarksError = 'Could not load bookmarks.';
       _bookmarks = [];
@@ -418,14 +498,54 @@ class Step3AddPlaceVM extends ChangeNotifier {
     }
   }
 
+  /// Full pull-to-refresh: reload destinations → hotspots → places,
+  /// re-apply every destination/range/hotspot filter, reset pagination
+  /// and drop stale search results. The UI list is never "refreshed"
+  /// without the underlying data being revalidated.
+  Future<void> refreshAll() async {
+    debugPrint('🔄 refreshAll() — destinations → hotspots → places');
+    // Stale hotspot / destination state must not survive a refresh.
+    _hotspotCache.clear();
+    _selectedHotspot = null;
+    _currentPage = 0;
+    isLoadingMore = false;
+    _searchResults = [];
+
+    await _ensureSelectedDestinations(force: true);
+    await loadBookmarks();
+    if (selectedTab == 1) {
+      await loadDefaultPlaces();
+    } else {
+      // Drop any previously loaded places so switching to Search Maps
+      // reloads and re-filters from scratch (setTab reloads when empty).
+      _defaultPlaces = [];
+      errorMessage = null;
+      notifyListeners();
+    }
+  }
+
+  /// Defensive data-quality gate (the DB is the source of truth, but API
+  /// responses may still carry incomplete rows).
+  bool _isValidPlaceRecord(Place place) {
+    if (place.id.trim().isEmpty) return false;
+    if (place.placeId.trim().isEmpty) return false;
+    if (place.placeName.trim().isEmpty) return false;
+    final lat = place.placeLatitude;
+    final lng = place.placeLongitude;
+    if (lat == 0.0 && lng == 0.0) return false;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+    return true;
+  }
+
   /// REQ_MV_02 — a bookmark is destination-compatible when its underlying
-  /// Place belongs to one of the selected destinations (coordinates first,
-  /// name match as fallback). When destinations cannot be resolved the check
-  /// is skipped so a transient database failure cannot hide every bookmark;
-  /// selection-time validation re-applies the rule whenever destinations are
-  /// known.
+  /// Place belongs to one of the selected destinations. Destination
+  /// identity (`destination_id`) takes priority, then geographic range
+  /// using the destination coordinates and
+  /// [ItineraryConstants.maxSearchRadiusKm]. Name-only association is
+  /// never invented. When destinations cannot be resolved the place is
+  /// NOT claimed valid (selection re-checks on every attempt / refresh).
   bool _belongsToAnySelectedDestinationByPlace(WizardPlace w) {
-    if (_cachedSelectedDestinations.isEmpty) return true;
+    if (_cachedSelectedDestinations.isEmpty) return false;
     final place = _placeById[w.placeId];
     if (place == null) return false;
     return _belongsToAnySelectedDestination(place);
@@ -434,19 +554,33 @@ class Step3AddPlaceVM extends ChangeNotifier {
   bool _belongsToAnySelectedDestination(Place place) {
     if (_cachedSelectedDestinations.isEmpty) return false;
     for (final dest in _cachedSelectedDestinations) {
-      final destCoords = (dest.latitude != null && dest.longitude != null)
-          ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
-          : null;
-      if (destCoords != null) {
-        final distance = destCoords.distanceTo(place.coordinates);
-        if (distance <= ItineraryConstants.maxSearchRadiusKm) return true;
-      }
-      final combined = (place.placeAddress + ' ' + place.placeName).toLowerCase();
-      if (combined.contains(dest.destinationName.toLowerCase())) {
-        return true;
-      }
+      if (_destinationMatchesPlace(place, dest)) return true;
     }
     return false;
+  }
+
+  /// Shared membership rule for ONE destination:
+  /// 1. explicit identity: `place.destinationId == dest.destinationId`;
+  /// 2. geographic range: destination coordinates +
+  ///    [ItineraryConstants.maxSearchRadiusKm].
+  /// A place whose destination cannot be established (no identity AND no
+  /// destination coordinates) is NEVER claimed to belong (no name-only
+  /// association).
+  bool _destinationMatchesPlace(Place place, Destination dest) {
+    if (!_isValidPlaceRecord(place)) return false;
+    final pid = place.destinationId?.trim();
+    if (pid != null && pid.isNotEmpty) {
+      // Identity is authoritative when present — a place tagged to
+      // another destination is NEVER accepted (and the selected
+      // destination is never switched to match it).
+      return pid == dest.destinationId.trim();
+    }
+    final destCoords = (dest.latitude != null && dest.longitude != null)
+        ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
+        : null;
+    if (destCoords == null) return false;
+    final distance = destCoords.distanceTo(place.coordinates);
+    return distance <= ItineraryConstants.maxSearchRadiusKm;
   }
 
   void setTab(int index) {
@@ -489,11 +623,11 @@ class Step3AddPlaceVM extends ChangeNotifier {
   /// answer to the OUTSIDE_HOTSPOT warning — it never bypasses any other
   /// validation rule (§19).
   Future<MustVisitSelectionResult> togglePlace(
-      String placeId, {
-        String? placeName,
-        required String source,
-        bool confirmOutsideHotspot = false,
-      }) async {
+    String placeId, {
+    String? placeName,
+    required String source,
+    bool confirmOutsideHotspot = false,
+  }) async {
     // Toggle-off path: the place is already selected → remove it.
     if (_mustVisitPlaceIds.contains(placeId)) {
       removeMustVisit(placeId);
@@ -560,23 +694,41 @@ class Step3AddPlaceVM extends ChangeNotifier {
     if (place.placeTypes.any(_bannedMustVisitTypes.contains)) {
       return MustVisitSelectionResult.rejected(
         'This place is not a valid attraction and cannot be added as a '
-            'must-visit.',
+        'must-visit.',
       );
     }
 
-    // ── REQ_MV_10 — destination compatibility (geographic distance). ──
-    if (_cachedSelectedDestinations.isNotEmpty &&
-        !_belongsToAnySelectedDestination(place)) {
+    // ── REQ_MV_10 — destination compatibility. ──
+    // UNKNOWN destination state is never treated as valid: the traveler
+    // is asked to refresh (which retries destination resolution).
+    if (draft.destinations.isEmpty) {
+      return MustVisitSelectionResult.rejected(
+        'No destinations are selected yet. Go back to Step 1 and choose a '
+        'destination first.',
+      );
+    }
+    if (_destinationsLoadFailed || _cachedSelectedDestinations.isEmpty) {
+      return MustVisitSelectionResult.rejected(
+        'Your selected destinations could not be verified right now. '
+        'Pull to refresh and try again.',
+      );
+    }
+    if (!_belongsToAnySelectedDestination(place)) {
       return MustVisitSelectionResult.rejected(
         'This place cannot be added because its location is outside your '
-            'selected destinations.',
+        'selected destinations.',
       );
     }
 
     // ── REQ_MV_13 — hotspot distance validation. ──
-    final warning = await _hotspotWarningFor(place);
-    if (warning != null && !confirmOutsideHotspot) {
-      return MustVisitSelectionResult.warning(warning);
+    // FAR_FROM_DESTINATION → REJECT (never addable);
+    // OUTSIDE_HOTSPOT → existing warning / confirmation flow;
+    // WITHIN_HOTSPOT → add normally.
+    final hotspotDecision = await _hotspotCheckFor(place);
+    if (hotspotDecision != null &&
+        !(hotspotDecision.status == MustVisitSelectionStatus.warning &&
+            confirmOutsideHotspot)) {
+      return hotspotDecision;
     }
 
     // ── All validation passed → preserve stable identity + metadata. ──
@@ -587,8 +739,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
     _mustVisitMeta[id] = MustVisitPlaceInfo(
       placeId: id,
       placeName: place.placeName,
-      destinationId: place.destinationId ??
-          _destinationIdForPlace(place),
+      destinationId: place.destinationId ?? _destinationIdForPlace(place),
       source: source,
       latitude: place.placeLatitude,
       longitude: place.placeLongitude,
@@ -597,56 +748,68 @@ class Step3AddPlaceVM extends ChangeNotifier {
     return MustVisitSelectionResult.added();
   }
 
-  /// OUTSIDE_HOTSPOT → confirmation message; WITHIN_HOTSPOT / FAR → null.
-  /// FAR_FROM_DESTINATION is rejected earlier by destination compatibility;
-  /// a null here means "add normally".
-  Future<String?> _hotspotWarningFor(Place place) async {
-    if (_cachedSelectedDestinations.isEmpty) return null;
+  /// Hotspot decision for a place that already passed destination
+  /// compatibility:
+  ///   WITHIN_HOTSPOT     → `null` (add normally)
+  ///   OUTSIDE_HOTSPOT    → warning (existing confirmation flow decides)
+  ///   FAR_FROM_DESTINATION → rejected (never addable)
+  /// The hotspot is always resolved for the destination the PLACE belongs
+  /// to — a hotspot of another destination can never be applied.
+  Future<MustVisitSelectionResult?> _hotspotCheckFor(Place place) async {
     for (final dest in _cachedSelectedDestinations) {
-      final destCoords = (dest.latitude != null && dest.longitude != null)
-          ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
-          : null;
-      if (destCoords == null) continue;
-      final distanceKm = _mapsService.distanceKm(destCoords, place.coordinates);
-      if (distanceKm <= ItineraryConstants.maxSearchRadiusKm) {
-        final hotspot = _selectedHotspot ??
-            await _hotspotForDestination(dest.destinationId);
-        if (hotspot != null) {
-          final hotspotDistance = _mapsService.distanceKm(
-            Coordinates(
-              latitude: hotspot.latitude,
-              longitude: hotspot.longitude,
-            ),
-            place.coordinates,
+      if (!_destinationMatchesPlace(place, dest)) continue;
+      final hotspot = await _hotspotForDestination(dest.destinationId);
+      if (hotspot == null) return null; // no hotspot → nothing to warn about
+      final hotspotDistance = _mapsService.distanceKm(
+        Coordinates(latitude: hotspot.latitude, longitude: hotspot.longitude),
+        place.coordinates,
+      );
+      final status = hotspot_svc.classifyHotspotDistance(
+        hotspotDistance,
+        hotspot.suggestedRadiusKm,
+      );
+      switch (status) {
+        case hotspot_svc.HotspotDistanceStatus.farFromDestination:
+          return MustVisitSelectionResult.rejected(
+            'This place is too far from your selected destination to be '
+            'added as a must-visit.',
           );
-          final status = hotspot_svc.classifyHotspotDistance(
-            hotspotDistance,
-            hotspot.suggestedRadiusKm,
+        case hotspot_svc.HotspotDistanceStatus.outsideHotspot:
+          return MustVisitSelectionResult.warning(
+            'This place is outside the main sightseeing area for this '
+            'destination. Adding it may significantly increase your travel '
+            'time.',
           );
-          if (status == HotspotDistanceStatus.outsideHotspot) {
-            return 'This place is outside the main sightseeing area for this destination. Adding it may significantly increase your travel time.';
-          }
-        }
-        return null;
+        case hotspot_svc.HotspotDistanceStatus.withinHotspot:
+          return null;
       }
     }
     return null;
   }
 
-  Future<DestinationHotspot?> _hotspotForDestination(String destinationId) async {
+  Future<DestinationHotspot?> _hotspotForDestination(
+    String destinationId,
+  ) async {
     if (_hotspotCache.containsKey(destinationId)) {
       return _hotspotCache[destinationId];
     }
     DestinationHotspot? hotspot;
     try {
       final dest = _cachedSelectedDestinations.firstWhere(
-            (d) => d.destinationId == destinationId,
+        (d) => d.destinationId == destinationId,
       );
       hotspot = await _candidateService.selectBestHotspot(
         destinationName: dest.destinationName,
         destinationId: dest.destinationId,
         interests: draft.interests.toList(),
       );
+      // The hotspot must belong to THIS destination (defense in depth —
+      // destination_hotspots is keyed by destination_id in the database).
+      if (hotspot != null && hotspot.destinationId != destinationId) {
+        debugPrint('❌ Hotspot ${hotspot.id} belongs to '
+            '${hotspot.destinationId}, not $destinationId — discarded');
+        hotspot = null;
+      }
     } catch (e) {
       debugPrint('Hotspot resolution failed: $e');
     }
@@ -689,18 +852,25 @@ class Step3AddPlaceVM extends ChangeNotifier {
     debugPrint('🚀 loadDefaultPlaces()');
     isLoading = true;
     errorMessage = null;
+    // Full reload = fresh pagination and no stale search results.
     _currentPage = 0;
+    isLoadingMore = false;
+    _searchResults = [];
     notifyListeners();
 
     try {
-      final selected = await _resolveSelectedDestinations();
+      await _ensureSelectedDestinations();
+      final selected = _cachedSelectedDestinations;
       if (selected.isEmpty) {
-        errorMessage = 'No destinations selected. Go back to Step 1.';
+        errorMessage = _destinationsLoadFailed || draft.destinations.isNotEmpty
+            ? 'Could not verify your destinations. Pull to refresh and '
+                  'try again.'
+            : 'No destinations selected. Go back to Step 1.';
         _defaultPlaces = [];
         return;
       }
 
-      // ---- Build type list from user interests ----
+      // Build Google Places types from traveler interests (same as before)
       final interests = draft.interests;
       final allTypes = <String>[];
       for (final interest in interests) {
@@ -713,60 +883,80 @@ class Step3AddPlaceVM extends ChangeNotifier {
       final all = <WizardPlace>[];
       final seenIds = <String>{};
 
+      // Loop through each selected destination
       for (final dest in selected) {
-        final hotspot = await _candidateService.selectBestHotspot(
-          destinationName: dest.destinationName,
-          destinationId: dest.destinationId,
-          interests: draft.interests.toList(),
-        );
-        _selectedHotspot = hotspot;
+        // 1. Get hotspot for THIS destination
+        final hotspot = await _selectHotspotForDestination(dest);
+        _selectedHotspot = hotspot; // keep for UI / getters
 
-        if (hotspot != null) {
-          final radiusMeters = (hotspot.suggestedRadiusKm * 1000).toDouble();
-          final places = await _mapsService.searchNearbyPlaces(
+        // If no hotspot, skip this destination (no fallback)
+        if (hotspot == null) {
+          continue;
+        }
+
+        // 2. Search around the hotspot, using its configured
+        //    suggested_radius_km as the discovery range.
+        final places = await _mapsService.searchNearbyPlaces(
+          latitude: hotspot.latitude,
+          longitude: hotspot.longitude,
+          radius: hotspot.suggestedRadiusKm * 1000,
+          types: uniqueTypes,
+        );
+
+        // 3. Filter candidates and add to the list
+        final destCoords = (dest.latitude != null && dest.longitude != null)
+            ? Coordinates(latitude: dest.latitude!, longitude: dest.longitude!)
+            : null;
+
+        for (final place in places) {
+          // Null / malformed records never enter the list.
+          if (!_isValidPlaceRecord(place)) continue;
+          // Ensure the place belongs to THIS destination (identity or
+          // geographic range — never another destination's place).
+          if (!_belongsToDestination(place, dest, destCoords)) continue;
+          // Deduplicate by stable place_id, not name.
+          if (!seenIds.add(place.placeId)) continue;
+
+          // Hotspot classification (WITHIN / OUTSIDE preserved; FAR
+          // cannot occur around the hotspot radius but is filtered for
+          // safety).
+          final hotspotCoords = Coordinates(
             latitude: hotspot.latitude,
             longitude: hotspot.longitude,
-            radius: radiusMeters,
-            types: uniqueTypes, // dynamic types
           );
-          for (final place in places) {
-            if (!seenIds.add(place.placeId)) continue;
-            all.add(_toWizardPlace(
+          final distanceKm = _mapsService.distanceKm(
+            hotspotCoords,
+            place.coordinates,
+          );
+          final distanceStatus = hotspot_svc.classifyHotspotDistance(
+            distanceKm,
+            hotspot.suggestedRadiusKm,
+          );
+          if (distanceStatus ==
+              hotspot_svc.HotspotDistanceStatus.farFromDestination) {
+            continue;
+          }
+
+          all.add(
+            _toWizardPlace(
               place,
               dest.destinationName,
-              destinationId: hotspot.destinationId,
+              destinationId: dest.destinationId,
               hotspotId: hotspot.id,
-            ));
-          }
-        } else {
-          // Fallback: use destination centre
-          final hasCoords = dest.latitude != null && dest.longitude != null;
-          if (!hasCoords) continue;
-          final places = await _mapsService.searchNearbyPlaces(
-            latitude: dest.latitude!,
-            longitude: dest.longitude!,
-            radius: 10000,
-            types: uniqueTypes,
+              distanceKm: distanceKm,
+              distanceStatus: distanceStatus.label,
+            ),
           );
-          final destCoords = Coordinates(
-            latitude: dest.latitude!,
-            longitude: dest.longitude!,
-          );
-          for (final place in places) {
-            if (!_belongsToDestination(place, dest, destCoords)) continue;
-            if (!seenIds.add(place.placeId)) continue;
-            all.add(_toWizardPlace(place, dest.destinationName));
-          }
         }
       }
 
+      // Sort by rating (highest first) and store
       all.sort((a, b) => b.rating.compareTo(a.rating));
       _defaultPlaces = all;
       notifyListeners();
 
-      // ---- Fetch AI durations in background ----
+      // Fetch AI durations in the background
       _fetchAndUpdateDurations();
-
     } catch (e) {
       debugPrint('❌ loadDefaultPlaces error: $e');
       errorMessage = 'Could not load places. Check your connection.';
@@ -775,6 +965,38 @@ class Step3AddPlaceVM extends ChangeNotifier {
       isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Returns the best hotspot for a given destination, using the internal
+  /// cache. A hotspot whose `destination_id` does not match the requested
+  /// destination is discarded (hotspots are destination-scoped).
+  /// Returns null if no hotspot can be determined.
+  Future<DestinationHotspot?> _selectHotspotForDestination(
+    Destination dest,
+  ) async {
+    // Check cache first
+    if (_hotspotCache.containsKey(dest.destinationId)) {
+      return _hotspotCache[dest.destinationId];
+    }
+
+    DestinationHotspot? hotspot;
+    try {
+      hotspot = await _candidateService.selectBestHotspot(
+        destinationName: dest.destinationName,
+        destinationId: dest.destinationId,
+        interests: draft.interests.toList(),
+      );
+      if (hotspot != null && hotspot.destinationId != dest.destinationId) {
+        debugPrint('❌ Hotspot ${hotspot.id} belongs to '
+            '${hotspot.destinationId}, not ${dest.destinationId} — discarded');
+        hotspot = null;
+      }
+    } catch (e) {
+      debugPrint('Hotspot resolution failed for ${dest.destinationName}: $e');
+    }
+
+    _hotspotCache[dest.destinationId] = hotspot;
+    return hotspot;
   }
 
   Future<void> loadMorePlaces() async {
@@ -801,9 +1023,13 @@ class Step3AddPlaceVM extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final selected = await _resolveSelectedDestinations();
+      await _ensureSelectedDestinations();
+      final selected = _cachedSelectedDestinations;
       if (selected.isEmpty) {
-        errorMessage = 'No destinations selected.';
+        errorMessage = _destinationsLoadFailed || draft.destinations.isNotEmpty
+            ? 'Could not verify your destinations. Pull to refresh and '
+                  'try again.'
+            : 'No destinations selected.';
         _searchResults = [];
         return;
       }
@@ -820,11 +1046,9 @@ class Step3AddPlaceVM extends ChangeNotifier {
       final seenIds = <String>{};
 
       for (final dest in selected) {
-        final hotspot = await _candidateService.selectBestHotspot(
-          destinationName: dest.destinationName,
-          destinationId: dest.destinationId,
-          interests: draft.interests.toList(),
-        );
+        // Destination-scoped hotspot (cached; a hotspot from another
+        // destination is never used).
+        final hotspot = await _hotspotForDestination(dest.destinationId);
         _selectedHotspot = hotspot;
 
         final coords = dest.latitude != null && dest.longitude != null
@@ -841,16 +1065,19 @@ class Step3AddPlaceVM extends ChangeNotifier {
           longitude: coords?.longitude,
         );
 
-        // Filter results by the relevant types
+        // Filter results by the relevant types (attractions AND food —
+        // both interest type mappings stay supported).
         final filteredResults = results.where((place) {
-          final placeTypes = place.placeTypes ?? [];
+          final placeTypes = place.placeTypes;
           return placeTypes.any((t) => uniqueTypes.contains(t));
         }).toList();
 
         for (final place in filteredResults) {
+          // Google results NEVER bypass validation:
+          // null/invalid → out; duplicate (stable place_id) → out;
+          // outside the selected destination → out; FAR → out.
+          if (!_isValidPlaceRecord(place)) continue;
           if (!seenIds.add(place.placeId)) continue;
-
-          // ✅ NEW: Ensure the searched place is actually inside the destination bounds!
           if (!_belongsToDestination(place, dest, coords)) continue;
 
           double? distanceKm;
@@ -864,20 +1091,29 @@ class Step3AddPlaceVM extends ChangeNotifier {
               hotspotCoords,
               place.coordinates,
             );
-            distanceStatus = classifyHotspotDistance(
+            final status = hotspot_svc.classifyHotspotDistance(
               distanceKm,
               hotspot.suggestedRadiusKm,
-            ).label;
+            );
+            if (status ==
+                hotspot_svc.HotspotDistanceStatus.farFromDestination) {
+              continue;
+            }
+            distanceStatus = status.label;
           }
 
-          all.add(_toWizardPlace(
-            place,
-            dest.destinationName,
-            distanceKm: distanceKm,
-            distanceStatus: distanceStatus,
-            destinationId: hotspot?.destinationId ?? dest.destinationId, // ✅ Safely assign destination ID
-            hotspotId: hotspot?.id,
-          ));
+          all.add(
+            _toWizardPlace(
+              place,
+              dest.destinationName,
+              distanceKm: distanceKm,
+              distanceStatus: distanceStatus,
+              // Identity is always the destination currently being
+              // searched — never switched to a place's own destination.
+              destinationId: dest.destinationId,
+              hotspotId: hotspot?.id,
+            ),
+          );
         }
       }
 
@@ -885,7 +1121,6 @@ class Step3AddPlaceVM extends ChangeNotifier {
       notifyListeners();
 
       _fetchAndUpdateSearchDurations();
-
     } catch (e) {
       debugPrint('❌ _searchMaps error: $e');
       errorMessage = 'Could not search places. Check your connection.';
@@ -897,28 +1132,34 @@ class Step3AddPlaceVM extends ChangeNotifier {
   }
 
   // ---------- AI Duration Helpers ----------
-  Future<String> _fetchDurationFromAI(String placeName, String placeType, String location) async {
+  Future<String> _fetchDurationFromAI(
+    String placeName,
+    String placeType,
+    String location,
+  ) async {
     // 🔥 Replace with real Deepseek API call.
     await Future.delayed(const Duration(milliseconds: 300));
     final type = placeType.toLowerCase();
-    if (type.contains('museum') || type.contains('art_gallery')) return '120 min';
+    if (type.contains('museum') || type.contains('art_gallery'))
+      return '120 min';
     if (type.contains('restaurant') || type.contains('cafe')) return '60 min';
-    if (type.contains('park') || type.contains('natural_feature')) return '90 min';
+    if (type.contains('park') || type.contains('natural_feature'))
+      return '90 min';
     if (type.contains('shopping') || type.contains('mall')) return '90 min';
-    if (type.contains('attraction') || type.contains('landmark')) return '75 min';
+    if (type.contains('attraction') || type.contains('landmark'))
+      return '75 min';
     return '60 min';
   }
 
   Future<void> _fetchAndUpdateDurations() async {
     if (_defaultPlaces.isEmpty) return;
-    final futures = _defaultPlaces.map((place) =>
-        _fetchDurationFromAI(place.name, place.type, place.location));
+    final futures = _defaultPlaces.map(
+      (place) => _fetchDurationFromAI(place.name, place.type, place.location),
+    );
     try {
       final durations = await Future.wait(futures);
       for (int i = 0; i < _defaultPlaces.length; i++) {
-        _defaultPlaces[i] = _defaultPlaces[i].copyWith(
-          duration: durations[i],
-        );
+        _defaultPlaces[i] = _defaultPlaces[i].copyWith(duration: durations[i]);
       }
       notifyListeners();
     } catch (e) {
@@ -928,14 +1169,13 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
   Future<void> _fetchAndUpdateSearchDurations() async {
     if (_searchResults.isEmpty) return;
-    final futures = _searchResults.map((place) =>
-        _fetchDurationFromAI(place.name, place.type, place.location));
+    final futures = _searchResults.map(
+      (place) => _fetchDurationFromAI(place.name, place.type, place.location),
+    );
     try {
       final durations = await Future.wait(futures);
       for (int i = 0; i < _searchResults.length; i++) {
-        _searchResults[i] = _searchResults[i].copyWith(
-          duration: durations[i],
-        );
+        _searchResults[i] = _searchResults[i].copyWith(duration: durations[i]);
       }
       notifyListeners();
     } catch (e) {
@@ -944,39 +1184,57 @@ class Step3AddPlaceVM extends ChangeNotifier {
   }
 
   // ---------- Destination Helpers ----------
+  /// Resolves the draft's selected destinations from the database.
+  /// PRIMARY identity is `destination_id`; the name match only exists as
+  /// a fallback for legacy draft rows that carry no ID.
   Future<List<Destination>> _resolveSelectedDestinations() async {
     if (draft.destinations.isEmpty) return [];
     final all = await _destinationRepository.getAllDestinations();
-    final names = draft.destinationNames.map((n) => n.trim().toLowerCase()).toSet();
-    return all.where((d) => names.contains(d.destinationName.trim().toLowerCase())).toList();
+    final selectedIds = <String>{};
+    final fallbackNames = <String>{};
+    for (final d in draft.destinations) {
+      final id = d.destinationId.trim();
+      if (id.isNotEmpty) {
+        selectedIds.add(id);
+      } else {
+        fallbackNames.add(d.destinationName.trim().toLowerCase());
+      }
+    }
+    final resolvedIds = <String>{};
+    final out = <Destination>[];
+    for (final d in all) {
+      if (resolvedIds.contains(d.destinationId)) continue;
+      final matchesIdentity = selectedIds.contains(d.destinationId.trim());
+      final matchesLegacyName =
+          fallbackNames.contains(d.destinationName.trim().toLowerCase());
+      if (matchesIdentity || (selectedIds.isEmpty && matchesLegacyName)) {
+        resolvedIds.add(d.destinationId);
+        out.add(d);
+      }
+    }
+    return out;
   }
 
+  /// Check 1 — DESTINATION COMPATIBILITY: stable database identity
+  /// (`destination_id`) first, then geographic range using the
+  /// destination coordinates and [ItineraryConstants.maxSearchRadiusKm].
   bool _belongsToDestination(
-      Place place,
-      Destination dest,
-      Coordinates? destCoords,
-      ) {
-    const maxKm = 50.0;
-    if (destCoords != null) {
-      final d = _mapsService.distanceKm(destCoords, place.coordinates);
-      if (d <= maxKm) return true;
-    }
-    if (dest.destinationName.isNotEmpty) {
-      final address = (place.address + ' ' + place.name).toLowerCase();
-      if (address.contains(dest.destinationName.toLowerCase())) return true;
-    }
-    return false;
+    Place place,
+    Destination dest,
+    Coordinates? destCoords,
+  ) {
+    return _destinationMatchesPlace(place, dest);
   }
 
   // ---------- Conversion Helpers ----------
   WizardPlace _toWizardPlace(
-      Place place,
-      String destinationName, {
-        double? distanceKm,
-        String? distanceStatus,
-        String? destinationId,
-        String? hotspotId,
-      }) {
+    Place place,
+    String destinationName, {
+    double? distanceKm,
+    String? distanceStatus,
+    String? destinationId,
+    String? hotspotId,
+  }) {
     // Keep the full Place record so selection-time validation can check
     // identity, coordinates, category and destination compatibility.
     registerPlace(place);
@@ -1009,66 +1267,196 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
   String _resolvePrimaryCategory(List<String> types) {
     if (types.isEmpty) return 'Attraction';
-    final specificTypes = types.where((t) =>
-    t != 'point_of_interest' && t != 'establishment').toList();
-    final rawType = specificTypes.isNotEmpty ? specificTypes.first : types.first;
-    return rawType
-        .replaceAll('_', ' ')
-        .split(' ')
-        .map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '')
-        .join(' ');
+
+    // Priority order: more specific/suitable types first
+    const priorityMap = {
+      // Must-visit worthy categories (attractions)
+      'tourist_attraction': 'Attraction',
+      'amusement_park': 'Amusement Park',
+      'theme_park': 'Theme Park',
+      'water_park': 'Water Park',
+      'zoo': 'Zoo',
+      'aquarium': 'Aquarium',
+      'museum': 'Museum',
+      'art_gallery': 'Art Gallery',
+      'park': 'Park',
+      'national_park': 'National Park',
+      'natural_feature': 'Natural Feature',
+      'botanical_garden': 'Botanical Garden',
+      'beach': 'Beach',
+      'campground': 'Campground',
+      'hiking_area': 'Hiking Area',
+      'place_of_worship': 'Religious Site',
+      'church': 'Church',
+      'hindu_temple': 'Temple',
+      'mosque': 'Mosque',
+      'synagogue': 'Synagogue',
+      'stadium': 'Stadium',
+      'bowling_alley': 'Bowling',
+      'movie_theater': 'Cinema',
+
+      // Food & dining
+      'restaurant': 'Restaurant',
+      'cafe': 'Cafe',
+      'bakery': 'Bakery',
+      'bar': 'Bar',
+      'night_club': 'Night Club',
+
+      // Shopping
+      'shopping_mall': 'Shopping Mall',
+      'department_store': 'Department Store',
+      'clothing_store': 'Clothing Store',
+      'book_store': 'Bookstore',
+      'jewelry_store': 'Jewellery Store',
+      'supermarket': 'Supermarket',
+
+      // Services (NOT must-visit worthy)
+      'pharmacy': 'Pharmacy',
+      'hospital': 'Hospital',
+      'doctor': 'Doctor',
+      'dentist': 'Dentist',
+      'bank': 'Bank',
+      'atm': 'ATM',
+      'post_office': 'Post Office',
+      'real_estate_agency': 'Real Estate',
+      'lawyer': 'Lawyer',
+      'spa': 'Spa',
+      'hair_care': 'Hair Salon',
+      'beauty_salon': 'Beauty Salon',
+      'gym': 'Gym',
+      'fitness_center': 'Fitness Centre',
+    };
+
+    // Try to find a matching type in priority order
+    for (final type in types) {
+      final matched = priorityMap[type.toLowerCase()];
+      if (matched != null) {
+        return matched;
+      }
+    }
+
+    // If no match, try to format the first non-generic type nicely
+    final specificTypes = types
+        .where((t) => t != 'point_of_interest' && t != 'establishment')
+        .toList();
+    if (specificTypes.isNotEmpty) {
+      final raw = specificTypes.first;
+      return raw
+          .replaceAll('_', ' ')
+          .split(' ')
+          .map(
+            (w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '',
+          )
+          .join(' ');
+    }
+
+    return 'Place';
   }
 
   IconData _getCategoryIcon(List<String> types) {
     if (types.isEmpty) return Icons.place_rounded;
-    final joined = types.join(' ').toLowerCase();
 
-    if (joined.contains('restaurant') ||
-        joined.contains('cafe') ||
-        joined.contains('food') ||
-        joined.contains('bakery')) {
+    // Check for food/dining
+    if (_typesContain(types, [
+      'restaurant',
+      'cafe',
+      'bakery',
+      'bar',
+      'meal_takeaway',
+      'meal_delivery',
+    ])) {
       return Icons.restaurant_rounded;
-    } else if (joined.contains('museum') ||
-        joined.contains('art_gallery')) {
+    }
+
+    // Check for museums & galleries
+    if (_typesContain(types, ['museum', 'art_gallery'])) {
       return Icons.museum_rounded;
-    } else if (joined.contains('park') ||
-        joined.contains('natural_feature') ||
-        joined.contains('campground')) {
+    }
+
+    // Check for nature & parks
+    if (_typesContain(types, [
+      'park',
+      'national_park',
+      'natural_feature',
+      'campground',
+      'botanical_garden',
+    ])) {
       return Icons.park_rounded;
-    } else if (joined.contains('tourist_attraction') ||
-        joined.contains('amusement_park') ||
-        joined.contains('church') ||
-        joined.contains('hindu_temple') ||
-        joined.contains('mosque')) {
+    }
+
+    // Check for attractions
+    if (_typesContain(types, [
+      'tourist_attraction',
+      'amusement_park',
+      'theme_park',
+      'water_park',
+      'zoo',
+      'aquarium',
+      'place_of_worship',
+      'church',
+      'hindu_temple',
+      'mosque',
+      'synagogue',
+      'stadium',
+    ])) {
       return Icons.attractions_rounded;
-    } else if (joined.contains('shopping_mall') ||
-        joined.contains('store')) {
+    }
+
+    // Check for shopping
+    if (_typesContain(types, [
+      'shopping_mall',
+      'department_store',
+      'clothing_store',
+      'book_store',
+      'jewelry_store',
+      'supermarket',
+      'convenience_store',
+    ])) {
       return Icons.shopping_bag_rounded;
     }
+
+    // Check for services (pharmacy, bank, etc.)
+    if (_typesContain(types, [
+      'pharmacy',
+      'hospital',
+      'doctor',
+      'dentist',
+      'bank',
+      'atm',
+      'post_office',
+      'real_estate_agency',
+      'lawyer',
+      'spa',
+      'hair_care',
+      'beauty_salon',
+      'gym',
+      'fitness_center',
+    ])) {
+      return Icons.medical_services_rounded;
+    }
+
     return Icons.place_rounded;
+  }
+
+  // Helper to check if any type matches the list
+  bool _typesContain(List<String> types, List<String> candidates) {
+    final lowerTypes = types.map((t) => t.toLowerCase()).toSet();
+    return candidates.any((c) => lowerTypes.contains(c));
   }
 
   (IconData, String) _getTravelModeInfo() {
     final mode = draft.transportation.toString().toLowerCase();
-    if (mode.contains('car') || mode.contains('drive') || mode.contains('driving')) {
+    if (mode.contains('car') ||
+        mode.contains('drive') ||
+        mode.contains('driving')) {
       return (Icons.directions_car_rounded, 'Drive');
-    } else if (mode.contains('transit') || mode.contains('bus') || mode.contains('train')) {
+    } else if (mode.contains('transit') ||
+        mode.contains('bus') ||
+        mode.contains('train')) {
       return (Icons.directions_bus_rounded, 'Transit');
     } else if (mode.contains('bike') || mode.contains('cycling')) {
       return (Icons.directions_bike_rounded, 'Bike');
     }
     return (Icons.directions_walk_rounded, 'Walk');
-  }
-
-  // ─── Hotspot distance classifier (corrected) ──────────────
-  static ({String label, Color color}) classifyHotspotDistance(
-      double distanceKm, double suggestedRadiusKm) {
-    if (distanceKm <= suggestedRadiusKm) {
-      return (label: 'WITHIN_HOTSPOT', color: Colors.green);
-    } else if (distanceKm <= suggestedRadiusKm * 2.0) {
-      return (label: 'OUTSIDE_HOTSPOT', color: Colors.orange);
-    } else {
-      return (label: 'FAR_FROM_DESTINATION', color: Colors.red);
-    }
   }
 }

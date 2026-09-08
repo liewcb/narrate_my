@@ -18,9 +18,21 @@ import '../../model/repositories/adapters/itinerary/place_repository_adapter.dar
 /// Place identity (stopId, itineraryId, dayIndex, stopOrder) is preserved
 /// when the location changes — the same stop slot keeps its scheduling context.
 ///
-/// Every edit is validated deterministically against the RESULTING itinerary
-/// day via [ItineraryValidator] BEFORE anything is persisted. An invalid edit
-/// never modifies the original itinerary and never reaches the database.
+/// Edit Stop is TRAVELER TIME CONTROL — the traveler decides the times,
+/// the program only manages schedule conflicts. Route feasibility,
+/// distance, travel time, pace and optimization NEVER reject a
+/// customization; they are computed for display/persistence only.
+/// Time, duration and location edits are checked for BASIC validity only
+/// (start < end, duration > 0 within the existing min/max constants,
+/// the absolute daily schedule window, a valid canonical Place, the
+/// place's operating hours and day-level duplicate protection).
+/// If a traveler-selected time overlaps another stop, the program
+/// ARRANGES the other (planned) stops around it — preserving each of
+/// their durations, locations, statuses and order — so the final day
+/// contains no time conflicts while the traveler's choice survives.
+/// [ItineraryValidator] enforces the basic rules in customization mode;
+/// full generation-time validation remains intact for every other
+/// module.
 class EditStopViewModel extends ChangeNotifier {
   static const String planned = 'PLANNED';
   static const String completed = 'COMPLETED';
@@ -161,13 +173,54 @@ class EditStopViewModel extends ChangeNotifier {
 
   // ─── Location change ─────────────────────────────────────────
 
+  /// Replace THIS stop's location with a canonical, database-backed [Place].
+  ///
+  /// LOCATION CUSTOMIZATION, NOT ROUTE OPTIMIZATION: distance, travel
+  /// time and route feasibility are calculated and PERSISTED as
+  /// INFORMATION ONLY. They never reject the traveler's choice. Only
+  /// genuine/basic rules block a change: an incomplete/invalid Place
+  /// record, a duplicate of a place already scheduled in the day, and
+  /// the place's own operating hours vs. the scheduled visit (existing
+  /// explicit business rules).
+  ///
+  /// Only THIS stop changes. stopId / itineraryId / dayIndex / stopOrder
+  /// / status / times / duration are preserved. No other stop is ever
+  /// read as a restriction, moved, or written.
   Future<bool> changePlace(Place newPlace) async {
+    debugPrint('[EDIT_STOP_LOCATION] Starting location change');
+    debugPrint('[EDIT_STOP_LOCATION] Stop ID: ${_stop.stopId}');
+    debugPrint('[EDIT_STOP_LOCATION] Old place ID: ${_stop.placeId}');
+    final oldPlace = _stop.place;
+    if (oldPlace != null) {
+      debugPrint('[EDIT_STOP_LOCATION] Old place name: ${oldPlace.placeName}');
+    }
+    debugPrint('[EDIT_STOP_LOCATION] New place ID: ${newPlace.placeId}');
+    debugPrint('[EDIT_STOP_LOCATION] New place name: ${newPlace.placeName}');
+    debugPrint('[EDIT_STOP_LOCATION] New coordinates: '
+        '${newPlace.placeLatitude}, ${newPlace.placeLongitude}');
+
     if (!isEditable) {
       _error = _buildLockedMessage();
+      debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - stop not editable '
+          '(${_buildLockedMessage()})');
       notifyListeners();
       return false;
     }
-    if (newPlace.placeId == _stop.placeId) {
+    // A usable canonical database Place: identity, name and real
+    // coordinates are required (basic data validity, NOT route validity).
+    if (newPlace.placeId.trim().isEmpty ||
+        newPlace.placeName.trim().isEmpty ||
+        (newPlace.placeLatitude == 0 && newPlace.placeLongitude == 0)) {
+      _error = 'This place does not have enough information to be used in '
+          'the itinerary.';
+      debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - invalid place '
+          'record (missing id/name/coordinates)');
+      notifyListeners();
+      return false;
+    }
+    if (newPlace.placeId.trim() == _stop.placeId.trim()) {
+      debugPrint('[EDIT_STOP_VALIDATION] Result: SKIPPED - same place as '
+          'current stop');
       _error = null;
       return true;
     }
@@ -190,11 +243,11 @@ class EditStopViewModel extends ChangeNotifier {
 
       final itinerary = await _loadItinerary();
       final index = resulting.indexWhere((s) => s.stopId == _stop.stopId);
-      final reroute = <int>{
-        if (index > 0) index,
-        if (index < resulting.length - 1) index + 1,
-      };
 
+      // Customization mode: the validator keeps enforcing basic place /
+      // time / daily-window rules but travel distance, travel time, route
+      // availability and inter-stop overlap are INFORMATION ONLY and can
+      // never reject this edit.
       final result = await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
@@ -202,48 +255,74 @@ class EditStopViewModel extends ChangeNotifier {
           itinerary.explorationTime,
         ),
         transportMode: itinerary.transportationMode,
-        rerouteLegIndices: reroute,
         focusStop: _stop,
         candidatePlace: newPlace,
         travelPace: itinerary.travelPace,
+        customizationMode: true,
       );
 
       if (!result.isValid) {
         _error = result.issues.first.message;
+        debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - '
+            '${result.issues.first.code}: ${result.issues.first.message}');
         notifyListeners();
         return false;
       }
+      debugPrint('[EDIT_STOP_VALIDATION] Result: VALID');
 
+      // Recalculate THIS stop's inbound travel time (previous → new).
+      // Informational + displayed; never a rejection reason.
       var toSave = updated;
       if (index > 0) {
         final prev = resulting[index - 1];
         final prevPlace = prev.place;
         if (prevPlace != null) {
+          final distanceKm =
+              prevPlace.coordinates.distanceTo(newPlace.coordinates);
+          debugPrint('[EDIT_STOP_ROUTE_INFO] Previous → New Place distance: '
+              '${distanceKm.toStringAsFixed(1)} km');
           final routed = await _validator.travelMinutesBetween(
             prevPlace.coordinates,
             newPlace.coordinates,
             itinerary.transportationMode,
           );
+          debugPrint('[EDIT_STOP_ROUTE_INFO] Previous → New Place travel '
+              'time: ${routed ?? 'unknown'} minutes');
+          debugPrint('[EDIT_STOP_ROUTE_INFO] Travel time is INFORMATION '
+              'ONLY; it will NOT block location customization.');
           if (routed != null) {
             toSave = toSave.copyWith(travelFromPrevMinutes: routed);
           }
         }
       } else {
         toSave = toSave.copyWith(travelFromPrevMinutes: 0);
+        debugPrint('[EDIT_STOP_ROUTE_INFO] First stop - no previous place; '
+            'travelFromPrevMinutes set to 0 (information only)');
       }
 
+      // ONLY this stop is written. The next stop is never modified.
+      debugPrint('[EDIT_STOP_SAVE] Saving edited stop');
+      debugPrint('[EDIT_STOP_SAVE] Stop ID: ${toSave.stopId}');
+      debugPrint('[EDIT_STOP_SAVE] Place ID: ${toSave.placeId}');
+      debugPrint('[EDIT_STOP_SAVE] Start: ${_fmt(toSave.startTime)}');
+      debugPrint('[EDIT_STOP_SAVE] End: ${_fmt(toSave.endTime)}');
+      debugPrint('[EDIT_STOP_SAVE] Duration: ${toSave.durationMinutes}');
+      debugPrint('[EDIT_STOP_SAVE] Travel from previous: '
+          '${toSave.travelFromPrevMinutes} minutes');
       final saved = await _repo.updateStop(toSave);
+      debugPrint('[EDIT_STOP_SAVE] Save successful');
+
       _stop = saved.copyWith(place: newPlace);
       _dayStopsWithPlaces = null;
       _error = null;
       await refreshTimeOptions();
       notifyListeners();
-      debugPrint('[EDIT STOP] Location changed to ${newPlace.placeName} '
+      debugPrint('[EDIT_STOP] Location changed to ${newPlace.placeName} '
           '(${newPlace.placeId})');
       return true;
     } catch (e) {
       _error = 'Unable to update the place. Please try again.';
-      debugPrint('[EditStopVM] Change place failed: $e');
+      debugPrint('[EDIT_STOP_SAVE] Save failed: $e');
       notifyListeners();
       return false;
     } finally {
@@ -252,73 +331,159 @@ class EditStopViewModel extends ChangeNotifier {
     }
   }
 
+  /// Previous stop → [newPlace] distance / travel time for the
+  /// change-location confirmation dialog. INFORMATION ONLY — nothing
+  /// here can or should block the traveler's customization.
+  /// Returns `null` when there is no previous stop or places are
+  /// unavailable (first stop / missing data).
+  Future<({double distanceKm, int? travelMinutes})?> travelInfoToPlace(
+      Place newPlace,
+      ) async {
+    try {
+      final dayStops = await _loadDayStops();
+      final idx = dayStops.indexWhere((s) => s.stopId == _stop.stopId);
+      if (idx <= 0) return null;
+      final prevPlace = dayStops[idx - 1].place;
+      if (prevPlace == null) return null;
+      final itinerary = await _loadItinerary();
+      final distanceKm =
+          prevPlace.coordinates.distanceTo(newPlace.coordinates);
+      final travelMinutes = await _validator.travelMinutesBetween(
+        prevPlace.coordinates,
+        newPlace.coordinates,
+        itinerary.transportationMode,
+      );
+      debugPrint('[EDIT_STOP_ROUTE_INFO] Previous → New Place distance: '
+          '${distanceKm.toStringAsFixed(1)} km');
+      debugPrint('[EDIT_STOP_ROUTE_INFO] Previous → New Place travel time: '
+          '${travelMinutes ?? 'unknown'} minutes');
+      debugPrint('[EDIT_STOP_ROUTE_INFO] Travel time is INFORMATION ONLY; '
+          'it will NOT block location customization.');
+      return (distanceKm: distanceKm, travelMinutes: travelMinutes);
+    } catch (e) {
+      debugPrint('[EDIT_STOP_ROUTE_INFO] Travel info unavailable: $e');
+      return null;
+    }
+  }
+
   // ─── Time editing ───────────────────────────────────────────
 
-  /// Set a new temporary START time. The end time is recalculated
-  /// based on the current duration. Validates the resulting day.
+  /// Set a new temporary START time (traveler decision).
+  ///
+  /// The traveler owns the time; previous/next stop distance, travel
+  /// duration, route efficiency, traffic and pace NEVER reject it. The
+  /// only limits are basic validity (duration > 0, start < end) and the
+  /// existing absolute daily schedule window. If the choice creates an
+  /// overlap, the OTHER stops get arranged around it on save — this
+  /// pending value is preserved.
   Future<bool> setStartTime(DateTime newStart) async {
+    final candidate = _combineWithDay(newStart);
+    final startMin = _minutesSinceMidnight(candidate);
+    final duration = _editedDurationMinutes;
+
+    debugPrint('[EDIT_STOP_TIME] Old Start Time: ${_fmt(_editedStartTime)}');
+    debugPrint('[EDIT_STOP_TIME] Traveler Selected Start Time: '
+        '${_fmt(candidate)}');
+    debugPrint('[EDIT_STOP_TIME] Current End Time: ${_fmt(_editedEndTime)}');
+    debugPrint('[EDIT_STOP_TIME] Duration: $duration');
+    debugPrint('[EDIT_STOP_TIME] Travel constraints intentionally ignored');
+
     if (!isEditable) {
       _error = _buildLockedMessage();
+      debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - stop not '
+          'editable (${_buildLockedMessage()})');
       notifyListeners();
       return false;
     }
 
-    final candidate = DateTime(
-      _editedStartTime.year,
-      _editedStartTime.month,
-      _editedStartTime.day,
-      newStart.hour,
-      newStart.minute,
-      newStart.second,
-    );
-    final newEnd = candidate.add(Duration(minutes: _editedDurationMinutes));
-
-    if (!newEnd.isAfter(candidate)) {
+    if (duration <= 0) {
       _error = 'The selected start time is invalid.';
+      debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - duration must '
+          'be greater than 0');
       notifyListeners();
       return false;
     }
-
-    debugPrint('[EDIT STOP] Start selected');
-    debugPrint('[EDIT STOP] Original: ${_fmt(_stop.startTime)} - ${_fmt(_stop.endTime)}');
-    debugPrint('[EDIT STOP] New: ${_fmt(candidate)} - ${_fmt(newEnd)}');
-    debugPrint('[EDIT STOP] Duration: $_editedDurationMinutes minutes');
 
     try {
+      final itinerary = await _loadItinerary();
+      final window = ItineraryConstants.explorationWindowFor(
+        itinerary.explorationTime,
+      );
+
+      // Absolute daily boundary (existing application rule).
+      if (startMin < window.startMinutes) {
+        _error = "The start time must be within the day's available time "
+            '($window).';
+        debugPrint('[EDIT_STOP_TIME] REJECTED: start before the daily '
+            'window start');
+        notifyListeners();
+        return false;
+      }
+      if (startMin + duration > window.endMinutes) {
+        _error = "This stop must finish within the day's available time.";
+        debugPrint('[EDIT_STOP_TIME] REJECTED: start + duration past the '
+            'daily window end');
+        notifyListeners();
+        return false;
+      }
+
+      final newEnd = candidate.add(Duration(minutes: duration));
       final dayStops = await _loadDayStops();
       final updated = _buildUpdatedStop(
         startTime: candidate,
         endTime: newEnd,
-        durationMinutes: _editedDurationMinutes,
+        durationMinutes: duration,
       );
       final resulting = <ItineraryStop>[
         for (final s in dayStops)
           if (s.stopId == _stop.stopId) updated else s,
       ];
 
-      final itinerary = await _loadItinerary();
+      // The validator remains the final authority for BASIC validity
+      // (time ordering, duration consistency, daily window). Route /
+      // travel / overlap checks are skipped in customization mode.
       final result = await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: window,
         transportMode: itinerary.transportationMode,
         focusStop: _stop,
         travelPace: itinerary.travelPace,
+        customizationMode: true,
       );
 
       if (!result.isValid) {
-        _editedStartTime = _stop.startTime;
-        _editedEndTime = _stop.endTime;
+        // Reject ONLY the requested change. The last accepted (possibly
+        // already customized) pending values stay untouched — the
+        // original generated schedule is never force-restored.
         _error = result.issues.first.message;
+        debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - '
+            '${result.issues.first.code}: ${result.issues.first.message}');
         notifyListeners();
         return false;
       }
 
+      debugPrint('[EDIT_STOP_TIME] Conflict Check');
+      final conflictPreview = _findRemainingConflict(resulting);
+      if (conflictPreview != null) {
+        debugPrint('[EDIT_STOP_VALIDATION] Time conflict detected');
+        debugPrint('[EDIT_STOP_VALIDATION] Affected stop ID: '
+            '${conflictPreview.stopId}');
+        debugPrint('[EDIT_STOP_VALIDATION] Conflict with stop ID: '
+            '${_stop.stopId}');
+        debugPrint('[EDIT_STOP_VALIDATION] Arranging schedule to remove '
+            'conflict when saving (traveler time kept as anchor)');
+      } else {
+        debugPrint('[EDIT_STOP_VALIDATION] No schedule conflict detected');
+        debugPrint('[EDIT_STOP_VALIDATION] Traveler-selected time accepted');
+      }
+      _logTravelInfo(resulting);
+
       _editedStartTime = candidate;
       _editedEndTime = newEnd;
       _error = null;
+      debugPrint('[EDIT_STOP_TIME] Start time accepted '
+          '(${_fmt(candidate)} - ${_fmt(newEnd)})');
       await _refreshTimeOptions(itinerary, dayStops);
       notifyListeners();
       return true;
@@ -331,49 +496,74 @@ class EditStopViewModel extends ChangeNotifier {
   }
 
   /// Set a new temporary END time. The duration is recalculated
-  /// as `end - start`. Validates the resulting day.
+  /// as `end - start`.
+  ///
+  /// Traveler customization: the next stop, the route and travel times
+  /// do NOT restrict the end time. Only basic rules apply: end > start,
+  /// the existing minimum/maximum visit duration constants, and the
+  /// absolute daily schedule window (no midnight crossing).
   Future<bool> setEndTime(DateTime newEnd) async {
+    final candidate = _combineWithDay(newEnd);
+    final startMin = _minutesSinceMidnight(_editedStartTime);
+    final endMin = _minutesSinceMidnight(candidate);
+
+    debugPrint('[EDIT_STOP_TIME] Old End Time: ${_fmt(_editedEndTime)}');
+    debugPrint('[EDIT_STOP_TIME] Traveler Selected End Time: '
+        '${_fmt(candidate)}');
+    debugPrint('[EDIT_STOP_TIME] Current Start Time: '
+        '${_fmt(_editedStartTime)}');
+    debugPrint('[EDIT_STOP_TIME] Duration: ${endMin - startMin}');
+    debugPrint('[EDIT_STOP_TIME] Travel constraints intentionally ignored');
+
     if (!isEditable) {
       _error = _buildLockedMessage();
+      debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - stop not '
+          'editable (${_buildLockedMessage()})');
       notifyListeners();
       return false;
     }
 
-    final candidate = DateTime(
-      _editedEndTime.year,
-      _editedEndTime.month,
-      _editedEndTime.day,
-      newEnd.hour,
-      newEnd.minute,
-      newEnd.second,
-    );
-
-    if (!candidate.isAfter(_editedStartTime)) {
+    if (endMin <= startMin) {
       _error = 'End time must be after start time.';
+      debugPrint('[EDIT_STOP_TIME] REJECTED: start time must be before '
+          'end time');
       notifyListeners();
       return false;
     }
 
-    final newDuration = candidate.difference(_editedStartTime).inMinutes;
+    final newDuration = endMin - startMin;
     if (newDuration < ItineraryConstants.minimumVisitDurationMinutes) {
       _error = 'Visit duration must be at least '
           '${ItineraryConstants.minimumVisitDurationMinutes} minutes.';
+      debugPrint('[EDIT_STOP_TIME] REJECTED: duration below the existing '
+          'minimum visit duration');
       notifyListeners();
       return false;
     }
     if (newDuration > ItineraryConstants.maximumVisitDurationMinutes) {
       _error = 'Visit duration cannot exceed '
           '${ItineraryConstants.maximumVisitDurationMinutes} minutes.';
+      debugPrint('[EDIT_STOP_TIME] REJECTED: duration above the existing '
+          'maximum visit duration');
       notifyListeners();
       return false;
     }
 
-    debugPrint('[EDIT STOP] End selected');
-    debugPrint('[EDIT STOP] Original: ${_fmt(_stop.startTime)} - ${_fmt(_stop.endTime)}');
-    debugPrint('[EDIT STOP] New: ${_fmt(_editedStartTime)} - ${_fmt(candidate)}');
-    debugPrint('[EDIT STOP] Duration: $newDuration minutes');
-
     try {
+      final itinerary = await _loadItinerary();
+      final window = ItineraryConstants.explorationWindowFor(
+        itinerary.explorationTime,
+      );
+
+      // Absolute daily boundary only — NOT the next stop.
+      if (endMin > window.endMinutes) {
+        _error = "This stop must finish within the day's available time.";
+        debugPrint('[EDIT_STOP_TIME] REJECTED: end past the daily window '
+            'end');
+        notifyListeners();
+        return false;
+      }
+
       final dayStops = await _loadDayStops();
       final updated = _buildUpdatedStop(
         startTime: _editedStartTime,
@@ -385,29 +575,48 @@ class EditStopViewModel extends ChangeNotifier {
           if (s.stopId == _stop.stopId) updated else s,
       ];
 
-      final itinerary = await _loadItinerary();
       final result = await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: window,
         transportMode: itinerary.transportationMode,
         focusStop: _stop,
         travelPace: itinerary.travelPace,
+        customizationMode: true,
       );
 
       if (!result.isValid) {
-        _editedEndTime = _stop.endTime;
-        _editedDurationMinutes = _stop.durationMinutes;
+        // Reject ONLY the requested change — previously accepted
+        // customizations of the pending edit are preserved.
         _error = result.issues.first.message;
+        debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - '
+            '${result.issues.first.code}: ${result.issues.first.message}');
         notifyListeners();
         return false;
       }
 
+      debugPrint('[EDIT_STOP_TIME] Conflict Check');
+      final conflictPreview = _findRemainingConflict(resulting);
+      if (conflictPreview != null) {
+        debugPrint('[EDIT_STOP_VALIDATION] Time conflict detected');
+        debugPrint('[EDIT_STOP_VALIDATION] Affected stop ID: '
+            '${conflictPreview.stopId}');
+        debugPrint('[EDIT_STOP_VALIDATION] Conflict with stop ID: '
+            '${_stop.stopId}');
+        debugPrint('[EDIT_STOP_VALIDATION] Arranging schedule to remove '
+            'conflict when saving (traveler time kept as anchor)');
+      } else {
+        debugPrint('[EDIT_STOP_VALIDATION] No schedule conflict detected');
+        debugPrint('[EDIT_STOP_VALIDATION] Traveler-selected time accepted');
+      }
+      _logTravelInfo(resulting);
+
       _editedEndTime = candidate;
       _editedDurationMinutes = newDuration;
       _error = null;
+      debugPrint('[EDIT_STOP_TIME] End time accepted '
+          '(${_fmt(_editedStartTime)} - ${_fmt(candidate)}, '
+          '$newDuration minutes)');
       await _refreshTimeOptions(itinerary, dayStops);
       notifyListeners();
       return true;
@@ -419,15 +628,52 @@ class EditStopViewModel extends ChangeNotifier {
     }
   }
 
-  /// Set a new temporary DURATION. The end time is recalculated.
+  /// Set a new temporary DURATION. The end time is recalculated as
+  /// `start + duration`.
+  ///
+  /// Traveler customization: `places.visit_duration_minutes` and the
+  /// original generated duration are REFERENCE ONLY and never forced;
+  /// the next stop and travel times never restrict the duration. Only
+  /// basic rules apply: duration > 0, the existing min/max duration
+  /// constants and the absolute daily window. If the longer/shorter
+  /// visit overlaps a neighbour, the other stops are arranged around
+  /// the traveler's choice on save — never the reverse.
   Future<bool> setDuration(int newDurationMinutes) async {
+    debugPrint('[EDIT_STOP_DURATION] Old duration: $_editedDurationMinutes');
+    debugPrint('[EDIT_STOP_DURATION] New duration: $newDurationMinutes');
+    debugPrint('[EDIT_STOP_DURATION] Start: ${_fmt(_editedStartTime)}');
+    debugPrint('[EDIT_STOP_DURATION] Calculated end: '
+        '${_fmt(_editedStartTime.add(Duration(minutes: newDurationMinutes)))}');
+    debugPrint('[EDIT_STOP_DURATION] Travel constraints intentionally '
+        'ignored');
+
     if (!isEditable) {
       _error = _buildLockedMessage();
+      debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - stop not '
+          'editable (${_buildLockedMessage()})');
       notifyListeners();
       return false;
     }
     if (newDurationMinutes <= 0) {
       _error = 'The selected duration is invalid.';
+      debugPrint('[EDIT_STOP_DURATION] REJECTED: duration must be greater '
+          'than 0');
+      notifyListeners();
+      return false;
+    }
+    if (newDurationMinutes < ItineraryConstants.minimumVisitDurationMinutes) {
+      _error = 'Visit duration must be at least '
+          '${ItineraryConstants.minimumVisitDurationMinutes} minutes.';
+      debugPrint('[EDIT_STOP_DURATION] REJECTED: below the existing '
+          'minimum visit duration');
+      notifyListeners();
+      return false;
+    }
+    if (newDurationMinutes > ItineraryConstants.maximumVisitDurationMinutes) {
+      _error = 'Visit duration cannot exceed '
+          '${ItineraryConstants.maximumVisitDurationMinutes} minutes.';
+      debugPrint('[EDIT_STOP_DURATION] REJECTED: above the existing '
+          'maximum visit duration');
       notifyListeners();
       return false;
     }
@@ -436,22 +682,25 @@ class EditStopViewModel extends ChangeNotifier {
       return true;
     }
 
-    final candidateEnd =
-    _editedStartTime.add(Duration(minutes: newDurationMinutes));
-    if (!candidateEnd.isAfter(_editedStartTime)) {
-      _error = 'The selected duration is invalid.';
-      notifyListeners();
-      return false;
-    }
-
-    debugPrint('[EDIT STOP] Duration selected');
-    debugPrint('[EDIT STOP] Original: ${_stop.durationMinutes} minutes');
-    debugPrint('[EDIT STOP] New: $newDurationMinutes minutes');
-    debugPrint('[EDIT STOP] Start: ${_fmt(_editedStartTime)}');
-    debugPrint('[EDIT STOP] End: ${_fmt(candidateEnd)}');
-
     try {
+      final itinerary = await _loadItinerary();
+      final window = ItineraryConstants.explorationWindowFor(
+        itinerary.explorationTime,
+      );
+      final startMin = _minutesSinceMidnight(_editedStartTime);
+
+      // Absolute daily boundary only — never the next stop / route.
+      if (startMin + newDurationMinutes > window.endMinutes) {
+        _error = "This stop must finish within the day's available time.";
+        debugPrint('[EDIT_STOP_DURATION] REJECTED: start + duration past '
+            'the daily window end');
+        notifyListeners();
+        return false;
+      }
+
       final dayStops = await _loadDayStops();
+      final candidateEnd =
+      _editedStartTime.add(Duration(minutes: newDurationMinutes));
       final updated = _buildUpdatedStop(
         startTime: _editedStartTime,
         endTime: candidateEnd,
@@ -462,27 +711,45 @@ class EditStopViewModel extends ChangeNotifier {
           if (s.stopId == _stop.stopId) updated else s,
       ];
 
-      final itinerary = await _loadItinerary();
       final result = await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: window,
         transportMode: itinerary.transportationMode,
         focusStop: _stop,
         travelPace: itinerary.travelPace,
+        customizationMode: true,
       );
 
       if (!result.isValid) {
         _error = result.issues.first.message;
+        debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - '
+            '${result.issues.first.code}: ${result.issues.first.message}');
         notifyListeners();
         return false;
       }
 
+      debugPrint('[EDIT_STOP_TIME] Conflict Check');
+      final conflictPreview = _findRemainingConflict(resulting);
+      if (conflictPreview != null) {
+        debugPrint('[EDIT_STOP_VALIDATION] Time conflict detected');
+        debugPrint('[EDIT_STOP_VALIDATION] Affected stop ID: '
+            '${conflictPreview.stopId}');
+        debugPrint('[EDIT_STOP_VALIDATION] Conflict with stop ID: '
+            '${_stop.stopId}');
+        debugPrint('[EDIT_STOP_VALIDATION] Arranging schedule to remove '
+            'conflict when saving (traveler time kept as anchor)');
+      } else {
+        debugPrint('[EDIT_STOP_VALIDATION] No schedule conflict detected');
+        debugPrint('[EDIT_STOP_VALIDATION] Traveler-selected time accepted');
+      }
+      _logTravelInfo(resulting);
+
       _editedDurationMinutes = newDurationMinutes;
       _editedEndTime = candidateEnd;
       _error = null;
+      debugPrint('[EDIT_STOP_DURATION] Duration accepted '
+          '(${_fmt(_editedStartTime)} - ${_fmt(candidateEnd)})');
       await _refreshTimeOptions(itinerary, dayStops);
       notifyListeners();
       return true;
@@ -494,8 +761,15 @@ class EditStopViewModel extends ChangeNotifier {
     }
   }
 
-  /// Persist the pending time changes (start/end/duration) in a single
-  /// repository update.
+  /// Persist the pending time changes.
+  ///
+  /// THE TRAVELER'S TIME IS THE ANCHOR: it is saved exactly as selected.
+  /// Schedule-conflict management then shifts the OTHER planned stops in
+  /// time (their durations, locations, statuses and order stay untouched)
+  /// only as far as needed to remove overlaps. COMPLETED/SKIPPED stops and
+  /// the absolute daily window are hard boundaries — if no conflict-free
+  /// arrangement exists without touching them, nothing is persisted and
+  /// the traveler is told why.
   Future<bool> saveTimeChanges() async {
     if (!isEditable) {
       _error = _buildLockedMessage();
@@ -505,6 +779,23 @@ class EditStopViewModel extends ChangeNotifier {
     if (!hasUnsavedChanges) {
       _error = null;
       return true;
+    }
+
+    // Basic validity only (never travel/route): end > start and a
+    // duration consistent with the pending times.
+    final pendingStartMin = _minutesSinceMidnight(_editedStartTime);
+    final pendingEndMin = _minutesSinceMidnight(_editedEndTime);
+    if (pendingEndMin <= pendingStartMin ||
+        _editedDurationMinutes != pendingEndMin - pendingStartMin) {
+      _error =
+          'The selected times are inconsistent. Please choose a valid start '
+          'and end time.';
+      debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - invalid time '
+          'ordering or duration inconsistency '
+          '($pendingStartMin -> $pendingEndMin, '
+          '$_editedDurationMinutes min)');
+      notifyListeners();
+      return false;
     }
 
     _isSaving = true;
@@ -524,31 +815,90 @@ class EditStopViewModel extends ChangeNotifier {
       ];
 
       final itinerary = await _loadItinerary();
-      final result = await _validator.validateResultingDay(
+      final window = ItineraryConstants.explorationWindowFor(
+        itinerary.explorationTime,
+      );
+
+      debugPrint('[EDIT_STOP_TIME] Conflict Check');
+      final moved = <ItineraryStop>[];
+      final arranged = _arrangeDayAroundEdited(
         dayStops: resulting,
+        window: window,
+        movedOut: moved,
+      );
+
+      final residual = _findRemainingConflict(arranged);
+      if (residual != null) {
+        _error = 'That time cannot be scheduled without moving a completed '
+            "stop or exceeding the day's available time. Please choose a "
+            'different time.';
+        debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - no conflict-'
+            'free arrangement exists (overlap at stop ${residual.stopId}); '
+            'nothing was persisted');
+        notifyListeners();
+        return false;
+      }
+      debugPrint('[EDIT_STOP_VALIDATION] No schedule conflict detected '
+          '(final arranged day is overlap-free)');
+
+      final anchored = arranged.firstWhere(
+        (s) => s.stopId == _stop.stopId,
+        orElse: () => updated,
+      );
+
+      // The validator remains the final basic-validity authority over the
+      // ARRANGED day (time ordering, duration consistency, daily window).
+      // Travel/route checks stay skipped — customization mode.
+      final result = await _validator.validateResultingDay(
+        dayStops: arranged,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: window,
         transportMode: itinerary.transportationMode,
         focusStop: _stop,
         travelPace: itinerary.travelPace,
+        customizationMode: true,
       );
 
       if (!result.isValid) {
         _error = result.issues.first.message;
+        debugPrint('[EDIT_STOP_VALIDATION] Result: REJECTED - '
+            '${result.issues.first.code}: ${result.issues.first.message}');
         notifyListeners();
         return false;
       }
+      debugPrint('[EDIT_STOP_VALIDATION] Result: VALID');
+      debugPrint('[EDIT_STOP_VALIDATION] Traveler-selected time accepted');
+      debugPrint('[EDIT_STOP_TIME] Final Scheduled Time: '
+          '${_fmt(anchored.startTime)} - ${_fmt(anchored.endTime)}');
 
-      debugPrint('[EDIT STOP] Updating stop');
-      debugPrint('[EDIT STOP] Stop ID: ${updated.stopId}');
-      debugPrint('[EDIT STOP] Start: ${_fmt(updated.startTime)}');
-      debugPrint('[EDIT STOP] End: ${_fmt(updated.endTime)}');
-      debugPrint('[EDIT STOP] Duration: ${updated.durationMinutes} min');
-      debugPrint('[EDIT STOP] Status: ${updated.stopStatus}');
+      debugPrint('[EDIT_STOP_SAVE] Saving edited stop');
+      debugPrint('[EDIT_STOP_SAVE] Stop ID: ${anchored.stopId}');
+      debugPrint('[EDIT_STOP_SAVE] Place ID: ${anchored.placeId}');
+      debugPrint('[EDIT_STOP_SAVE] Start: ${_fmt(anchored.startTime)}');
+      debugPrint('[EDIT_STOP_SAVE] End: ${_fmt(anchored.endTime)}');
+      debugPrint('[EDIT_STOP_SAVE] Duration: ${anchored.durationMinutes}');
+      debugPrint('[EDIT_STOP_SAVE] Travel from previous: '
+          '${anchored.travelFromPrevMinutes} minutes');
+      debugPrint('[EDIT_STOP_SAVE] Status: ${anchored.stopStatus}');
 
-      final saved = await _repo.updateStop(updated);
+      final saved = await _repo.updateStop(anchored);
+      debugPrint('[EDIT_STOP_SAVE] Save successful');
+
+      // Persist the arranged neighbors (times only — duration, place,
+      // status, order preserved by construction).
+      for (final shifted in moved) {
+        try {
+          await _repo.updateStop(shifted);
+          debugPrint('[EDIT_STOP_SAVE] Conflict arrangement: stop '
+              '${shifted.stopId} moved to ${_fmt(shifted.startTime)} - '
+              '${_fmt(shifted.endTime)} (duration '
+              '${shifted.durationMinutes} min preserved)');
+        } catch (e) {
+          debugPrint('[EDIT_STOP_SAVE] Failed to persist shifted stop '
+              '${shifted.stopId}: $e');
+        }
+      }
+
       _stop = saved.copyWith(place: _stop.place);
       _editedStartTime = _stop.startTime;
       _editedEndTime = _stop.endTime;
@@ -557,17 +907,170 @@ class EditStopViewModel extends ChangeNotifier {
       _error = null;
       await _refreshTimeOptions(itinerary, dayStops);
       notifyListeners();
-      debugPrint('[EDIT STOP] Stop updated successfully');
       return true;
     } catch (e) {
       _error = 'Unable to update the stop. Please try again.';
-      debugPrint('[EDIT STOP] Stop update failed: $e');
+      debugPrint('[EDIT_STOP_SAVE] Save failed: $e');
       notifyListeners();
       return false;
     } finally {
       _isSaving = false;
       notifyListeners();
     }
+  }
+
+  /// SCHEDULE CONFLICT MANAGEMENT (not route optimization).
+  ///
+  /// The edited stop's traveler-chosen times are the ANCHOR and are kept
+  /// as-is. Only PLANNED neighbours are shifted in time — never reordered,
+  /// deleted, relocated or re-durationed — just enough to remove overlaps:
+  ///  • following stops are pushed later (start = previous end),
+  ///  • preceding stops are pulled earlier (end = next start),
+  /// bounded by the absolute daily window. COMPLETED/SKIPPED stops are
+  /// immutable history: if one blocks a conflict-free arrangement, the
+  /// residual overlap is detected afterwards and the save is rejected
+  /// (the only remaining hard-boundary rejection).
+  List<ItineraryStop> _arrangeDayAroundEdited({
+    required List<ItineraryStop> dayStops,
+    required ExplorationWindow window,
+    required List<ItineraryStop> movedOut,
+  }) {
+    final arranged = List<ItineraryStop>.from(dayStops)
+      ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+    final idx = arranged.indexWhere((s) => s.stopId == _stop.stopId);
+    if (idx < 0) return arranged;
+
+    // ── Backward pass: pull earlier PLANNED stops before the anchor ──
+    var anchorStart = _minutesSinceMidnight(arranged[idx].startTime);
+    var cursorStart = anchorStart;
+    for (var j = idx - 1; j >= 0; j--) {
+      final stop = arranged[j];
+      final endMin = _minutesSinceMidnight(stop.endTime);
+      if (endMin <= cursorStart) break; // no (further) overlap
+      debugPrint('[EDIT_STOP_VALIDATION] Time conflict detected');
+      debugPrint('[EDIT_STOP_VALIDATION] Affected stop ID: ${stop.stopId}');
+      debugPrint('[EDIT_STOP_VALIDATION] Conflict with stop ID: '
+          '${_stop.stopId}');
+      if (stop.stopStatus != planned) {
+        // Immutable stop cannot move → the anchor is clamped after it
+        // (last resort; traveler time preserved as far as possible).
+        cursorStart = endMin;
+        debugPrint('[EDIT_STOP_VALIDATION] Stop ${stop.stopId} is '
+            '${stop.stopStatus} (immutable) — clamping the anchor after it');
+        break;
+      }
+      debugPrint('[EDIT_STOP_VALIDATION] Arranging schedule to remove '
+          'conflict');
+      var newStart = cursorStart - stop.durationMinutes;
+      if (newStart < window.startMinutes) {
+        newStart = window.startMinutes; // absolute daily boundary
+      }
+      final newEnd = newStart + stop.durationMinutes;
+      final shifted = _copyStopWithTimes(stop, newStart, newEnd);
+      arranged[j] = shifted;
+      movedOut.add(shifted);
+      cursorStart = newStart;
+    }
+    if (cursorStart > anchorStart) {
+      final clamped = _copyStopWithTimes(
+        arranged[idx],
+        cursorStart,
+        cursorStart + arranged[idx].durationMinutes,
+      );
+      arranged[idx] = clamped;
+    }
+
+    // ── Forward pass: push later PLANNED stops after the anchor ──────
+    var prevEnd = _minutesSinceMidnight(arranged[idx].endTime);
+    for (var j = idx + 1; j < arranged.length; j++) {
+      final stop = arranged[j];
+      final startMin = _minutesSinceMidnight(stop.startTime);
+      if (startMin >= prevEnd) break; // no (further) overlap
+      debugPrint('[EDIT_STOP_VALIDATION] Time conflict detected');
+      debugPrint('[EDIT_STOP_VALIDATION] Affected stop ID: ${stop.stopId}');
+      debugPrint('[EDIT_STOP_VALIDATION] Conflict with stop ID: '
+          '${_stop.stopId}');
+      if (stop.stopStatus != planned) {
+        debugPrint('[EDIT_STOP_VALIDATION] Stop ${stop.stopId} is '
+            '${stop.stopStatus} (immutable) — cannot be shifted');
+        prevEnd = _minutesSinceMidnight(stop.endTime);
+        continue;
+      }
+      debugPrint('[EDIT_STOP_VALIDATION] Arranging schedule to remove '
+          'conflict');
+      final newEnd = prevEnd + stop.durationMinutes;
+      if (newEnd > window.endMinutes) {
+        // Would cross the absolute daily boundary — leave the conflict
+        // in place so the residual check rejects the save.
+        debugPrint('[EDIT_STOP_VALIDATION] Stop ${stop.stopId} cannot be '
+            'shifted past the day window end ($window)');
+        break;
+      }
+      final shifted = _copyStopWithTimes(stop, prevEnd, newEnd);
+      arranged[j] = shifted;
+      movedOut.add(shifted);
+      prevEnd = newEnd;
+    }
+    return arranged;
+  }
+
+  /// First stop whose START is before the previous stop's END
+  /// (pure time overlap — travel time is NOT part of a conflict).
+  ItineraryStop? _findRemainingConflict(List<ItineraryStop> dayStops) {
+    final sorted = List<ItineraryStop>.from(dayStops)
+      ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+    for (var j = 1; j < sorted.length; j++) {
+      if (_minutesSinceMidnight(sorted[j].startTime) <
+          _minutesSinceMidnight(sorted[j - 1].endTime)) {
+        return sorted[j];
+      }
+    }
+    return null;
+  }
+
+  /// Copy of [s] with new times only — duration, place, identity, status
+  /// and order preserved.
+  ItineraryStop _copyStopWithTimes(ItineraryStop s, int startMin, int endMin) {
+    return ItineraryStop(
+      stopId: s.stopId,
+      itineraryId: s.itineraryId,
+      placeId: s.placeId,
+      destinationId: s.destinationId,
+      dayIndex: s.dayIndex,
+      stopOrder: s.stopOrder,
+      startTime: _atMinutes(startMin),
+      endTime: _atMinutes(endMin),
+      durationMinutes: endMin - startMin,
+      travelFromPrevMinutes: s.travelFromPrevMinutes,
+      stopStatus: s.stopStatus,
+      skipReason: s.skipReason,
+      weatherNote: s.weatherNote,
+      place: s.place,
+      createdAt: s.createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  /// Logs the stop's route context from ALREADY PERSISTED data
+  /// (distance + stored travel time). Purely informational — no network
+  /// call, no validation, never blocks anything.
+  void _logTravelInfo(List<ItineraryStop> dayStops) {
+    final sorted = List<ItineraryStop>.from(dayStops)
+      ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+    final idx = sorted.indexWhere((s) => s.stopId == _stop.stopId);
+    if (idx <= 0) return;
+    final prev = sorted[idx - 1];
+    final prevPlace = prev.place;
+    final curPlace = _stop.place;
+    if (prevPlace == null || curPlace == null) return;
+    final distanceKm = prevPlace.coordinates.distanceTo(curPlace.coordinates);
+    final travelMinutes = _stop.travelFromPrevMinutes ?? 0;
+    debugPrint('[EDIT_STOP_ROUTE_INFO] Previous stop ID: ${prev.stopId}');
+    debugPrint('[EDIT_STOP_ROUTE_INFO] Current stop ID: ${_stop.stopId}');
+    debugPrint('[EDIT_STOP_ROUTE_INFO] Travel information only. '
+        'Distance=${distanceKm.toStringAsFixed(1)}km, '
+        'TravelTime=${travelMinutes}min. '
+        'Route feasibility will NOT block traveler customization.');
   }
 
   void resetTimeEdits() {
@@ -871,6 +1374,12 @@ class EditStopViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Rebuilds the dropdown options.
+  ///
+  /// Options are bounded ONLY by the existing absolute rules: the daily
+  /// exploration window and the min/max visit duration. Previous-stop,
+  /// next-stop and travel-time filtering is intentionally NOT applied —
+  /// travel information must never restrict customization.
   Future<void> _refreshTimeOptions(
       Itinerary itinerary,
       List<ItineraryStop> dayStops,
@@ -879,111 +1388,62 @@ class EditStopViewModel extends ChangeNotifier {
       itinerary.explorationTime,
     );
 
-    final sorted = List<ItineraryStop>.from(dayStops)
-      ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
-    final idx = sorted.indexWhere((s) => s.stopId == _stop.stopId);
-    final prev = idx > 0 ? sorted[idx - 1] : null;
-    final next =
-    idx >= 0 && idx < sorted.length - 1 ? sorted[idx + 1] : null;
-
-    final windowStart = window.startHour * 60 + window.startMinute;
-    final windowEnd = window.endHour * 60 + window.endMinute;
-
-    // ── Start times ──────────────────────────────────────────────
-    final startSlots = <DateTime>[];
     final duration = _editedDurationMinutes;
 
-    for (int minutes = windowStart;
-    minutes + duration <= windowEnd;
+    // ── Start times: every step slot in the daily window whose
+    //    end (start + duration) also stays inside the window ────────
+    final startSlots = <DateTime>[];
+    for (int minutes = window.startMinutes;
+    minutes + duration <= window.endMinutes;
     minutes += startTimeStepMinutes) {
-      final candidate = _atMinutes(minutes);
-
-      if (prev != null) {
-        final prevEnd = prev.endTime;
-        final travel = prev.travelFromPrevMinutes ?? 0;
-        if (candidate.isBefore(
-            prevEnd.add(Duration(minutes: travel)))) {
-          continue;
-        }
-      }
-
-      final candidateEnd = candidate.add(Duration(minutes: duration));
-      if (next != null) {
-        final nextTravel = next.travelFromPrevMinutes ?? 0;
-        if (candidateEnd.isAfter(
-            next.startTime.subtract(Duration(minutes: nextTravel)))) {
-          continue;
-        }
-      }
-
-      startSlots.add(candidate);
+      startSlots.add(_atMinutes(minutes));
     }
 
-    if (!startSlots.contains(_editedStartTime)) {
+    // Keep an off-grid current selection visible (it passed validation).
+    final currentStartMin = _minutesSinceMidnight(_editedStartTime);
+    if (currentStartMin >= window.startMinutes &&
+        currentStartMin + duration <= window.endMinutes &&
+        !startSlots.contains(_editedStartTime)) {
       startSlots.add(_editedStartTime);
       startSlots.sort((a, b) => a.compareTo(b));
     }
     _availableStartTimes = startSlots;
 
-    // ── End times ────────────────────────────────────────────────
+    // ── End times: after start, min/max visit duration, daily window ──
+    final startMin = _minutesSinceMidnight(_editedStartTime);
+    final earliestEnd =
+        startMin + ItineraryConstants.minimumVisitDurationMinutes;
+    var latestEnd = window.endMinutes;
+    final maxDurationEnd =
+        startMin + ItineraryConstants.maximumVisitDurationMinutes;
+    if (maxDurationEnd < latestEnd) latestEnd = maxDurationEnd;
+
     final endSlots = <DateTime>[];
-
-    for (int minutes = windowStart + duration;
-    minutes <= windowEnd;
+    for (int minutes = window.startMinutes;
+    minutes <= window.endMinutes;
     minutes += endTimeStepMinutes) {
-      final candidate = _atMinutes(minutes);
-
-      // Must be after start + duration
-      final minEnd = _editedStartTime.add(Duration(minutes: duration));
-      if (candidate.isBefore(minEnd)) continue;
-
-      // Must allow enough time for the next stop
-      if (next != null) {
-        final nextTravel = next.travelFromPrevMinutes ?? 0;
-        if (candidate.isAfter(
-            next.startTime.subtract(Duration(minutes: nextTravel)))) {
-          continue;
-        }
-      }
-
-      endSlots.add(candidate);
+      if (minutes < earliestEnd) continue;
+      if (minutes > latestEnd) continue;
+      endSlots.add(_atMinutes(minutes));
     }
 
-    // Include current edited end time
-    if (!endSlots.contains(_editedEndTime)) {
+    final currentEndMin = _minutesSinceMidnight(_editedEndTime);
+    if (currentEndMin >= earliestEnd &&
+        currentEndMin <= latestEnd &&
+        !endSlots.contains(_editedEndTime)) {
       endSlots.add(_editedEndTime);
       endSlots.sort((a, b) => a.compareTo(b));
     }
     _availableEndTimes = endSlots;
 
-    // ── Durations (unchanged but recomputed) ────────────────────
+    // ── Durations: existing min/max constants + daily window only ──
     final durationSlots = <int>[];
     final minDur = ItineraryConstants.minimumVisitDurationMinutes;
     final maxDur = ItineraryConstants.maximumVisitDurationMinutes;
 
     for (final d in predefinedDurations) {
       if (d < minDur || d > maxDur) continue;
-
-      final end = _editedStartTime.add(Duration(minutes: d));
-      if (end.isAfter(_atMinutes(windowEnd))) continue;
-
-      if (next != null) {
-        final nextTravel = next.travelFromPrevMinutes ?? 0;
-        if (end.isAfter(
-            next.startTime.subtract(Duration(minutes: nextTravel)))) {
-          continue;
-        }
-      }
-
-      if (prev != null) {
-        final prevEnd = prev.endTime;
-        final travel = prev.travelFromPrevMinutes ?? 0;
-        if (_editedStartTime.isBefore(
-            prevEnd.add(Duration(minutes: travel)))) {
-          continue;
-        }
-      }
-
+      if (startMin + d > window.endMinutes) continue;
       durationSlots.add(d);
     }
 
@@ -992,7 +1452,30 @@ class EditStopViewModel extends ChangeNotifier {
       durationSlots.sort();
     }
     _availableDurations = durationSlots;
+
+    debugPrint('[EDIT_STOP] Time options refreshed: '
+        '${startSlots.length} start / ${endSlots.length} end / '
+        '${durationSlots.length} duration options '
+        '(travel-based filtering intentionally NOT applied)');
   }
+
+  // ─── Basic time helpers ───────────────────────────────────────
+
+  /// Normalize [t] onto the itinerary day of this stop, keeping only
+  /// hour/minute. Avoids comparisons across different DateTime dates.
+  DateTime _combineWithDay(DateTime timeOfDay) {
+    final dayDate = _itineraryStartDate.add(Duration(days: _stop.dayIndex - 1));
+    return DateTime(
+      dayDate.year,
+      dayDate.month,
+      dayDate.day,
+      timeOfDay.hour,
+      timeOfDay.minute,
+    );
+  }
+
+  /// Minutes since midnight — the unit all time-validity comparisons use.
+  int _minutesSinceMidnight(DateTime t) => t.hour * 60 + t.minute;
 
   DateTime _atMinutes(int minutes) {
     final dayDate =

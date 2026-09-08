@@ -1,4 +1,5 @@
 // lib/view/Itinerary/manage_itinerary/edit_stop_screen.dart
+import 'dart:math';
 import 'dart:ui'; // For BackdropFilter
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -6,14 +7,18 @@ import 'package:provider/provider.dart';
 
 import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../core/config/api_keys.dart';
+import '../../../core/config/itinerary_constants.dart';
 import '../../../core/services/google_maps_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../core/services/database_manager.dart';
-import '../../../model/business_logic/itinerary_service/change_location_service.dart';
+import '../../../model/entities/itinerary.dart';
 import '../../../model/entities/itinerary_stop.dart';
 import '../../../model/entities/place.dart';
-import '../../../viewmodel/Itinerary/change_location_vm.dart';
+import '../../../model/repositories/adapters/itinerary/place_repository_adapter.dart';
+import '../../../model/repositories/adapters/itinerary/itinerary_repository_adapter.dart';
+import '../../../model/repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
+import '../../../model/business_logic/itinerary_service/itinerary_validator.dart';
 import '../../../viewmodel/Itinerary/edit_stop_vm.dart';
 import '../widgets/view_place_detail_screen.dart';
 
@@ -55,29 +60,14 @@ class _EditStopScreenState extends State<EditStopScreen> {
   bool _hasChanges = false;
   bool _registeredInitialContext = false;
 
-  Future<void> _handleBack() async {
-    if (!_viewModel.hasUnsavedChanges) {
-      Navigator.maybePop(context, _hasChanges);
-      return;
-    }
-    final discard = await showConfirmationDialog(
-      context: context,
-      title: 'Discard changes?',
-      message: 'You have unsaved changes. Discard them and leave?',
-      confirmLabel: 'Discard',
-      icon: Icons.warning_amber_rounded,
-      iconBgColor: const Color(0xFFFDE8E8),
-      iconColor: AppColors.error,
-      confirmColor: AppColors.error,
-    );
-    if (discard == true && mounted) {
-      Navigator.maybePop(context, false);
-    }
-  }
-
   @override
   void initState() {
     super.initState();
+    debugPrint('[EDIT_STOP] Opening Edit Stop');
+    debugPrint('[EDIT_STOP] Stop ID: ${widget.stop.stopId}');
+    debugPrint('[EDIT_STOP] Current place ID: ${widget.stop.placeId}');
+    debugPrint('[EDIT_STOP] Day index: ${widget.stop.dayIndex}');
+    debugPrint('[EDIT_STOP] Stop order: ${widget.stop.stopOrder}');
     _viewModel = EditStopViewModel(
       stop: widget.stop,
       itineraryStartDate: widget.itineraryStartDate,
@@ -183,7 +173,7 @@ class _EditStopScreenState extends State<EditStopScreen> {
                   ),
                   child: Icon(Icons.arrow_back, color: _onSurface),
                 ),
-                onPressed: _handleBack,
+                onPressed: () => Navigator.pop(context), // ✅ CHANGED HERE
               ),
             ),
             title: Text(
@@ -504,12 +494,51 @@ class _EditStopScreenState extends State<EditStopScreen> {
       builder: (_) => _ChangeLocationSheet(
         stop: _viewModel.stop,
         userId: widget.userId,
+        onConfirmReplacement: _applyLocationReplacement,
       ),
     );
     if (confirmed == true && mounted) {
       _hasChanges = true;
       setState(() {});
     }
+  }
+
+  /// Change-location flow:
+  /// traveler selects → distance/travel time shown (INFORMATION ONLY) →
+  /// traveler confirms → EditStopViewModel.changePlace validates basic
+  /// rules and saves. Route feasibility never blocks the choice.
+  Future<String?> _applyLocationReplacement(Place selected) async {
+    debugPrint('[EDIT_STOP_LOCATION] Traveler selected: '
+        '${selected.placeName} (${selected.placeId})');
+    final info = await _viewModel.travelInfoToPlace(selected);
+    if (!mounted) return 'Edit screen is no longer open.';
+
+    final proceed = await showConfirmationDialog(
+      context: context,
+      title: 'Use ${selected.placeName}?',
+      message: info == null
+          ? 'This place will replace the current stop location.'
+          : 'From the previous stop:\n\n'
+              'Distance: ${info.distanceKm.toStringAsFixed(1)} km\n'
+              'Estimated travel time: '
+              '${info.travelMinutes == null ? 'unknown' : '${info.travelMinutes} minutes'}\n\n'
+              'Travel information is advisory — the change is allowed even '
+              'if the route is not optimal.',
+      confirmLabel: 'Use Location',
+      icon: Icons.place_outlined,
+      iconBgColor: AppColors.surface2,
+      iconColor: AppColors.accent,
+      confirmColor: AppColors.accent,
+    );
+    if (proceed != true) {
+      debugPrint('[EDIT_STOP_LOCATION] Traveler cancelled — original place '
+          'kept (no database change)');
+      return 'Location change cancelled.';
+    }
+
+    final ok = await _viewModel.changePlace(selected);
+    return ok ? null : (_viewModel.error ??
+        'Unable to use this place. Your original stop was kept.');
   }
 
   // ─── Time & Duration ────────────────────────────────────────
@@ -1281,7 +1310,9 @@ class _EditStopScreenState extends State<EditStopScreen> {
       context: context,
       title: 'Confirm Time Change?',
       message: 'Change this stop from\n$from\n\nto\n$to?\n\n'
-          'This will update the scheduled time for this stop.',
+          'Your chosen time is kept exactly. If it overlaps another '
+          'planned stop, the neighbouring stops are shifted to keep the '
+          'day conflict-free (their durations stay the same).',
       confirmLabel: 'Confirm',
       icon: Icons.schedule_rounded,
       iconBgColor: AppColors.surface2,
@@ -1297,46 +1328,379 @@ class _EditStopScreenState extends State<EditStopScreen> {
   }
 }
 
-// ─── ChangeLocationSheet (unchanged from original) ─────────────
+// ─── ChangeLocationSheet ──────────────────────────────────────────
 
 class _ChangeLocationSheet extends StatefulWidget {
   final ItineraryStop stop;
   final String userId;
 
-  const _ChangeLocationSheet({required this.stop, required this.userId});
+  /// Applies the selected canonical database Place through
+  /// `EditStopViewModel.changePlace`. Returns `null` on success or the
+  /// human-readable rejection reason (the original stop stays unchanged).
+  final Future<String?> Function(Place selected) onConfirmReplacement;
+
+  const _ChangeLocationSheet({
+    required this.stop,
+    required this.userId,
+    required this.onConfirmReplacement,
+  });
 
   @override
   State<_ChangeLocationSheet> createState() => _ChangeLocationSheetState();
 }
 
 class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
-  late final ChangeLocationViewModel _vm;
+  final PlaceRepositoryAdapter _placeRepo = DatabaseManager().placeRepository;
+  final ItineraryRepositoryImpl _itineraryRepo = DatabaseManager().itineraryRepository;
+  final ItineraryStopRepositoryImpl _stopRepo = DatabaseManager().itineraryStopRepository;
+  final ItineraryValidator _validator = ItineraryValidator();
   final GoogleMapsService _mapsService = GoogleMapsService();
   final TextEditingController _queryController = TextEditingController();
 
-  List<Place> _results = [];
-  bool _isSearching = false;
-  String? _searchError;
+  // ── Current stop data ──
+  late final double _currentLat;
+  late final double _currentLng;
+  late final String _currentPlaceId;
+  late final DateTime _stopStartTime;
+  late final int _durationMinutes;
 
+  // ── Itinerary & neighbor stops ──
+  Itinerary? _itinerary;
+  List<ItineraryStop>? _dayStops;
+  int? _currentStopIndex;
+  ItineraryStop? _prevStop;
+  ItineraryStop? _nextStop;
+  String? _transportMode;
+
+  // ── Local state ──────────────────────────────────────────────
+  List<Place> _searchResults = [];
+  List<Place> _recommendations = [];
+  bool _isSearching = false;
+  bool _isRefreshing = false;
+  bool _isLoadingRecommendations = true;
+  String? _searchError;
+  String? _recommendationsError;
+
+  // ── Bookmarks ────────────────────────────────────────────────
   List<Place> _bookmarks = [];
   bool _isLoadingBookmarks = true;
   String? _bookmarksError;
 
-  @override
-  void initState() {
-    super.initState();
-    _vm = ChangeLocationViewModel(stop: widget.stop);
-    _vm.loadRecommendations();
-    _loadBookmarks();
+  // ── Distance radius (km) ────────────────────────────────────
+  static const double _nearbyRadiusKm = 10.0;
+
+  // ── Haversine distance (km) ─────────────────────────────────
+  static double _calculateDistance(
+      double lat1, double lon1,
+      double lat2, double lon2,
+      ) {
+    const double R = 6371;
+    final dLat = (lat2 - lat1) * pi / 180;
+    final dLon = (lon2 - lon1) * pi / 180;
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1 * pi / 180) * cos(lat2 * pi / 180) *
+            sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return R * c;
   }
 
-  Future<void> _loadBookmarks() async {
+  // ── Time‑of‑day helper ──────────────────────────────────────
+  String _getTimeSlot(DateTime time) {
+    final hour = time.hour;
+    if (hour < 12) return 'morning';
+    if (hour < 17) return 'afternoon';
+    return 'evening';
+  }
+
+  bool _isPlaceSuitableForTime(Place place) {
+    final suggestion = place.bestTimeSuggestion;
+    if (suggestion == null || suggestion.isEmpty) return true;
+    final slot = _getTimeSlot(_stopStartTime);
+    return suggestion.toLowerCase().contains(slot);
+  }
+
+  /// A candidate must be a complete, usable canonical database record:
+  /// stable Google identity, a name and real coordinates. The Place model
+  /// maps missing numeric columns to 0.0, so (0,0) means "no location".
+  bool _isUsableDatabasePlace(Place place) {
+    if (place.placeId.trim().isEmpty) return false;
+    if (place.placeName.trim().isEmpty) return false;
+    if (place.placeLatitude == 0 && place.placeLongitude == 0) return false;
+    return true;
+  }
+
+  /// Candidate FILTERING only: canonical database validity, duplicates
+  /// (by unique place_id), the stop's own current place, destination
+  /// scope and geographic range. This decides WHICH places are shown.
+  /// Travel/route feasibility is NEVER a filter here — it is
+  /// informational only and must not block customization.
+  List<Place> _applyCandidateFilters(
+    List<Place> source,
+    Set<String> seenIds,
+  ) {
+    final destinationId = widget.stop.destinationId;
+    debugPrint('[CHANGE_LOCATION_FILTER] Selected destination ID: '
+        '${destinationId ?? 'unknown'}');
+    debugPrint('[CHANGE_LOCATION_FILTER] Range radius: '
+        '$_nearbyRadiusKm km around current stop');
+    final kept = <Place>[];
+    for (final place in source) {
+      debugPrint('[CHANGE_LOCATION_FILTER] Candidate: ${place.placeName}');
+      debugPrint('[CHANGE_LOCATION_FILTER] Candidate place ID: '
+          '${place.placeId}');
+      if (place.placeId.trim().isEmpty ||
+          place.placeName.trim().isEmpty ||
+          place.id.trim().isEmpty) {
+        debugPrint('[CHANGE_LOCATION_FILTER] Candidate status: FILTERED '
+            'OUT - invalid place record');
+        continue;
+      }
+      if (seenIds.contains(place.placeId)) {
+        debugPrint('[CHANGE_LOCATION_FILTER] Candidate status: FILTERED '
+            'OUT - duplicate place_id=${place.placeId}');
+        continue;
+      }
+      if (place.placeId == _currentPlaceId) {
+        debugPrint('[CHANGE_LOCATION_FILTER] Candidate status: FILTERED '
+            'OUT - already the current place of this stop');
+        continue;
+      }
+      if (!_isUsableDatabasePlace(place)) {
+        debugPrint('[CHANGE_LOCATION_FILTER] Candidate status: FILTERED '
+            'OUT - invalid coordinates');
+        continue;
+      }
+      // Destination scope: when both sides declare a destination, they
+      // must match (canonical DB identity, not route based).
+      if (destinationId != null &&
+          destinationId.isNotEmpty &&
+          place.destinationId != null &&
+          place.destinationId!.isNotEmpty &&
+          place.destinationId != destinationId) {
+        debugPrint('[CHANGE_LOCATION_FILTER] Candidate status: FILTERED '
+            'OUT - outside destination range');
+        continue;
+      }
+      final distanceKm = _calculateDistance(
+          _currentLat, _currentLng, place.latitude, place.longitude);
+      debugPrint('[CHANGE_LOCATION_FILTER] Candidate distance: '
+          '${distanceKm.toStringAsFixed(1)} km');
+      if (distanceKm > _nearbyRadiusKm) {
+        debugPrint('[CHANGE_LOCATION_FILTER] Candidate status: FILTERED '
+            'OUT - outside destination range');
+        continue;
+      }
+      debugPrint('[CHANGE_LOCATION_FILTER] Candidate status: KEPT');
+      seenIds.add(place.placeId);
+      kept.add(place);
+    }
+    return kept;
+  }
+
+  // ─── Basic place validity for the day ────────────────────────
+  /// Screen candidates with the SAME basic rules the save enforces
+  /// ([ItineraryValidator] in CUSTOMIZATION MODE): canonical place
+  /// validity, duplicate within the day, operating hours for the
+  /// scheduled visit, and the absolute daily window.
+  /// Distance, travel time, route availability and inter-stop overlap
+  /// are INFORMATION ONLY and never filter or reject a candidate.
+  Future<bool> _isPlaceValidForDay(Place candidate) async {
+    if (_itinerary == null || _dayStops == null) return false;
+    if (_currentStopIndex == null) return false;
+    if (!_isUsableDatabasePlace(candidate)) {
+      debugPrint('[CHANGE_LOCATION_FILTER] FILTERED OUT: invalid place '
+          'record (${candidate.placeId})');
+      return false;
+    }
+
+    final itinerary = _itinerary!;
+    final stops = _dayStops!;
+    final index = _currentStopIndex!;
+
+    // Build a new list of stops with the candidate inserted.
+    final newStops = <ItineraryStop>[];
+    for (int i = 0; i < stops.length; i++) {
+      if (i == index) {
+        // Replace with a copy that uses the candidate's place.
+        // Times/duration stay as-is: the traveler customizes the
+        // LOCATION only; visit_duration_minutes is never forced.
+        final replacement = stops[i].copyWith(
+          placeId: candidate.placeId,
+          place: candidate,
+        );
+        newStops.add(replacement);
+      } else {
+        newStops.add(stops[i]);
+      }
+    }
+
+    // Validate basic rules only — exactly what changePlace will enforce.
+    final dayDate = itinerary.startDate.add(Duration(days: stops[index].dayIndex - 1));
+    final window = ItineraryConstants.explorationWindowFor(itinerary.explorationTime);
+    final result = await _validator.validateResultingDay(
+      dayStops: newStops,
+      dayDate: dayDate,
+      window: window,
+      transportMode: itinerary.transportationMode,
+      focusStop: stops[index],
+      candidatePlace: candidate,
+      travelPace: itinerary.travelPace,
+      customizationMode: true,
+    );
+    if (!result.isValid) {
+      debugPrint('[CHANGE_LOCATION_FILTER] FILTERED OUT: '
+          '${candidate.placeName} - '
+          '${result.issues.first.code}: ${result.issues.first.message}');
+    }
+    return result.isValid;
+  }
+
+  // ─── Load data ──────────────────────────────────────────────
+  Future<void> _loadItineraryData() async {
+    try {
+      final itinerary = await _itineraryRepo.getItinerary(widget.stop.itineraryId);
+      final allStops = await _stopRepo.getStopsForItinerary(widget.stop.itineraryId);
+      final dayStops = allStops
+          .where((s) => s.dayIndex == widget.stop.dayIndex)
+          .toList()
+        ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+
+      final index = dayStops.indexWhere((s) => s.stopId == widget.stop.stopId);
+      if (index == -1) {
+        _recommendationsError = 'Stop not found in itinerary.';
+        return;
+      }
+
+      // Join canonical database places so travel legs can be re-routed
+      // against real coordinates during reachability screening.
+      final joined = <ItineraryStop>[];
+      for (final stop in dayStops) {
+        var place = stop.place;
+        if (place == null) {
+          try {
+            place = await _placeRepo.getPlace(stop.placeId);
+          } catch (e) {
+            debugPrint('[ChangeLocationSheet] Place join failed for '
+                '${stop.placeId}: $e');
+          }
+        }
+        joined.add(stop.copyWith(place: place));
+      }
+
+      setState(() {
+        _itinerary = itinerary;
+        _dayStops = joined;
+        _currentStopIndex = index;
+        _prevStop = index > 0 ? dayStops[index - 1] : null;
+        _nextStop = index < dayStops.length - 1 ? dayStops[index + 1] : null;
+        _transportMode = itinerary.transportationMode;
+      });
+    } catch (e) {
+      setState(() {
+        _recommendationsError = 'Could not load itinerary data.';
+      });
+    }
+  }
+
+  // ─── Load nearby places (filtered by reachability) ──────────
+  Future<void> _loadNearbyRecommendations() async {
+    setState(() {
+      _isLoadingRecommendations = true;
+      _recommendationsError = null;
+    });
+
+    await _loadItineraryData();
+
+    if (_itinerary == null || _dayStops == null || _currentStopIndex == null) {
+      setState(() {
+        _isLoadingRecommendations = false;
+        _recommendationsError = 'Unable to load itinerary data.';
+      });
+      return;
+    }
+
+    try {
+      final allPlaces = await _placeRepo.getAllPlaces();
+      final candidates = _applyCandidateFilters(allPlaces, <String>{});
+
+      // BASIC place rules only (canonical validity, duplicate within the
+      // day, operating hours vs. the scheduled visit, daily window).
+      // Travel time / route feasibility NEVER filters candidates.
+      final usable = <Place>[];
+      for (final place in candidates) {
+        if (await _isPlaceValidForDay(place)) {
+          usable.add(place);
+        }
+      }
+
+      usable.sort((a, b) {
+        // best_time_suggestion is a SOFT preference (ranking), never a
+        // hard exclusion — the traveler may pick any suitable place.
+        final suitA = _isPlaceSuitableForTime(a) ? 0 : 1;
+        final suitB = _isPlaceSuitableForTime(b) ? 0 : 1;
+        if (suitA != suitB) return suitA.compareTo(suitB);
+        final distA = _calculateDistance(
+          _currentLat, _currentLng,
+          a.latitude, a.longitude,
+        );
+        final distB = _calculateDistance(
+          _currentLat, _currentLng,
+          b.latitude, b.longitude,
+        );
+        return distA.compareTo(distB);
+      });
+
+      setState(() {
+        _recommendations = usable.take(10).toList();
+        _isLoadingRecommendations = false;
+        if (_recommendations.isEmpty) {
+          _recommendationsError = 'No available places found within '
+              '$_nearbyRadiusKm km.';
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _recommendationsError = 'Could not load nearby places.';
+        _isLoadingRecommendations = false;
+      });
+    }
+  }
+
+  // ─── Load nearby bookmarks (filtered by reachability) ──────
+  Future<void> _loadNearbyBookmarks() async {
     try {
       final repo = DatabaseManager().bookmarkRepository;
       final dtos = await repo.getBookmarksWithPlaces(widget.userId);
+      final allBookmarks = dtos.map((d) => d.place).toList();
+
+      final candidates = _applyCandidateFilters(allBookmarks, <String>{});
+
+      // Basic place rules only — never travel feasibility.
+      final usable = <Place>[];
+      for (final place in candidates) {
+        if (await _isPlaceValidForDay(place)) {
+          usable.add(place);
+        }
+      }
+
+      usable.sort((a, b) {
+        final suitA = _isPlaceSuitableForTime(a) ? 0 : 1;
+        final suitB = _isPlaceSuitableForTime(b) ? 0 : 1;
+        if (suitA != suitB) return suitA.compareTo(suitB);
+        final distA = _calculateDistance(
+          _currentLat, _currentLng,
+          a.latitude, a.longitude,
+        );
+        final distB = _calculateDistance(
+          _currentLat, _currentLng,
+          b.latitude, b.longitude,
+        );
+        return distA.compareTo(distB);
+      });
+
       if (mounted) {
         setState(() {
-          _bookmarks = dtos.map((d) => d.place).toList();
+          _bookmarks = usable;
           _isLoadingBookmarks = false;
         });
       }
@@ -1350,41 +1714,12 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
     }
   }
 
-  @override
-  void dispose() {
-    _vm.dispose();
-    _queryController.dispose();
-    super.dispose();
-  }
-
-
-  // ✅ UPDATED: Accepts the suggestedDuration
-  Future<void> _openPlaceDetail(Place place, {int? suggestedDuration}) async {
-    final changed = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ViewPlaceDetailScreen(
-          placeId: place.placeId,
-          initialPlace: place,
-          isReplacement: true,
-          onUsePlace: (selected) async {
-            // ✅ PASSES DURATION TO VIEWMODEL
-            final result = await _vm.confirmReplacement(selected, suggestedDuration: suggestedDuration);
-            return result.isSuccessful ? null : result.message;
-          },
-        ),
-      ),
-    );
-    if (changed == true && mounted) {
-      Navigator.pop(context, true);
-    }
-  }
-
-  Future<void> _search(String query) async {
+  // ─── Search places locally (filtered by reachability) ──────
+  Future<void> _searchLocalPlaces(String query) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
       setState(() {
-        _results = [];
+        _searchResults = [];
         _searchError = null;
       });
       return;
@@ -1396,23 +1731,125 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
     });
 
     try {
-      final results = await _mapsService.searchTextPlaces(query: trimmed);
+      final results = await _placeRepo.searchPlaces(trimmed);
+      final candidates = _applyCandidateFilters(results, <String>{});
+
+      // Basic place rules only — never travel feasibility.
+      final usable = <Place>[];
+      for (final place in candidates) {
+        if (await _isPlaceValidForDay(place)) {
+          usable.add(place);
+        }
+      }
+
+      usable.sort((a, b) {
+        final suitA = _isPlaceSuitableForTime(a) ? 0 : 1;
+        final suitB = _isPlaceSuitableForTime(b) ? 0 : 1;
+        if (suitA != suitB) return suitA.compareTo(suitB);
+        final distA = _calculateDistance(
+          _currentLat, _currentLng,
+          a.latitude, a.longitude,
+        );
+        final distB = _calculateDistance(
+          _currentLat, _currentLng,
+          b.latitude, b.longitude,
+        );
+        return distA.compareTo(distB);
+      });
+
       if (!mounted) return;
       setState(() {
-        _results = results;
-        if (results.isEmpty) {
-          _searchError = 'No places found. Try a different search.';
+        _searchResults = usable;
+        if (usable.isEmpty) {
+          _searchError = 'No available places found. Try a different search.';
         }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _results = [];
-        _searchError = 'Could not search places. Check your connection.';
+        _searchResults = [];
+        _searchError = 'Could not search places. Please try again.';
       });
     } finally {
       if (mounted) setState(() => _isSearching = false);
     }
+  }
+
+  // ─── Open place detail ──────────────────────────────────────
+  Future<void> _openPlaceDetail(Place place) async {
+    // The replacement is committed through EditStopViewModel.changePlace
+    // (via widget.onConfirmReplacement): the canonical database Place,
+    // stop identity preserved, resulting day validated by
+    // ItineraryValidator, affected travel legs re-routed, single
+    // atomic persistence. The candidate's visitDurationMinutes is a
+    // reference only — it never overwrites the traveler's duration.
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ViewPlaceDetailScreen(
+          placeId: place.placeId,
+          initialPlace: place,
+          isReplacement: true,
+          onUsePlace: widget.onConfirmReplacement,
+        ),
+      ),
+    );
+    if (changed == true && mounted) {
+      Navigator.pop(context, true);
+    }
+  }
+
+  // ─── Refresh (no stale candidates — everything is reloaded from
+  ///     the database and re-filtered) ──────────────────────────────
+  Future<void> _refreshCandidates() async {
+    if (_isRefreshing) return;
+    debugPrint('[CHANGE_LOCATION_REFRESH] Refresh started');
+    _isRefreshing = true;
+    try {
+      debugPrint('[CHANGE_LOCATION_REFRESH] Reloading destination '
+          'context + day stops');
+      await _loadItineraryData();
+      debugPrint('[CHANGE_LOCATION_REFRESH] Reloading places');
+      await _loadNearbyRecommendations();
+      await _loadNearbyBookmarks();
+      debugPrint('[CHANGE_LOCATION_REFRESH] Reapplying filters');
+      if (mounted) {
+        setState(() {
+          _searchResults = [];
+          _searchError = null;
+        });
+      }
+    } finally {
+      debugPrint('[CHANGE_LOCATION_REFRESH] Refresh complete. '
+          'Valid candidates: ${_recommendations.length + _bookmarks.length}');
+      if (mounted) setState(() => _isRefreshing = false);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('[CHANGE_LOCATION] Change Location sheet opened');
+    debugPrint('[EDIT_STOP] Stop ID: ${widget.stop.stopId}');
+    debugPrint('[EDIT_STOP] Current place ID: ${widget.stop.placeId}');
+    debugPrint('[EDIT_STOP] Day index: ${widget.stop.dayIndex}');
+    debugPrint('[EDIT_STOP] Stop order: ${widget.stop.stopOrder}');
+
+    final place = widget.stop.place;
+    _currentLat = place?.latitude ?? 0.0;
+    _currentLng = place?.longitude ?? 0.0;
+    _currentPlaceId = place?.placeId ?? '';
+    _stopStartTime = widget.stop.startTime;
+    _durationMinutes = widget.stop.durationMinutes;
+
+    _loadNearbyRecommendations();
+    _loadNearbyBookmarks();
+  }
+
+  @override
+  void dispose() {
+    _queryController.dispose();
+    super.dispose();
   }
 
   @override
@@ -1445,14 +1882,25 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Change Location',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.ink,
-                ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Change Location',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Refresh candidates',
+                    icon: const Icon(Icons.refresh, color: AppColors.accent),
+                    onPressed: _isRefreshing ? null : _refreshCandidates,
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               const Text(
@@ -1469,9 +1917,9 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
               TextField(
                 controller: _queryController,
                 textInputAction: TextInputAction.search,
-                onSubmitted: _search,
+                onSubmitted: _searchLocalPlaces,
                 decoration: InputDecoration(
-                  hintText: 'Search restaurants or attractions...',
+                  hintText: 'Search restaurants, attractions...',
                   hintStyle: const TextStyle(color: AppColors.inkFaint),
                   prefixIcon: const Icon(Icons.search, color: AppColors.inkFaint),
                   suffixIcon: _queryController.text.isNotEmpty
@@ -1479,7 +1927,7 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
                     icon: const Icon(Icons.clear, size: 18),
                     onPressed: () {
                       _queryController.clear();
-                      _search('');
+                      _searchLocalPlaces('');
                     },
                   )
                       : null,
@@ -1499,46 +1947,50 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
               ),
               const SizedBox(height: 16),
               Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_isSearching)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      else if (_searchError != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Text(
-                            _searchError!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: AppColors.inkFaint,
-                            ),
-                          ),
-                        )
-                      else if (_results.isNotEmpty)
-                          ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _results.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final place = _results[index];
-                              return _LocationResultTile(
-                                place: place,
-                                onTap: () => _openPlaceDetail(place),
-                              );
-                            },
+                child: RefreshIndicator(
+                  onRefresh: _refreshCandidates,
+                  color: AppColors.accent,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_isSearching)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(child: CircularProgressIndicator()),
                           )
-                        else ...[
-                            _buildRecommendationsSection(),
-                            _buildBookmarksSection(),
-                          ]
-                    ],
+                        else if (_searchError != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Text(
+                              _searchError!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: AppColors.inkFaint,
+                              ),
+                            ),
+                          )
+                        else if (_searchResults.isNotEmpty)
+                            ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _searchResults.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (context, index) {
+                                final place = _searchResults[index];
+                                return _LocationResultTile(
+                                  place: place,
+                                  onTap: () => _openPlaceDetail(place),
+                                );
+                              },
+                            )
+                          else
+                            _buildNearbySection(),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1549,92 +2001,102 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
     );
   }
 
-  Widget _buildRecommendationsSection() {
-    return ListenableBuilder(
-      listenable: _vm,
-      builder: (context, _) {
-        if (_vm.isLoadingRecommendations) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                SizedBox(width: 12),
-                Text(
-                  'Finding recommended places...',
-                  style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
-                ),
-              ],
+  // ─── Build nearby recommendations section ─────────────────────
+  Widget _buildNearbySection() {
+    if (_isLoadingRecommendations) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-          );
-        }
-
-        if (_vm.problemMessage != null) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.info_outline, size: 20, color: AppColors.error),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _vm.problemMessage!,
-                    style: const TextStyle(fontSize: 14, color: AppColors.ink),
-                  ),
-                ),
-              ],
+            SizedBox(width: 12),
+            Text(
+              'Finding nearby places...',
+              style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
             ),
-          );
-        }
+          ],
+        ),
+      );
+    }
 
-        if (_vm.recommendations.isEmpty) return const SizedBox.shrink();
-
-        return Column(
+    if (_recommendationsError != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_awesome, size: 14, color: AppColors.accent),
-                const SizedBox(width: 6),
-                Text(
-                  'RECOMMENDED FOR YOU${_vm.usedFallback ? ' (NEARBY)' : ''}',
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                    color: AppColors.inkFaint,
-                  ),
-                ),
-              ],
+            const Icon(Icons.info_outline, size: 20, color: AppColors.error),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _recommendationsError!,
+                style: const TextStyle(fontSize: 14, color: AppColors.ink),
+              ),
             ),
-            const SizedBox(height: 10),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _vm.recommendations.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final rec = _vm.recommendations[index];
-                return _RecommendationCard(
-                  recommendation: rec,
-                  // ✅ PASS AI DURATION DOWN TO ONTAP
-                  onTap: () => _openPlaceDetail(rec.place, suggestedDuration: rec.suggestedDuration),
-                );
-              },
-            ),
-            const SizedBox(height: 24),
           ],
-        );
-      },
+        ),
+      );
+    }
+
+    if (_recommendations.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Text(
+          'No available places nearby within $_nearbyRadiusKm km.',
+          style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.access_time, size: 14, color: AppColors.accent),
+            const SizedBox(width: 6),
+            Text(
+              'BEST FOR ${_getTimeSlot(_stopStartTime).toUpperCase()} (available)',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: AppColors.inkFaint,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _recommendations.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final place = _recommendations[index];
+            final distance = _calculateDistance(
+              _currentLat, _currentLng,
+              place.latitude!, place.longitude!,
+            );
+            return _NearbyPlaceTile(
+              place: place,
+              distanceKm: distance,
+              onTap: () => _openPlaceDetail(place),
+            );
+          },
+        ),
+        const SizedBox(height: 24),
+        _buildBookmarksSection(),
+      ],
     );
   }
 
+  // ─── Bookmarks section ──────────────────────────────────────
   Widget _buildBookmarksSection() {
     if (_isLoadingBookmarks) {
       return const Padding(
@@ -1643,11 +2105,40 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
       );
     }
 
+    if (_bookmarksError != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline, size: 20, color: AppColors.error),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _bookmarksError!,
+                style: const TextStyle(fontSize: 14, color: AppColors.ink),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_bookmarks.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 24),
+        child: Text(
+          'No available bookmarks within $_nearbyRadiusKm km.',
+          style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'SAVED BOOKMARKS',
+          'NEARBY BOOKMARKS',
           style: TextStyle(
             fontFamily: 'Inter',
             fontSize: 10,
@@ -1657,50 +2148,43 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
           ),
         ),
         const SizedBox(height: 10),
-        if (_bookmarksError != null)
-          Text(
-            _bookmarksError!,
-            style: const TextStyle(fontSize: 14, color: AppColors.inkFaint, fontStyle: FontStyle.italic),
-          )
-        else if (_bookmarks.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 24),
-            child: Text(
-              'No bookmarks saved yet. Search above to find places!',
-              style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
-            ),
-          )
-        else
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _bookmarks.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final place = _bookmarks[index];
-                return _LocationResultTile(
-                  place: place,
-                  onTap: () => _openPlaceDetail(place),
-                );
-              },
-            ),
-          ),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _bookmarks.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final place = _bookmarks[index];
+            final distance = _calculateDistance(
+              _currentLat, _currentLng,
+              place.latitude!, place.longitude!,
+            );
+            return _NearbyPlaceTile(
+              place: place,
+              distanceKm: distance,
+              onTap: () => _openPlaceDetail(place),
+            );
+          },
+        ),
       ],
     );
   }
 }
 
-class _RecommendationCard extends StatelessWidget {
-  final ChangeLocationRecommendation recommendation;
+// ─── Tile for nearby places (no duration) ──────────────────────
+class _NearbyPlaceTile extends StatelessWidget {
+  final Place place;
+  final double distanceKm;
   final VoidCallback onTap;
 
-  const _RecommendationCard({required this.recommendation, required this.onTap});
+  const _NearbyPlaceTile({
+    required this.place,
+    required this.distanceKm,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final place = recommendation.place;
     final photoUrl = place.photoReference != null
         ? 'https://maps.googleapis.com/maps/api/place/photo'
         '?maxwidth=200&photoreference=${place.photoReference}'
@@ -1730,10 +2214,8 @@ class _RecommendationCard extends StatelessWidget {
                     ? Image.network(
                   photoUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.place,
-                    color: AppColors.inkFaint,
-                  ),
+                  errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.place, color: AppColors.inkFaint),
                 )
                     : const Icon(Icons.place, color: AppColors.inkFaint),
               ),
@@ -1758,13 +2240,12 @@ class _RecommendationCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (place.placeRating > 0) ...[
+                      if (place.placeRating != null && place.placeRating! > 0) ...[
                         const SizedBox(width: 6),
-                        const Icon(Icons.star,
-                            size: 14, color: AppColors.gold),
+                        const Icon(Icons.star, size: 14, color: AppColors.gold),
                         const SizedBox(width: 2),
                         Text(
-                          place.placeRating.toStringAsFixed(1),
+                          place.placeRating!.toStringAsFixed(1),
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -1781,31 +2262,27 @@ class _RecommendationCard extends StatelessWidget {
                         Text(
                           place.placeCategory!,
                           style: const TextStyle(
-                              fontSize: 12, color: AppColors.inkFaint),
+                            fontSize: 12,
+                            color: AppColors.inkFaint,
+                          ),
                         ),
                         const SizedBox(width: 8),
                       ],
-                      // ✅ ADDED: Display the AI suggested duration in the UI!
+                      Icon(Icons.near_me, size: 12, color: AppColors.accent),
+                      const SizedBox(width: 4),
                       Text(
-                        '${recommendation.distanceText} • ${recommendation.suggestedDuration} min',
+                        distanceKm < 1
+                            ? '${(distanceKm * 1000).round()} m away'
+                            : '${distanceKm.toStringAsFixed(1)} km away',
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.inkFaint),
+                          fontSize: 12,
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
+                      // duration omitted
                     ],
                   ),
-                  if (recommendation.reason.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      recommendation.reason,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
-                        color: AppColors.accent,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -1817,6 +2294,7 @@ class _RecommendationCard extends StatelessWidget {
   }
 }
 
+// ─── _LocationResultTile (no duration) ──────────────────────────
 class _LocationResultTile extends StatelessWidget {
   final Place place;
   final VoidCallback onTap;
@@ -1860,10 +2338,8 @@ class _LocationResultTile extends StatelessWidget {
                     ? Image.network(
                   photoUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.place,
-                    color: AppColors.inkFaint,
-                  ),
+                  errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.place, color: AppColors.inkFaint),
                 )
                     : const Icon(Icons.place, color: AppColors.inkFaint),
               ),

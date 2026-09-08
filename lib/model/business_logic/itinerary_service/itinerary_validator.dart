@@ -92,6 +92,24 @@ class ItineraryValidator {
   /// `dayStops[i]`, `i >= 1`) whose travel time must be freshly routed
   /// because an endpoint changed (location replacement / removal). Legs not
   /// marked reuse the persisted `travelFromPrevMinutes`.
+  ///
+  /// [enforcePaceBuffer] controls the SOFT pace-capacity check
+  /// (visits + travel + pace buffers vs. the whole window). It is a
+  /// generation preference, not a chronological impossibility rule, so
+  /// traveler time customizations disable it; the HARD checks (overlaps,
+  /// per-leg travel time, daily window, start < end) always run.
+  ///
+  /// [customizationMode] separates MANUAL EDIT STOP customization from
+  /// ITINERARY GENERATION validation. When true, route/chain feasibility
+  /// (routing availability, inter-stop overlap, travel-time limits and
+  /// pace capacity) is treated as INFORMATION ONLY and never rejects the
+  /// traveler's edit. Always kept, in every mode: completed-stop
+  /// immutability, candidate place identity (duplicate placeId, valid
+  /// coordinates), operating-hour business rules, basic per-stop time
+  /// validity (start < end, duration consistency) and the absolute
+  /// daily schedule window. Itinerary generation, candidate retrieval,
+  /// recommendation and all other modules keep full validation because
+  /// the default is false.
   Future<ItineraryValidationResult> validateResultingDay({
     required List<ItineraryStop> dayStops,
     required DateTime dayDate,
@@ -102,6 +120,8 @@ class ItineraryValidator {
     Place? candidatePlace,
     Coordinates? baseLocation,
     String travelPace = 'Standard',
+    bool enforcePaceBuffer = true,
+    bool customizationMode = false,
   }) async {
     final stops = List<ItineraryStop>.from(dayStops)
       ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
@@ -207,7 +227,11 @@ class ItineraryValidator {
         ));
       }
 
-      if (i > 0) {
+      // Inter-stop chain feasibility (routing, overlap, travel-time
+      // limit) is a GENERATION / route-optimization concern. In
+      // customization mode it is INFORMATION ONLY and must never reject
+      // the traveler's edit.
+      if (!customizationMode && i > 0) {
         final travel = await _resolveTravel(
           stops: stops,
           leg: i,
@@ -253,17 +277,23 @@ class ItineraryValidator {
       prevEndMin = endMin;
     }
 
-    // ── 5. Complete day duration vs. the exploration window. ────────────
-    final requiredMinutes =
-        visitTotal + travelTotal + buffer * (stops.length - 1);
-    if (requiredMinutes > window.totalMinutes) {
-      final excess = requiredMinutes - window.totalMinutes;
-      issues.add(ItineraryValidationIssue(
-        code: ItineraryValidationCodes.dayWindowExceeded,
-        message: 'This change makes $dayLabel exceed the available schedule '
-            'by $excess minutes. Please choose another location, change the '
-            'time, or remove a stop.',
-      ));
+    // ── 5. Complete day duration vs. the exploration window (SOFT). ─────
+    // Skipped for traveler time customization: a day that is
+    // chronologically consistent, non-overlapping and inside the window
+    // is valid even when it uses more of the window than the pace
+    // buffer "prefers".
+    if (enforcePaceBuffer && !customizationMode) {
+      final requiredMinutes =
+          visitTotal + travelTotal + buffer * (stops.length - 1);
+      if (requiredMinutes > window.totalMinutes) {
+        final excess = requiredMinutes - window.totalMinutes;
+        issues.add(ItineraryValidationIssue(
+          code: ItineraryValidationCodes.dayWindowExceeded,
+          message: 'This change makes $dayLabel exceed the available schedule '
+              'by $excess minutes. Please choose another location, change the '
+              'time, or remove a stop.',
+        ));
+      }
     }
 
     // ── 6. Base / hotel / start location travel (when defined). ─────────

@@ -3,7 +3,7 @@ import '../../model/business_logic/itinerary_service/itinerary_validation_servic
 import '../../model/entities/trip_draft.dart';
 
 class Step2TripStyleVM extends ChangeNotifier {
-  static const int maxTripDaysLimit = 3; // Maximum duration capped at 3 days
+  static const int maxTripDaysLimit = ItineraryValidationService.maxTripDays;
   static const int maxPlanningWindowDays = 180; // Half a year (~6 months)
   static const int maxInterestsLimit = 2;
 

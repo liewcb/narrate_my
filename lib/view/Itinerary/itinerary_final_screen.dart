@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
+import '../../main.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
@@ -110,7 +111,7 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const MyItinerariesScreen()),
+          MaterialPageRoute(builder: (_) => const MyApp()),
               (route) => false,
         );
       }

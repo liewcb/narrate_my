@@ -1,9 +1,14 @@
-
 import 'package:flutter/foundation.dart';
 import '../../core/services/database_manager.dart';
 import '../../model/entities/itinerary.dart';
 import '../../model/repositories/interfaces/itinerary/itinerary_repository.dart';
 import '../../view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
+
+/// Sorting options available to the traveler.
+enum ItinerarySortOption {
+  currentDay,
+  latestCreated,
+}
 
 class MyItinerariesVM extends ChangeNotifier {
   final ItineraryRepository _repository;
@@ -16,18 +21,28 @@ class MyItinerariesVM extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  // Default sorting.
+  ItinerarySortOption _sortOption = ItinerarySortOption.currentDay;
+
   List<Itinerary> get filteredTrips => _filteredTrips;
   bool get isLoading => _isLoading;
   String? get error => _error;
   String get activeFilter => _activeFilter;
+  ItinerarySortOption get sortOption => _sortOption;
 
   MyItinerariesVM({required this.userId})
       : _repository = DatabaseManager().itineraryRepository;
 
+  // ============================================================
+  // FILTER + SORT
+  // ============================================================
+
   void _applyFilters() {
     var filtered = List<Itinerary>.from(_allTrips);
 
-    // 1. Apply Status Filter
+    // ------------------------------------------------------------
+    // 1. STATUS FILTER
+    // ------------------------------------------------------------
     if (_activeFilter != 'All') {
       filtered = filtered.where((itinerary) {
         final resolvedStatus = ItineraryStatusResolver.resolve(
@@ -38,43 +53,153 @@ class MyItinerariesVM extends ChangeNotifier {
       }).toList();
     }
 
-    // 2. Apply Search Filter
+    // ------------------------------------------------------------
+    // 2. SEARCH FILTER
+    // ------------------------------------------------------------
     if (_searchQuery.trim().isNotEmpty) {
       final q = _searchQuery.trim().toLowerCase();
       filtered = filtered
-          .where((t) => t.title.toLowerCase().contains(q))
+          .where(
+            (itinerary) => itinerary.title.toLowerCase().contains(q),
+      )
           .toList();
     }
 
-    // 3. SMART SORTING LOGIC
-    filtered.sort((a, b) {
-      // Assign priority: Ongoing (0) > Upcoming (1) > Past (2)
-      int getPriority(String status) {
-        if (status == 'ONGOING') return 0;
-        if (status == 'UPCOMING') return 1;
-        return 2; // PAST
-      }
+    // ------------------------------------------------------------
+    // 3. SORT
+    // ------------------------------------------------------------
+    switch (_sortOption) {
+      case ItinerarySortOption.currentDay:
+        _sortByCurrentDay(filtered);
+        break;
+      case ItinerarySortOption.latestCreated:
+        _sortByLatestCreated(filtered);
+        break;
+    }
 
-      int priorityA = getPriority(a.status);
-      int priorityB = getPriority(b.status);
+    _filteredTrips = filtered;
+  }
 
-      // Sort by status priority first
+  // ============================================================
+  // CURRENT DAY SORTING
+  // ============================================================
+
+  void _sortByCurrentDay(List<Itinerary> trips) {
+    trips.sort((a, b) {
+      final priorityA = _getStatusPriority(a);
+      final priorityB = _getStatusPriority(b);
+
+      // Ongoing → Upcoming → Past
       if (priorityA != priorityB) {
         return priorityA.compareTo(priorityB);
       }
 
-      // If they have the same status, sort by date
-      if (a.status == 'PAST') {
-        // For past trips, show the most recently completed first (Descending)
-        return b.endDate.compareTo(a.endDate);
-      } else {
-        // For upcoming/ongoing, show the closest start date first (Ascending)
+      final status = ItineraryStatusResolver.resolve(
+        startDate: a.startDate,
+        endDate: a.endDate,
+      ).name.toUpperCase();
+
+      // ----------------------------------------------------------
+      // ONGOING
+      // ----------------------------------------------------------
+      // For ongoing itineraries, the one whose start date is
+      // closest to today is shown first.
+      // ----------------------------------------------------------
+      if (status == 'ONGOING') {
         return a.startDate.compareTo(b.startDate);
       }
-    });
 
-    _filteredTrips = filtered;
+      // ----------------------------------------------------------
+      // UPCOMING
+      // ----------------------------------------------------------
+      // Earliest upcoming trip first.
+      // ----------------------------------------------------------
+      if (status == 'UPCOMING') {
+        return a.startDate.compareTo(b.startDate);
+      }
+
+      // ----------------------------------------------------------
+      // PAST
+      // ----------------------------------------------------------
+      // Most recently completed trip first.
+      return b.endDate.compareTo(a.endDate);
+    });
   }
+
+  // ============================================================
+  // LATEST CREATED SORTING
+  // ============================================================
+
+  void _sortByLatestCreated(List<Itinerary> trips) {
+    /*
+     * IMPORTANT:
+     *
+     * Replace `createdAt` below with the actual creation/generated
+     * timestamp field from your Itinerary model.
+     *
+     * Example:
+     *
+     * return b.createdAt.compareTo(a.createdAt);
+     *
+     * If your model uses `generatedAt`, use:
+     *
+     * return b.generatedAt.compareTo(a.generatedAt);
+     *
+     * Do NOT use startDate/endDate here because those represent
+     * the travel period, not when the itinerary was generated.
+     */
+    trips.sort((a, b) {
+      // TEMPORARY FALLBACK:
+      //
+      // Until the actual Itinerary creation timestamp is confirmed,
+      // use itinerary start date as the fallback.
+      //
+      // Once the real createdAt/generatedAt field is confirmed,
+      // replace this with that field.
+      return b.startDate.compareTo(a.startDate);
+    });
+  }
+
+  // ============================================================
+  // STATUS PRIORITY
+  // ============================================================
+
+  int _getStatusPriority(Itinerary itinerary) {
+    final resolvedStatus = ItineraryStatusResolver.resolve(
+      startDate: itinerary.startDate,
+      endDate: itinerary.endDate,
+    );
+    final status = resolvedStatus.name.toUpperCase();
+
+    switch (status) {
+      case 'ONGOING':
+        return 0;
+      case 'UPCOMING':
+        return 1;
+      case 'PAST':
+        return 2;
+      default:
+        return 3;
+    }
+  }
+
+  // ============================================================
+  // CHANGE SORT OPTION
+  // ============================================================
+
+  void setSortOption(ItinerarySortOption option) {
+    if (_sortOption == option) {
+      return;
+    }
+    _sortOption = option;
+    // Reapply current search/filter using the new sorting.
+    _applyFilters();
+    notifyListeners();
+  }
+
+  // ============================================================
+  // SEARCH
+  // ============================================================
 
   void setSearchQuery(String query) {
     _searchQuery = query;
@@ -82,11 +207,19 @@ class MyItinerariesVM extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ============================================================
+  // STATUS FILTER
+  // ============================================================
+
   void setFilter(String filter) {
     _activeFilter = filter;
     _applyFilters();
     notifyListeners();
   }
+
+  // ============================================================
+  // LOAD
+  // ============================================================
 
   Future<void> load() async {
     _isLoading = true;
@@ -94,19 +227,18 @@ class MyItinerariesVM extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Local-first read: returns the local cache (which includes any
-      // itinerary just saved) and falls back to the remote source when the
-      // local cache is empty or unavailable.
       final trips = await _repository.getUserItineraries(userId);
 
-      // Recalculate each itinerary's status from the current date and persist
-      // it when outdated (single source of truth lives in the repository).
+      // Recalculate itinerary status.
       final synced = <Itinerary>[];
       for (final trip in trips) {
-        synced.add(await _repository.refreshItineraryStatus(trip));
+        synced.add(
+          await _repository.refreshItineraryStatus(trip),
+        );
       }
-      _allTrips = synced;
 
+      _allTrips = synced;
+      // Apply the currently selected sorting option.
       _applyFilters();
     } catch (e) {
       _error = e.toString();
@@ -116,6 +248,6 @@ class MyItinerariesVM extends ChangeNotifier {
     }
   }
 
-  /// Force a pull from the remote source (pull-to-refresh).
+  /// Force a pull from the remote source.
   Future<void> refresh() => load();
 }

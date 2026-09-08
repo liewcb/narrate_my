@@ -427,24 +427,44 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     final stop = _vm.stops[index];
     TimeOfDay currentStart = TimeOfDay(hour: stop.startTime.hour, minute: stop.startTime.minute);
     TimeOfDay currentEnd = TimeOfDay(hour: stop.endTime.hour, minute: stop.endTime.minute);
+    int currentDuration = stop.durationMinutes;
 
-    final selectedRange = await showModalBottomSheet<List<TimeOfDay>>(
+    final selectedRange = await showModalBottomSheet<List<dynamic>>(
       context: context,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
       ),
+      isScrollControlled: true,
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            // Recalculate duration from start/end (if user changed times)
             final startMins = currentStart.hour * 60 + currentStart.minute;
             final endMins = currentEnd.hour * 60 + currentEnd.minute;
-            final diffMins = endMins - startMins;
-            final isValid = diffMins > 0;
+            final derivedDuration = endMins - startMins;
 
-            final hours = diffMins ~/ 60;
-            final mins = diffMins % 60;
-            final durationStr = hours > 0 ? '${hours}h ${mins}m' : '${mins}m';
+            // Use the duration from the picker if set, else derived
+            final effectiveDuration = currentDuration > 0 ? currentDuration : derivedDuration;
+
+            // If effective duration is >0, ensure end time matches start + duration
+            final endFromDuration = startMins + effectiveDuration;
+            final computedEnd = TimeOfDay(
+              hour: (endFromDuration ~/ 60).clamp(0, 23),
+              minute: (endFromDuration % 60).clamp(0, 59),
+            );
+            // Only update end if duration was changed (i.e., currentDuration > 0)
+            final displayEnd = currentDuration > 0 ? computedEnd : currentEnd;
+
+            final winEnd = _vm.window.endMinutes;
+            final isValid = effectiveDuration > 0 && endFromDuration <= winEnd;
+
+            // Duration options from ViewModel
+            final durationOptions = _vm.availableDurations(index);
+            final allOptions = durationOptions.toSet()
+              ..add(effectiveDuration)
+              ..add(stop.durationMinutes);
+            final sortedOptions = allOptions.toList()..sort();
 
             return SafeArea(
               child: Padding(
@@ -478,7 +498,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                     ),
                     const SizedBox(height: AppSpacing.sectionGap),
 
-                    // Tap Cards for Native Time Picker
+                    // Time picker row
                     Row(
                       children: [
                         Expanded(
@@ -489,7 +509,22 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                                 initialTime: currentStart,
                               );
                               if (picked != null) {
-                                setSheetState(() => currentStart = picked);
+                                setSheetState(() {
+                                  currentStart = picked;
+                                  // If duration was fixed, keep it and adjust end
+                                  if (currentDuration > 0) {
+                                    final newEndMins = picked.hour * 60 + picked.minute + currentDuration;
+                                    currentEnd = TimeOfDay(
+                                      hour: (newEndMins ~/ 60).clamp(0, 23),
+                                      minute: (newEndMins % 60).clamp(0, 59),
+                                    );
+                                  } else {
+                                    // Otherwise recalc duration from new start and existing end
+                                    final newStartMins = picked.hour * 60 + picked.minute;
+                                    final endMins = currentEnd.hour * 60 + currentEnd.minute;
+                                    currentDuration = endMins - newStartMins;
+                                  }
+                                });
                               }
                             },
                             borderRadius: BorderRadius.circular(12),
@@ -533,10 +568,16 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                             onTap: () async {
                               final picked = await showTimePicker(
                                 context: context,
-                                initialTime: currentEnd,
+                                initialTime: displayEnd,
                               );
                               if (picked != null) {
-                                setSheetState(() => currentEnd = picked);
+                                setSheetState(() {
+                                  currentEnd = picked;
+                                  // Recalc duration
+                                  final startMins = currentStart.hour * 60 + currentStart.minute;
+                                  final endMins = picked.hour * 60 + picked.minute;
+                                  currentDuration = endMins - startMins;
+                                });
                               }
                             },
                             borderRadius: BorderRadius.circular(12),
@@ -559,7 +600,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    currentEnd.format(context),
+                                    displayEnd.format(context),
                                     style: GoogleFonts.nunito(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w700,
@@ -575,38 +616,92 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                     ),
                     const SizedBox(height: AppSpacing.cardPadding),
 
-                    // Realtime Calculated Duration Indicator
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.pillPaddingX,
-                        vertical: AppSpacing.pillPaddingY,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isValid ? AppColors.teal.withOpacity(0.1) : AppColors.error.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(AppRadius.pill),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isValid ? Icons.timer_outlined : Icons.error_outline_rounded,
-                            size: 16,
-                            color: isValid ? AppColors.teal : AppColors.error,
+                    // Duration picker chip
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          size: 16,
+                          color: isValid ? AppColors.teal : AppColors.error,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Duration:',
+                          style: GoogleFonts.nunito(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.inkSoft,
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isValid ? 'Total duration: $durationStr' : 'End time must be after start time',
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.surface2,
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                            border: Border.all(color: AppColors.moduleBorder),
+                          ),
+                          child: DropdownButton<int>(
+                            value: effectiveDuration,
+                            items: sortedOptions.map((d) {
+                              return DropdownMenuItem<int>(
+                                value: d,
+                                child: Text(
+                                  '${d ~/ 60}h ${d % 60}m',
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.ink,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (newDuration) {
+                              if (newDuration != null && newDuration > 0) {
+                                setSheetState(() {
+                                  currentDuration = newDuration;
+                                  // Update end time based on start + duration
+                                  final startMins = currentStart.hour * 60 + currentStart.minute;
+                                  final endMins = startMins + newDuration;
+                                  currentEnd = TimeOfDay(
+                                    hour: (endMins ~/ 60).clamp(0, 23),
+                                    minute: (endMins % 60).clamp(0, 59),
+                                  );
+                                });
+                              }
+                            },
+                            underline: const SizedBox.shrink(),
+                            icon: const Icon(Icons.keyboard_arrow_down, size: 16, color: AppColors.inkFaint),
+                            dropdownColor: AppColors.surface,
+                            elevation: 0,
                             style: GoogleFonts.nunito(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isValid ? AppColors.teal.withOpacity(0.1) : AppColors.error.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                          ),
+                          child: Text(
+                            isValid ? '✓' : '⚠',
+                            style: GoogleFonts.nunito(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
                               color: isValid ? AppColors.teal : AppColors.error,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: AppSpacing.sectionGap),
 
+                    // Buttons
                     Row(
                       children: [
                         Expanded(
@@ -618,7 +713,12 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                         const SizedBox(width: AppSpacing.componentGap),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: isValid ? () => Navigator.pop(sheetContext, [currentStart, currentEnd]) : null,
+                            onPressed: isValid
+                                ? () {
+                              // Apply the final start and end times
+                              Navigator.pop(sheetContext, [currentStart, displayEnd]);
+                            }
+                                : null,
                             child: const Text('Apply'),
                           ),
                         ),
@@ -642,6 +742,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       }
     }
   }
+
 
   // ─── Main Screen Build ────────────────────────────────────────
 

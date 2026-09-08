@@ -22,7 +22,6 @@ class TripCustomizationScreen extends StatefulWidget {
 class _TripCustomizationScreenState extends State<TripCustomizationScreen> {
   @override
   Widget build(BuildContext context) {
-    // ✅ READ: Pull the initial draft from the global vault
     final sharedDraft = context.read<TripDraftNotifier>().draft;
 
     return ChangeNotifierProvider<Step2TripStyleVM>(
@@ -39,6 +38,8 @@ class _Step2TripStyleBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final vm = context.watch<Step2TripStyleVM>();
 
+    final updatedDraft = vm.buildDraft();
+    print('Saving transportation: ${updatedDraft.transportation}');
     return PopScope(
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) {
@@ -1328,26 +1329,36 @@ class _Transportation extends StatelessWidget {
       {
         'title': 'Public Transit (LRT/MRT/KTM)',
         'desc':
-            'Accounts for rail networks and transfers, ideal for downtown city exploration.',
+        'Accounts for rail networks and transfers, ideal for downtown city exploration.',
         'icon': Icons.directions_subway_rounded,
       },
       {
         'title': 'Driving / Car',
         'desc':
-            'Accounts for direct routing, Grab/Taxi pickup wait times, and parking search times.',
+        'Accounts for direct routing, Grab/Taxi pickup wait times, and parking search times.',
         'icon': Icons.directions_car_rounded,
       },
     ];
 
+    final hasError = error != null && error!.isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Transportation Mode',
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.brandCharcoal,
+        RichText(
+          text: TextSpan(
+            text: 'Transportation Mode',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.brandCharcoal,
+            ),
+            children: const [
+              TextSpan(
+                text: ' *',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 8),
@@ -1372,10 +1383,12 @@ class _Transportation extends StatelessWidget {
                         : AppColors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isSelected
+                      color: hasError
+                          ? Colors.red // red border when error exists
+                          : isSelected
                           ? AppColors.brandGreen
                           : AppColors.outlineLight.withOpacity(0.5),
-                      width: isSelected ? 1.5 : 1,
+                      width: hasError ? 2.0 : (isSelected ? 1.5 : 1),
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -1455,7 +1468,8 @@ class _Transportation extends StatelessWidget {
             );
           }).toList(),
         ),
-        if (error != null && error!.isNotEmpty) ...[
+        // Error message (unchanged)
+        if (hasError) ...[
           const SizedBox(height: 8),
           Text(
             error!,

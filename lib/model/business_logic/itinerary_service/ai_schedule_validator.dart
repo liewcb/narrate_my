@@ -1,8 +1,8 @@
 // lib/model/business_logic/itinerary_service/ai_schedule_validator.dart
 //
-// Validates DeepSeek's AI schedule output BEFORE it is saved as the final
+// Validates AI planner's AI schedule output BEFORE it is saved as the final
 // itinerary. Validation is Flutter's responsibility — it is the hard
-// constraint gate between DeepSeek and persistence.
+// constraint gate between AI planner and persistence.
 
 import 'dart:convert';
 
@@ -45,7 +45,7 @@ class AiValidationResult {
   }
 }
 
-/// Validates DeepSeek output against the full schedule contract.
+/// Validates AI planner output against the full schedule contract.
 class AiScheduleValidator {
   /// Validate the parsed AI schedule (list of days) against hard rules.
   ///
@@ -66,6 +66,8 @@ class AiScheduleValidator {
     Map<String, int>? allocatedDaysPerDestination,
     Map<String, String>? placeIdToDestination,
     Map<String, String>? routeMatrix,
+    Set<String> foodPlaceIds = const {},
+    int maxDailyStops = ItineraryConstants.maxStopsPerDay,
   }) {
     final issues = <AiValidationIssue>[];
 
@@ -94,7 +96,15 @@ class AiScheduleValidator {
         ));
         continue;
       }
-      usedDayIndexes.add(day.dayIndex);
+      if (!usedDayIndexes.add(day.dayIndex)) {
+        issues.add(
+          AiValidationIssue(
+            type: 'day_index',
+            message: 'Duplicate day index.',
+            dayIndex: day.dayIndex,
+          ),
+        );
+      }
 
       final parsedDate = DateTime.tryParse(day.date);
       if (parsedDate == null) {
@@ -113,7 +123,53 @@ class AiScheduleValidator {
           type: 'day_index',
           message: 'Day $i is missing from the schedule.',
           dayIndex: i,
-        ));
+        ),
+        );
+      }
+    }
+
+    if (days.length != totalDays || totalDays < 1 || totalDays > 7) {
+      issues.add(
+        const AiValidationIssue(
+          type: 'day_count',
+          message: 'Trip must contain exactly the requested 1–7 days.',
+        ),
+      );
+    }
+    final expectedDestinations = <String>[
+      for (final name in destinationOrder ?? <String>[])
+        for (var d = 0; d < (allocatedDaysPerDestination?[name] ?? 0); d++)
+          name,
+    ];
+    for (final day in days) {
+      if (day.schedule.isEmpty || day.schedule.length > maxDailyStops) {
+        issues.add(
+          AiValidationIssue(
+            type: 'stop_count',
+            message: 'Day is empty or exceeds its pace stop limit.',
+            dayIndex: day.dayIndex,
+          ),
+        );
+      }
+      if (day.dayIndex < 0 || day.dayIndex >= expectedDestinations.length) {
+        continue;
+      }
+      final dest = expectedDestinations[day.dayIndex];
+      final foodCount = foodPlaceIds
+          .where(
+            (id) =>
+                knownPlaceIds.contains(id) && placeIdToDestination?[id] == dest,
+          )
+          .length;
+      if (foodCount >= (allocatedDaysPerDestination?[dest] ?? totalDays) &&
+          !day.schedule.any((stop) => foodPlaceIds.contains(stop.placeId))) {
+        issues.add(
+          AiValidationIssue(
+            type: 'food_per_day',
+            message:
+                'Missing meal despite sufficient destination food candidates.',
+            dayIndex: day.dayIndex,
+          ));
       }
     }
 
@@ -359,7 +415,7 @@ class AiScheduleValidator {
 
 /// A single day of the COMPACT AI plan.
 ///
-/// The optimized architecture asks DeepSeek to return ONLY the day index,
+/// The optimized architecture asks AI planner to return ONLY the day index,
 /// the ordered places (with optional AI-estimated visit minutes) and a short
 /// reason. All clock times and travel times are computed deterministically
 /// in Dart afterwards.
@@ -380,7 +436,7 @@ class AiCompactPlanDay {
   });
 }
 
-/// Parses the COMPACT DeepSeek planner JSON into a list of [AiCompactPlanDay].
+/// Parses the compact AI planner JSON into a list of [AiCompactPlanDay].
 ///
 /// Accepted shapes:
 ///   { "days": [ { "dayIndex": 1,
@@ -435,7 +491,7 @@ List<AiCompactPlanDay> parseCompactPlanJson(String rawJson) {
   return days;
 }
 
-/// Parses raw DeepSeek JSON into a list of [AIDaySchedule].
+/// Parses raw AI planner JSON into a list of [AIDaySchedule].
 ///
 /// Throws a [FormatException] when the JSON is structurally invalid so the
 /// pipeline can treat it as a regeneration trigger.
