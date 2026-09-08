@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import './auth/login_screen.dart';
 import './auth/register_screen.dart';
 import './widgets/primary_button.dart';
+import 'guidance_screen.dart';
 
 /// Shown on the Profile tab when no one is logged in. Guests can still
 /// freely browse AR/Itinerary/Nearby (this gating only applies to the
@@ -17,39 +18,82 @@ class GuestProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     context.watch<LocaleVm>();
+
     return Scaffold(
-      appBar: AppBar(title: Text(AppLocalizations.t('ui.profile'))),
+      appBar: AppBar(
+        title: Text(
+          AppLocalizations.t('ui.profile'),
+        ),
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.account_circle_outlined, size: 88, color: AppColors.inkFaint),
+              const Icon(
+                Icons.account_circle_outlined,
+                size: 88,
+                color: AppColors.inkFaint,
+              ),
+
               const SizedBox(height: 20),
+
               Text(
                 AppLocalizations.t('ui.guestBrowsing'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.ink),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
                 textAlign: TextAlign.center,
               ),
+
               const SizedBox(height: 8),
+
               Text(
                 AppLocalizations.t('ui.guestSubtitle'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 14, color: AppColors.inkSoft, height: 1.4),
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.inkSoft,
+                  height: 1.4,
+                ),
               ),
+
               const SizedBox(height: 28),
+
+              // Login
               PrimaryButton(
                 label: AppLocalizations.t('ui.login'),
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const LoginScreen(),
+                  ),
                 ),
               ),
+
               const SizedBox(height: 12),
+
+              // Create Account
               SecondaryButton(
                 label: AppLocalizations.t('ui.createAccount'),
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const RegisterScreen(),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Guest Guidance
+              SecondaryButton(
+                label: AppLocalizations.t('ui.guidance'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const GuidanceScreen(),
+                  ),
                 ),
               ),
             ],

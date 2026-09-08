@@ -6,10 +6,7 @@ import '../../../core/localization/locale_vm.dart';
 import '../../../core/theme/app_theme.dart';
 import 'widgets/guide_step.dart';
 
-/// A short, swipeable walkthrough for a single module — used by the
-/// Guidance hub (`guidance_screen.dart`) for AR today, and reusable for any
-/// future module: just pass its own `List<GuideStep>` and an app-bar title
-/// key. No module-specific code lives in this file.
+/// A short, swipeable walkthrough for a single module.
 class GuideWalkthroughScreen extends StatefulWidget {
   final List<GuideStep> steps;
   final String titleKey;
@@ -21,11 +18,13 @@ class GuideWalkthroughScreen extends StatefulWidget {
   });
 
   @override
-  State<GuideWalkthroughScreen> createState() => _GuideWalkthroughScreenState();
+  State<GuideWalkthroughScreen> createState() =>
+      _GuideWalkthroughScreenState();
 }
 
 class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
-  final _controller = PageController();
+  final PageController _controller = PageController();
+
   int _index = 0;
 
   @override
@@ -35,8 +34,12 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
   }
 
   void _goTo(int index) {
-    _controller.animateTo(
-      index * _controller.position.viewportDimension,
+    if (index < 0 || index >= widget.steps.length) {
+      return;
+    }
+
+    _controller.animateToPage(
+      index,
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeInOut,
     );
@@ -45,17 +48,38 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
   @override
   Widget build(BuildContext context) {
     context.watch<LocaleVm>();
+
     final steps = widget.steps;
+
+    if (steps.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            AppLocalizations.t(widget.titleKey),
+          ),
+        ),
+        body: const Center(
+          child: Text('No guide steps available.'),
+        ),
+      );
+    }
+
     final isLast = _index == steps.length - 1;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.t(widget.titleKey)),
+        title: Text(
+          AppLocalizations.t(widget.titleKey),
+        ),
         actions: [
           if (!isLast)
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(AppLocalizations.t('ui.arGuideSkip')),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text(
+                AppLocalizations.t('ui.arGuideSkip'),
+              ),
             ),
         ],
       ),
@@ -66,12 +90,26 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
               child: PageView.builder(
                 controller: _controller,
                 itemCount: steps.length,
-                onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (context, i) => _GuideStepView(step: steps[i]),
+                onPageChanged: (i) {
+                  setState(() {
+                    _index = i;
+                  });
+                },
+                itemBuilder: (context, i) {
+                  return _GuideStepView(
+                    step: steps[i],
+                  );
+                },
               ),
             ),
-            _GuideDots(count: steps.length, index: _index),
-            const SizedBox(height: 20),
+
+            _GuideDots(
+              count: steps.length,
+              index: _index,
+            ),
+
+            const SizedBox(height: 16),
+
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
@@ -79,17 +117,28 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
                   if (_index > 0)
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => _goTo(_index - 1),
-                        child: Text(AppLocalizations.t('ui.arGuideBack')),
+                        onPressed: () {
+                          _goTo(_index - 1);
+                        },
+                        child: Text(
+                          AppLocalizations.t('ui.arGuideBack'),
+                        ),
                       ),
                     ),
-                  if (_index > 0) const SizedBox(width: 12),
+
+                  if (_index > 0)
+                    const SizedBox(width: 12),
+
                   Expanded(
                     flex: 2,
                     child: FilledButton(
                       onPressed: isLast
-                          ? () => Navigator.of(context).pop()
-                          : () => _goTo(_index + 1),
+                          ? () {
+                        Navigator.of(context).pop();
+                      }
+                          : () {
+                        _goTo(_index + 1);
+                      },
                       child: Text(
                         isLast
                             ? AppLocalizations.t('ui.arGuideDone')
@@ -100,7 +149,8 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+
+            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -111,48 +161,74 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
 class _GuideStepView extends StatelessWidget {
   final GuideStep step;
 
-  const _GuideStepView({required this.step});
+  const _GuideStepView({
+    required this.step,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
       child: Column(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: AspectRatio(
-              aspectRatio: 3 / 2,
-              child: Image.asset(
-                step.imageAsset,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
+          Expanded(
+            flex: 5,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
                   color: AppColors.accentSoft,
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.image_not_supported_outlined,
-                    size: 48,
-                    color: AppColors.accentDark,
-                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Image.asset(
+                  step.imageAsset,
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(
+                      child: Icon(
+                        Icons.image_not_supported_outlined,
+                        size: 48,
+                        color: AppColors.accentDark,
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 24),
+
+          const SizedBox(height: 12),
+
           Text(
             AppLocalizations.t(step.titleKey),
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 20,
+              fontSize: 19,
               fontWeight: FontWeight.w700,
               color: AppColors.ink,
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            AppLocalizations.t(step.bodyKey),
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14.5, color: AppColors.inkSoft, height: 1.4),
+
+          const SizedBox(height: 6),
+
+          Flexible(
+            flex: 2,
+            child: Text(
+              AppLocalizations.t(step.bodyKey),
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.inkSoft,
+                height: 1.3,
+              ),
+            ),
           ),
         ],
       ),
@@ -164,25 +240,34 @@ class _GuideDots extends StatelessWidget {
   final int count;
   final int index;
 
-  const _GuideDots({required this.count, required this.index});
+  const _GuideDots({
+    required this.count,
+    required this.index,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(count, (i) {
-        final active = i == index;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: active ? 22 : 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: active ? AppColors.accent : AppColors.border,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        );
-      }),
+      children: List.generate(
+        count,
+            (i) {
+          final active = i == index;
+
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            width: active ? 22 : 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: active
+                  ? AppColors.accent
+                  : AppColors.border,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          );
+        },
+      ),
     );
   }
 }

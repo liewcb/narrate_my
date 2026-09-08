@@ -157,7 +157,7 @@ class AppLocalizations {
     'ui.bookmarks': 'Bookmarks',
     'ui.guidance': 'Guidance',
     'ui.guidanceSubtitle': 'Step-by-step walkthroughs for each part of the app.',
-    'ui.arGuide': 'AR Guide',
+    'ui.arGuide': 'Gui',
     'ui.arGuideExplorationTitle': 'Explore in AR',
     'ui.arGuideExplorationBody':
     'Point your camera around a heritage site to discover markers on '
@@ -166,10 +166,9 @@ class AppLocalizations {
     'ui.arGuidePlacementBody':
     'Scan a flat surface, then tap to place and reposition a 3D model '
         'in the real world.',
-    'ui.arGuideStorytellingTitle': 'Hear the Story',
-    'ui.arGuideStorytellingBody':
-    'Tap a placed model to open its storytelling panel and learn the '
-        'history behind it.',
+    'ui.arGuideNarrationsTitle': 'Narrations',
+    'ui.arGuideNarrationsBody':
+    'Explore the attraction through different narration options. Listen to storytelling, watch related videos, and get recommendations for nearby attractions and places to explore.',
     'ui.arGuideNext': 'Next',
     'ui.arGuideBack': 'Back',
     'ui.arGuideDone': 'Done',
@@ -486,8 +485,8 @@ class AppLocalizations {
     'ui.arGuideExplorationBody': '将相机对准遗产景点周围，发现附近兴趣点的标记。',
     'ui.arGuidePlacementTitle': '放置 3D 模型',
     'ui.arGuidePlacementBody': '扫描平面，然后点击以在现实世界中放置并调整 3D 模型的位置。',
-    'ui.arGuideStorytellingTitle': '聆听故事',
-    'ui.arGuideStorytellingBody': '点击已放置的模型，打开讲述面板，了解其背后的历史。',
+    'ui.arGuideNarrationsTitle': '导览内容',
+    'ui.arGuideNarrationsBody': '选择不同方式探索景点。您可以聆听故事讲解和其他导览内容、观看相关视频，并获取附近景点和下一站推荐。',
     'ui.arGuideNext': '下一步',
     'ui.arGuideBack': '上一步',
     'ui.arGuideDone': '完成',
@@ -801,10 +800,9 @@ class AppLocalizations {
     'ui.arGuidePlacementBody':
     'Imbas permukaan rata, kemudian ketik untuk meletakkan dan '
         'mengubah kedudukan model 3D di dunia sebenar.',
-    'ui.arGuideStorytellingTitle': 'Dengar Kisahnya',
-    'ui.arGuideStorytellingBody':
-    'Ketik model yang diletakkan untuk membuka panel penceritaan dan '
-        'ketahui sejarah di sebaliknya.',
+    'ui.arGuideNarrationsTitle': 'Narasi',
+    'ui.arGuideNarrationsBody':
+    'Pilih daripada pelbagai cara untuk meneroka tarikan tersebut. Dengarkan penceritaan dan narasi lain, tonton video berkaitan dan terima cadangan untuk tarikan berdekatan dan tempat yang mungkin anda ingin lawati seterusnya.',
     'ui.arGuideNext': 'Seterusnya',
     'ui.arGuideBack': 'Kembali',
     'ui.arGuideDone': 'Selesai',
@@ -1154,10 +1152,9 @@ class AppLocalizations {
     'ui.arGuidePlacementBody':
     'Escanea una superficie plana y luego toca para colocar y '
         'reposicionar un modelo 3D en el mundo real.',
-    'ui.arGuideStorytellingTitle': 'Escucha la Historia',
-    'ui.arGuideStorytellingBody':
-    'Toca un modelo colocado para abrir su panel narrativo y conocer '
-        'la historia detrás de él.',
+    'ui.arGuideNarrationsTitle': 'narraciones',
+    'ui.arGuideNarrationsBody':
+    'Elige entre diferentes maneras de explorar la atracción. Escucha narraciones y otras narraciones, mira videos relacionados y recibe recomendaciones de atracciones cercanas y lugares que quizás quieras visitar próximamente.',
     'ui.arGuideNext': 'Siguiente',
     'ui.arGuideBack': 'Atrás',
     'ui.arGuideDone': 'Listo',
@@ -1498,10 +1495,9 @@ class AppLocalizations {
     'ui.arGuidePlacementBody':
     'एक समतल सतह को स्कैन करें, फिर वास्तविक दुनिया में 3D मॉडल को रखने '
         'और उसकी स्थिति बदलने के लिए टैप करें।',
-    'ui.arGuideStorytellingTitle': 'कहानी सुनें',
-    'ui.arGuideStorytellingBody':
-    'रखे गए मॉडल पर टैप करें ताकि उसका कहानी पैनल खुले और उसके पीछे का '
-        'इतिहास जान सकें।',
+    'ui.arGuideNarrationsTitle': 'आख्यान',
+    'ui.arGuideNarrationsBody':
+    'घूमने की जगह को एक्सप्लोर करने के लिए अलग-अलग तरीके चुनें। कहानियाँ और दूसरी बातें सुनें, मिलते-जुलते वीडियो देखें, और आस-पास की जगहों और उन जगहों के लिए सुझाव पाएँ जहाँ आप अगली बार जाना चाहेंगे।',
     'ui.arGuideNext': 'अगला',
     'ui.arGuideBack': 'पीछे',
     'ui.arGuideDone': 'हो गया',

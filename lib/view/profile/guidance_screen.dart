@@ -30,7 +30,7 @@ const List<_GuidanceModule> _kGuidanceModules = [
   _GuidanceModule(
     icon: Icons.view_in_ar_outlined,
     labelKey: 'ui.arGuide',
-    steps: kArGuideSteps,
+    steps: arGuideSteps,
   ),
   // Next module's guide goes here, e.g.:
   // _GuidanceModule(
@@ -60,7 +60,7 @@ class GuidanceScreen extends StatelessWidget {
               AppLocalizations.t('ui.guidanceSubtitle'),
               style: const TextStyle(color: AppColors.inkSoft, fontSize: 13.5),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
             ..._kGuidanceModules.map(
                   (module) => _GuidanceModuleTile(
                 module: module,
