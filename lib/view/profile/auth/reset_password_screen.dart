@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/locale_vm.dart';
 import '../../../core/theme/app_theme.dart';
@@ -37,8 +38,13 @@ class ResetPasswordScreen extends StatelessWidget {
         canPop: false,
         onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
+          final assistantController =
+              context.read<GlobalAiAssistantController>();
           await SupabaseProfileRepositoryAdapter().logout();
-          if (context.mounted) Navigator.of(context).pop();
+          assistantController.clearSessionState();
+          if (context.mounted) {
+            Navigator.of(context).pop();
+          }
         },
         child: const _ResetPasswordView(),
       ),

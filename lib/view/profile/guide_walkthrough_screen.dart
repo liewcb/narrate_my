@@ -144,11 +144,11 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
                       child: FilledButton(
                         onPressed: isLast
                             ? () {
-                          Navigator.of(context).pop();
-                        }
+                                Navigator.of(context).pop();
+                              }
                             : () {
-                          _goTo(_index + 1);
-                        },
+                                _goTo(_index + 1);
+                              },
                         style: FilledButton.styleFrom(
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -237,7 +237,7 @@ class _GuideStepView extends StatelessWidget {
             child: Text(
               AppLocalizations.t(step.bodyKey),
               textAlign: TextAlign.center,
-              maxLines: 3,
+              maxLines: 4,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 14,

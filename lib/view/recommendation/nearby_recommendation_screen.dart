@@ -140,6 +140,11 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: _MapHeader(
                     count: viewModel.recommendations.length,
+                    visibleRangeKm: _visibleAttractionRangeKm(
+                      userLocation: location,
+                      recommendations: viewModel.recommendations,
+                      arSites: viewModel.arSites,
+                    ),
                     isLoading: viewModel.isLoading,
                     onRefresh: viewModel.refreshRecommendations,
                   ),
@@ -323,6 +328,32 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
     return null;
   }
 
+  double? _visibleAttractionRangeKm({
+    required Coordinates userLocation,
+    required List<Recommendation> recommendations,
+    required List<ARSite> arSites,
+  }) {
+    final validDistances = <double>[
+      ...recommendations.map(
+        (recommendation) => userLocation.distanceTo(
+          Coordinates(
+            latitude: recommendation.latitude,
+            longitude: recommendation.longitude,
+          ),
+        ),
+      ),
+      ...arSites.map(
+        (site) => userLocation.distanceTo(
+          Coordinates(latitude: site.latitude, longitude: site.longitude),
+        ),
+      ),
+    ].where((distance) => distance.isFinite && distance >= 0);
+    if (validDistances.isEmpty) return null;
+    return validDistances.reduce((largest, distance) {
+      return distance > largest ? distance : largest;
+    });
+  }
+
   void _scheduleCameraFit(
     Coordinates location,
     List<Recommendation> recommendations,
@@ -444,11 +475,13 @@ class _LegendItem extends StatelessWidget {
 
 class _MapHeader extends StatelessWidget {
   final int count;
+  final double? visibleRangeKm;
   final bool isLoading;
   final VoidCallback onRefresh;
 
   const _MapHeader({
     required this.count,
+    required this.visibleRangeKm,
     required this.isLoading,
     required this.onRefresh,
   });
@@ -483,6 +516,27 @@ class _MapHeader extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (visibleRangeKm != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF3FA),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      '≤ ${_roundRangeUp(visibleRangeKm!).toStringAsFixed(1)} km',
+                      style: const TextStyle(
+                        color: Color(0xFF42648B),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -537,6 +591,10 @@ class _MapHeader extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  double _roundRangeUp(double distanceKm) {
+    return (distanceKm * 10).ceil() / 10;
   }
 }
 

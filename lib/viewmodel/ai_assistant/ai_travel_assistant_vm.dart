@@ -65,6 +65,7 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
   int? _actionMessageIndex;
   String? _actionQuestion;
   final Map<int, AiChatResponseActions> _responseActions = {};
+  int _sessionRevision = 0;
 
   List<AiChatMessage> get messages => List.unmodifiable(_messages);
   AiAttractionContext? get attractionContext => _attractionContext;
@@ -97,6 +98,7 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
       _addSystemMessage(error.message);
       return;
     }
+    final requestSessionRevision = _sessionRevision;
 
     // Keep only the prior messages as history. The Edge Function receives the
     // new question separately, so it is not sent twice to Gemini.
@@ -120,12 +122,24 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
 
     try {
       final nearbyScope = AiChatActionPolicy.nearbyScope(normalizedQuestion);
+      final suppressPlaceActions = AiChatActionPolicy.isFoodInformationOnly(
+        normalizedQuestion,
+      );
+      final useContextBookmarkOnly =
+          nearbyScope == AiNearbyScope.none &&
+          _contextBookmarkPlace != null &&
+          AiChatActionPolicy.questionRefersToContext(
+            normalizedQuestion,
+            _attractionContext,
+          );
       Coordinates? nearbyOrigin;
       var requestContext = _attractionContext;
 
       if (nearbyScope == AiNearbyScope.userCurrentLocation) {
         try {
-          nearbyOrigin = await _currentLocationLoader();
+          final currentLocation = await _currentLocationLoader();
+          if (requestSessionRevision != _sessionRevision) return;
+          nearbyOrigin = currentLocation;
         } on AiCurrentLocationException {
           rethrow;
         } catch (_) {
@@ -142,21 +156,28 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
         nearbyOrigin = _contextCoordinates();
       }
 
-      if (resolveBookmarkPlacesFromQuestions &&
+      if (!suppressPlaceActions &&
+          !useContextBookmarkOnly &&
+          resolveBookmarkPlacesFromQuestions &&
           nearbyScope != AiNearbyScope.none) {
         _isResolvingBookmarkPlaces = true;
         notifyListeners();
         try {
-          _bookmarkCandidates = await _bookmarkPlaceResolver.resolveQuestion(
+          final resolvedPlaces = await _bookmarkPlaceResolver.resolveQuestion(
             normalizedQuestion,
             nearbyOrigin: nearbyOrigin,
           );
+          if (requestSessionRevision != _sessionRevision) return;
+          _bookmarkCandidates = resolvedPlaces;
         } catch (error, stackTrace) {
+          if (requestSessionRevision != _sessionRevision) return;
           debugPrint('AI scoped nearby place resolution failed: $error');
           debugPrintStack(stackTrace: stackTrace);
           _bookmarkCandidates = const [];
         } finally {
-          _isResolvingBookmarkPlaces = false;
+          if (requestSessionRevision == _sessionRevision) {
+            _isResolvingBookmarkPlaces = false;
+          }
         }
       }
 
@@ -174,28 +195,34 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
                 ),
         ),
       );
+      if (requestSessionRevision != _sessionRevision) return;
       _messages.add(
         AiChatMessage(text: answer, sender: AiChatMessageSender.assistant),
       );
       _actionMessageIndex = _messages.length - 1;
       _actionQuestion = normalizedQuestion;
 
-      if (resolveBookmarkPlacesFromQuestions &&
+      if (!suppressPlaceActions &&
+          !useContextBookmarkOnly &&
+          resolveBookmarkPlacesFromQuestions &&
           nearbyScope == AiNearbyScope.none) {
         _isSending = false;
         _isResolvingBookmarkPlaces = true;
         notifyListeners();
 
         try {
-          _bookmarkCandidates = await _bookmarkPlaceResolver.resolveQuestion(
+          final resolvedPlaces = await _bookmarkPlaceResolver.resolveQuestion(
             normalizedQuestion,
             nearbyOrigin: nearbyOrigin,
           );
+          if (requestSessionRevision != _sessionRevision) return;
+          _bookmarkCandidates = resolvedPlaces;
           if (nearbyScope == AiNearbyScope.none &&
               _bookmarkCandidates.length == 1) {
             _useResolvedPlaceAsContext(_bookmarkCandidates.single);
           }
         } catch (error, stackTrace) {
+          if (requestSessionRevision != _sessionRevision) return;
           debugPrint('AI bookmark place resolution failed: $error');
           debugPrintStack(stackTrace: stackTrace);
           _bookmarkCandidates = const [];
@@ -207,14 +234,17 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
         nearbyScope: nearbyScope,
       );
     } on AiCurrentLocationException catch (error) {
+      if (requestSessionRevision != _sessionRevision) return;
       _clearPendingActions();
       _errorMessage = error.message;
       _addSystemMessage(error.message, shouldNotify: false);
     } on AiAssistantValidationException catch (error) {
+      if (requestSessionRevision != _sessionRevision) return;
       _clearPendingActions();
       _errorMessage = error.message;
       _addSystemMessage(error.message, shouldNotify: false);
     } catch (error, stackTrace) {
+      if (requestSessionRevision != _sessionRevision) return;
       debugPrint('AI answer request failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       _clearPendingActions();
@@ -222,9 +252,11 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
       _errorMessage = message;
       _addSystemMessage(message, shouldNotify: false);
     } finally {
-      _isSending = false;
-      _isResolvingBookmarkPlaces = false;
-      notifyListeners();
+      if (requestSessionRevision == _sessionRevision) {
+        _isSending = false;
+        _isResolvingBookmarkPlaces = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -253,6 +285,7 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
     }
 
     if (_conversationSummary != null && !_summaryNeedsRefresh) return;
+    final requestSessionRevision = _sessionRevision;
 
     final summaryQuestion =
         'Summarize this conversation in 3 to 5 factual bullet points. Include '
@@ -280,23 +313,28 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
         conversationHistory: summaryHistory,
         attractionContext: _attractionContext,
       );
+      if (requestSessionRevision != _sessionRevision) return;
       _conversationSummary = refreshedSummary;
       _conversationSummaryLanguageCode = AppLocalizations.currentCode;
       _summaryNeedsRefresh = false;
 
       debugPrint('Summary: Edge Function response received');
     } on AiAssistantValidationException catch (error, stackTrace) {
+      if (requestSessionRevision != _sessionRevision) return;
       debugPrint('AI summary validation failed: ${error.message}');
       debugPrintStack(stackTrace: stackTrace);
       _summaryErrorMessage = error.message;
     } catch (error, stackTrace) {
+      if (requestSessionRevision != _sessionRevision) return;
       debugPrint('AI summary request failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       _summaryErrorMessage =
           'I’m unable to create a summary right now. Please try again later.';
     } finally {
-      _isSummarizing = false;
-      notifyListeners();
+      if (requestSessionRevision == _sessionRevision) {
+        _isSummarizing = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -311,6 +349,29 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
     _actionMessageIndex = null;
     _actionQuestion = null;
     _responseActions.clear();
+    _isResolvingBookmarkPlaces = false;
+    notifyListeners();
+  }
+
+  /// Clears every piece of chat state copied from the signed-out session.
+  /// Incrementing the revision also prevents pending async requests from
+  /// restoring an answer or summary after logout.
+  void clearSessionState() {
+    _sessionRevision += 1;
+    _attractionContext = null;
+    _contextBookmarkPlace = null;
+    _messages = [_greeting()];
+    _errorMessage = null;
+    _conversationSummary = null;
+    _conversationSummaryLanguageCode = null;
+    _summaryNeedsRefresh = false;
+    _summaryErrorMessage = null;
+    _bookmarkCandidates = const [];
+    _actionMessageIndex = null;
+    _actionQuestion = null;
+    _responseActions.clear();
+    _isSending = false;
+    _isSummarizing = false;
     _isResolvingBookmarkPlaces = false;
     notifyListeners();
   }
@@ -372,6 +433,8 @@ class AiTravelAssistantViewModel extends ChangeNotifier {
     required String question,
     required AiNearbyScope nearbyScope,
   }) {
+    if (AiChatActionPolicy.isFoodInformationOnly(question)) return;
+
     final refersToContext = AiChatActionPolicy.questionRefersToContext(
       question,
       _attractionContext,

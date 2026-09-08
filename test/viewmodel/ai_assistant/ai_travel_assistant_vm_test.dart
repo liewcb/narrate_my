@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:narrate_my/core/localization/app_localizations.dart';
 import 'package:narrate_my/model/business_logic/ai_travel_assistant_service/ai_bookmark_place_resolver.dart';
@@ -43,12 +45,14 @@ class _FakePlaceResolver implements AiBookmarkPlaceQuestionResolver {
 
   final List<Place> result;
   Coordinates? receivedNearbyOrigin;
+  int callCount = 0;
 
   @override
   Future<List<Place>> resolveQuestion(
     String question, {
     Coordinates? nearbyOrigin,
   }) async {
+    callCount += 1;
     receivedNearbyOrigin = nearbyOrigin;
     return result;
   }
@@ -77,6 +81,19 @@ class _FailingRepository implements AiTravelAssistantRepository {
     required List<AiChatMessage> conversationHistory,
     AiAttractionContext? attractionContext,
   }) => throw Exception('AI request failed');
+}
+
+class _CompleterRepository implements AiTravelAssistantRepository {
+  _CompleterRepository(this.completer);
+
+  final Completer<String> completer;
+
+  @override
+  Future<String> askQuestion({
+    required String question,
+    required List<AiChatMessage> conversationHistory,
+    AiAttractionContext? attractionContext,
+  }) => completer.future;
 }
 
 void main() {
@@ -378,8 +395,128 @@ void main() {
       expect(vm.attractionContext?.attractionName, 'Suria KLCC');
       expect(vm.attractionContext?.placeId, 'google-klcc');
       expect(savedContext, klcc);
+      expect(
+        vm.actionsForMessage(vm.messages.length - 1)?.mapDestination,
+        'suria klcc',
+      );
     },
   );
+
+  test('Mandarin this-place question shows the context bookmark', () async {
+    final resolver = _FakePlaceResolver(const []);
+    final vm = AiTravelAssistantViewModel(
+      repository: _FakeRepository(),
+      bookmarkPlaceResolver: resolver,
+      initialContext: const AiAttractionContext(
+        attractionName: 'Batu Caves',
+        placeId: 'google-batu-caves',
+        source: 'recommendation',
+      ),
+      initialBookmarkPlace: batuCaves,
+    );
+    addTearDown(vm.dispose);
+
+    await vm.sendQuestion('这地方好玩吗');
+
+    expect(resolver.callCount, 0);
+    expect(vm.actionsForMessage(vm.messages.length - 1)?.bookmarkPlaces, const [
+      batuCaves,
+    ]);
+  });
+
+  test('food information questions never resolve bookmark cards', () async {
+    for (final question in [
+      'What food is available here?',
+      'Any food I can eat?',
+      '有什么食物',
+      'Ada makanan apa?',
+      '¿Qué comida hay?',
+      'क्या खाना उपलब्ध है?',
+    ]) {
+      final resolver = _FakePlaceResolver(const [restaurant]);
+      final vm = AiTravelAssistantViewModel(
+        repository: _FakeRepository(),
+        bookmarkPlaceResolver: resolver,
+        initialContext: const AiAttractionContext(
+          attractionName: 'Batu Caves',
+          placeId: 'google-batu-caves',
+          source: 'recommendation',
+        ),
+        initialBookmarkPlace: batuCaves,
+      );
+
+      await vm.sendQuestion(question);
+
+      expect(resolver.callCount, 0, reason: question);
+      expect(vm.bookmarkCandidates, isEmpty, reason: question);
+      expect(
+        vm.actionsForMessage(vm.messages.length - 1),
+        isNull,
+        reason: question,
+      );
+      vm.dispose();
+    }
+  });
+
+  test(
+    'logout clear removes local state and ignores a pending answer',
+    () async {
+      final answer = Completer<String>();
+      final vm = AiTravelAssistantViewModel(
+        repository: _CompleterRepository(answer),
+        bookmarkPlaceResolver: _FakePlaceResolver(const []),
+        initialContext: const AiAttractionContext(
+          attractionName: 'Royal Selangor Visitor Centre',
+          placeId: 'royal-selangor',
+          source: 'recommendation',
+        ),
+        initialBookmarkPlace: batuCaves,
+        initialConversationSummary: 'Old account summary',
+        initialConversationSummaryLanguageCode: 'en',
+        resolveBookmarkPlacesFromQuestions: false,
+      );
+      addTearDown(vm.dispose);
+
+      final pendingRequest = vm.sendQuestion('How do I get there?');
+      expect(vm.isSending, isTrue);
+      vm.clearSessionState();
+      answer.complete('Stale answer from the old session');
+      await pendingRequest;
+
+      expect(vm.attractionContext, isNull);
+      expect(vm.contextBookmarkPlace, isNull);
+      expect(vm.conversationSummary, isNull);
+      expect(vm.messages, hasLength(1));
+      expect(vm.isSending, isFalse);
+    },
+  );
+
+  test('logout clear ignores a pending summary response', () async {
+    final summary = Completer<String>();
+    final vm = AiTravelAssistantViewModel(
+      repository: _CompleterRepository(summary),
+      bookmarkPlaceResolver: _FakePlaceResolver(const []),
+      initialContext: const AiAttractionContext(
+        attractionName: 'Royal Selangor Visitor Centre',
+        source: 'recommendation',
+      ),
+      initialConversationSummary: 'Old account summary',
+      initialConversationSummaryLanguageCode: 'zh',
+      resolveBookmarkPlacesFromQuestions: false,
+    );
+    addTearDown(vm.dispose);
+
+    final pendingSummary = vm.generateSummary();
+    expect(vm.isSummarizing, isTrue);
+    vm.clearSessionState();
+    summary.complete('Stale refreshed summary');
+    await pendingSummary;
+
+    expect(vm.attractionContext, isNull);
+    expect(vm.conversationSummary, isNull);
+    expect(vm.messages, hasLength(1));
+    expect(vm.isSummarizing, isFalse);
+  });
 
   test('saved summary refreshes in the newly selected language', () async {
     AppLocalizations.currentCode = 'ms';
