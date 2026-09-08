@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 type SupabaseAdminClient = any;
@@ -6,11 +7,13 @@ const PRIMARY_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_MODEL") ??
   "gemini-3.5-flash-lite";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_FALLBACK_MODEL") ??
   "gemini-3.6-flash";
-const PROMPT_VERSION = "ar-context-v2";
+const PROMPT_VERSION = "ar-context-v3-accessibility";
 const DEFAULT_RADIUS_KM = 30;
 const CACHE_TTL_HOURS = 24;
 const MAX_PLACE_MATCH_DISTANCE_KM = 3;
-const DAILY_CALL_BUDGET = numberFromEnv("GEMINI_DAILY_CALL_BUDGET", 15);
+const GEMINI_REQUEST_TIMEOUT_MS = 25_000;
+const PLACES_REQUEST_TIMEOUT_MS = 10_000;
+const DAILY_CALL_BUDGET = numberFromEnv("GEMINI_DAILY_CALL_BUDGET", 100);
 
 interface Preferences {
   attraction_interests: string[];
@@ -50,7 +53,15 @@ interface Candidate {
 interface RankedCandidate extends Candidate {
   reason: string;
   relationship: string;
+  accessibilityEvidence: string;
   rank: number;
+}
+
+interface PlaceAccessibilityOptions {
+  wheelchairAccessibleParking: boolean | null;
+  wheelchairAccessibleEntrance: boolean | null;
+  wheelchairAccessibleRestroom: boolean | null;
+  wheelchairAccessibleSeating: boolean | null;
 }
 
 interface RecommendationItem extends RankedCandidate {
@@ -61,6 +72,7 @@ interface RecommendationItem extends RankedCandidate {
   resolvedLongitude: number;
   rating: number | null;
   photoReference: string | null;
+  accessibilityOptions: PlaceAccessibilityOptions;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -129,7 +141,9 @@ Deno.serve(async (req) => {
     const current = attractionRows.find((item) =>
       item.markerId === currentMarkerId && currentAttractionName != null &&
       normaliseName(item.name) === normaliseName(currentAttractionName)
-    ) ?? attractionRows.find((item) => item.markerId === currentMarkerId);
+    ) ?? attractionRows.find((item) =>
+      item.markerId === currentMarkerId
+    );
     if (!current) {
       return Response.json(
         { error: "The selected AR attraction could not be found." },
@@ -189,7 +203,11 @@ Deno.serve(async (req) => {
       candidateHash,
     ].join("|"));
 
-    const cached = await findCachedRecommendations(supabase, cacheKey);
+    const cached = await findCachedRecommendations(
+      supabase,
+      cacheKey,
+      preferences,
+    );
     if (cached) {
       await saveRecommendationLog({
         supabase,
@@ -241,7 +259,10 @@ Deno.serve(async (req) => {
     } catch (error) {
       // A useful deterministic result is safer for a live AR visit than an
       // empty panel when the free Gemini quota or service is unavailable.
-      console.error("Gemini AR ranking failed; using candidate fallback:", error);
+      console.error(
+        "Gemini AR ranking failed; using candidate fallback:",
+        error,
+      );
       ranked = deterministicFallback(candidates, preferences);
       modelName = "deterministic-fallback";
       source = "deterministic_fallback";
@@ -254,11 +275,14 @@ Deno.serve(async (req) => {
       longitude,
       radiusKm,
       apiKey: placesApiKey,
+      preferences,
     });
     if (recommendations.length === 0) {
-      return Response.json(
-        { error: "No recommended attractions could be verified on the map." },
-        { status: 503 },
+      return await recommendationResponse(
+        [],
+        { source: "accessibility_filter", modelName, usedDefaultPreferences },
+        supabaseUrl,
+        photoSigningSecret,
       );
     }
 
@@ -330,7 +354,10 @@ async function loadPreferences(
   if (!data) {
     return { preferences: DEFAULT_PREFERENCES, usedDefaultPreferences: true };
   }
-  return { preferences: normalisePreferences(data), usedDefaultPreferences: false };
+  return {
+    preferences: normalisePreferences(data),
+    usedDefaultPreferences: false,
+  };
 }
 
 function normalisePreferences(value: Record<string, unknown>): Preferences {
@@ -344,7 +371,9 @@ function normalisePreferences(value: Record<string, unknown>): Preferences {
   };
 }
 
-async function loadAttractions(supabase: SupabaseAdminClient): Promise<Candidate[]> {
+async function loadAttractions(
+  supabase: SupabaseAdminClient,
+): Promise<Candidate[]> {
   const { data, error } = await supabase
     .from("Attraction")
     .select(`
@@ -370,8 +399,11 @@ async function loadAttractions(supabase: SupabaseAdminClient): Promise<Candidate
       markerId: optionalString(row.marker_id ?? marker?.marker_id) ?? "",
       siteId: optionalString(row.site_id),
       name: optionalString(row.name) ?? "AR attraction",
-      summary: truncate(optionalString(row.attraction_content) ??
-        "Discover this NarrateMy AR attraction.", 420),
+      summary: truncate(
+        optionalString(row.attraction_content) ??
+          "Discover this NarrateMy AR attraction.",
+        420,
+      ),
       labels,
       category: labels[0] ?? "AR attraction",
       latitude: Number(marker?.latitude),
@@ -451,7 +483,9 @@ function buildCandidates({
     if (row.attractionId === current.attractionId) continue;
     if (excludedMarkerIds.has(row.markerId)) continue;
     if (current.siteId && row.siteId === current.siteId) continue;
-    if (row.name.trim().toLowerCase() === current.name.trim().toLowerCase()) continue;
+    if (row.name.trim().toLowerCase() === current.name.trim().toLowerCase()) {
+      continue;
+    }
 
     const site = row.siteId == null ? null : sites.get(row.siteId);
     const candidateLatitude = site?.latitude ?? row.latitude;
@@ -472,9 +506,10 @@ function buildCandidates({
     const item: Candidate = {
       ...row,
       name: site?.displayName ?? row.name,
-      summary: site && normaliseName(site.displayName) !== normaliseName(row.name)
-        ? `${row.name}: ${row.summary}`
-        : row.summary,
+      summary:
+        site && normaliseName(site.displayName) !== normaliseName(row.name)
+          ? `${row.name}: ${row.summary}`
+          : row.summary,
       category,
       latitude: candidateLatitude,
       longitude: candidateLongitude,
@@ -482,6 +517,7 @@ function buildCandidates({
       address: site?.address ?? null,
       googlePlaceId: site?.googlePlaceIds[0] ?? null,
     };
+    if (!candidatePassesAccessibilityHardFilter(item, preferences)) continue;
     const groupingKey = row.siteId ?? row.attractionId;
     const existing = grouped.get(groupingKey);
     if (!existing || item.distanceKm < existing.distanceKm) {
@@ -497,7 +533,10 @@ function buildCandidates({
 async function findCachedRecommendations(
   supabase: SupabaseAdminClient,
   cacheKey: string,
-): Promise<{ recommendations: RecommendationItem[]; modelName: string } | null> {
+  preferences: Preferences,
+): Promise<
+  { recommendations: RecommendationItem[]; modelName: string } | null
+> {
   const cutoff = new Date(
     Date.now() - CACHE_TTL_HOURS * 60 * 60 * 1000,
   ).toISOString();
@@ -517,6 +556,7 @@ async function findCachedRecommendations(
   }
   const recommendations = validateStoredRecommendations(
     data?.response_json?.recommendations,
+    preferences,
   );
   if (recommendations.length === 0) return null;
   return {
@@ -548,13 +588,17 @@ function buildPrompt({
     labels: item.labels,
     distance_km: Number(item.distanceKm.toFixed(2)),
   }));
+  const accessibilityRules = buildAccessibilityRules(preferences);
 
   return `
 You are NarrateMy's AR recommendation engine for tourists in Malaysia.
 
-The tourist is currently viewing an attraction using AR. Select exactly 3
+POLICY VERSION: ${PROMPT_VERSION}
+
+The tourist is currently viewing an attraction using AR. Select up to 3
 attractions from CANDIDATE ATTRACTIONS that continue or complement the current
-experience.
+experience. Return fewer or none when the hard constraints leave fewer suitable
+candidates.
 
 PRIORITY
 1. Continue the story.
@@ -563,12 +607,18 @@ PRIORITY
 4. Avoid repetition.
 5. Respect user preferences.
 6. Treat dietary and religiously motivated food restrictions as hard rules.
+7. Treat every active accessibility preference as a hard rule.
+
+HARD ACCESSIBILITY CONSTRAINTS
+${accessibilityRules}
 
 NEVER RECOMMEND
 - the current attraction or current site
 - anything not present in CANDIDATE ATTRACTIONS
 - duplicate attractions
 - excluded or unsuitable attractions
+- when an accessibility constraint is active, any attraction whose
+  compatibility with that constraint is unknown
 
 CURRENT ATTRACTION
 Name: ${current.name}
@@ -580,16 +630,24 @@ USER CONTEXT
 Attraction interests: ${JSON.stringify(preferences.attraction_interests)}
 Food/cuisine interests: ${JSON.stringify(preferences.food_cuisine_interests)}
 Dietary preferences: ${JSON.stringify(preferences.dietary_preferences)}
-Dietary/religious restrictions: ${JSON.stringify(preferences.dietary_restrictions)}
-Accessibility preferences: ${JSON.stringify(preferences.accessibility_preferences)}
+Dietary/religious restrictions: ${
+    JSON.stringify(preferences.dietary_restrictions)
+  }
+Accessibility preferences: ${
+    JSON.stringify(preferences.accessibility_preferences)
+  }
 Excluded categories: ${JSON.stringify(preferences.category_exclusions)}
 Current location: ${latitude}, ${longitude}
 
 CANDIDATE ATTRACTIONS
 ${JSON.stringify(candidateList)}
 
+For every returned item, accessibility_evidence must state the concrete feature
+that satisfies every active accessibility constraint. Use an empty string only
+when no accessibility constraint is active.
+
 Return JSON only in this exact shape:
-{"recommendations":[{"id":"candidate id","reason":"one concise personalised reason","relationship":"Continue History"}]}
+{"recommendations":[{"id":"candidate id","reason":"one concise personalised reason","relationship":"Continue History","accessibility_evidence":"Step-free entrance and lifts"}]}
 `.trim();
 }
 
@@ -684,9 +742,10 @@ async function generate(
         generationConfig: {
           responseMimeType: "application/json",
           temperature: 0.25,
-          maxOutputTokens: 1000,
+          maxOutputTokens: 1400,
         },
       }),
+      signal: AbortSignal.timeout(GEMINI_REQUEST_TIMEOUT_MS),
     },
   );
   const data = await response.json();
@@ -732,6 +791,7 @@ function validateGeneratedRecommendations(
         "This attraction complements your current AR experience.",
       relationship: optionalString(row.relationship) ??
         "Complementary experience",
+      accessibilityEvidence: optionalString(row.accessibility_evidence) ?? "",
       rank: result.length + 1,
     });
     if (result.length === 3) break;
@@ -743,17 +803,22 @@ function deterministicFallback(
   candidates: Candidate[],
   preferences: Preferences,
 ): RankedCandidate[] {
+  if (accessibilityProfile(preferences).hasConstraints) return [];
   const interests = preferences.attraction_interests.map((item) =>
     item.toLowerCase()
   );
   return [...candidates]
     .sort((a, b) => {
       const aMatch = [...a.labels, a.category].some((value) =>
-        interests.includes(value.toLowerCase())
-      ) ? 1 : 0;
+          interests.includes(value.toLowerCase())
+        )
+        ? 1
+        : 0;
       const bMatch = [...b.labels, b.category].some((value) =>
-        interests.includes(value.toLowerCase())
-      ) ? 1 : 0;
+          interests.includes(value.toLowerCase())
+        )
+        ? 1
+        : 0;
       return bMatch - aMatch || a.distanceKm - b.distanceKm;
     })
     .slice(0, 3)
@@ -763,6 +828,7 @@ function deterministicFallback(
         ? "A nearby AR attraction that fits your interests and continues your visit."
         : "A nearby AR attraction that offers a complementary next experience.",
       relationship: "Nearby complement",
+      accessibilityEvidence: "",
       rank: index + 1,
     }));
 }
@@ -774,6 +840,7 @@ async function resolveRecommendations({
   longitude,
   radiusKm,
   apiKey,
+  preferences,
 }: {
   ranked: RankedCandidate[];
   sites: Map<string, ARSite>;
@@ -781,6 +848,7 @@ async function resolveRecommendations({
   longitude: number;
   radiusKm: number;
   apiKey: string;
+  preferences: Preferences;
 }): Promise<RecommendationItem[]> {
   const resolved = await Promise.all(ranked.map(async (item) => {
     try {
@@ -810,7 +878,14 @@ async function resolveRecommendations({
               `${placeDistanceFromMarkerKm.toFixed(1)} km from its AR marker.`,
           );
         }
-        return trustedMarkerFallback(item, latitude, longitude);
+        return accessibilityProfile(preferences).hasConstraints
+          ? null
+          : trustedMarkerFallback(item, latitude, longitude);
+      }
+      if (
+        !resolvedPlacePassesAccessibilityHardFilter(item, place, preferences)
+      ) {
+        return null;
       }
       return {
         ...item,
@@ -828,10 +903,13 @@ async function resolveRecommendations({
         ),
         rating: place.rating,
         photoReference: place.photoReference,
+        accessibilityOptions: place.accessibilityOptions,
       } satisfies RecommendationItem;
     } catch (error) {
       console.error(`Unable to resolve ${item.name} with Places:`, error);
-      return trustedMarkerFallback(item, latitude, longitude);
+      return accessibilityProfile(preferences).hasConstraints
+        ? null
+        : trustedMarkerFallback(item, latitude, longitude);
     }
   }));
   return resolved
@@ -859,6 +937,7 @@ function trustedMarkerFallback(
     ),
     rating: null,
     photoReference: null,
+    accessibilityOptions: emptyAccessibilityOptions(),
   };
 }
 
@@ -869,21 +948,28 @@ interface PlaceResult {
   longitude: number;
   rating: number | null;
   photoReference: string | null;
+  accessibilityOptions: PlaceAccessibilityOptions;
 }
 
-async function getPlaceById(id: string, apiKey: string): Promise<PlaceResult | null> {
+async function getPlaceById(
+  id: string,
+  apiKey: string,
+): Promise<PlaceResult | null> {
   const response = await fetch(
     `https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`,
     {
       headers: {
         "X-Goog-Api-Key": apiKey,
         "X-Goog-FieldMask":
-          "id,formattedAddress,location,rating,photos",
+          "id,formattedAddress,location,rating,photos,accessibilityOptions",
       },
+      signal: AbortSignal.timeout(PLACES_REQUEST_TIMEOUT_MS),
     },
   );
   const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message ?? "Places lookup failed.");
+  if (!response.ok) {
+    throw new Error(data?.error?.message ?? "Places lookup failed.");
+  }
   return parsePlace(data);
 }
 
@@ -903,7 +989,7 @@ async function searchPlace(
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
         "X-Goog-FieldMask":
-          "places.id,places.formattedAddress,places.location,places.rating,places.photos",
+          "places.id,places.formattedAddress,places.location,places.rating,places.photos,places.accessibilityOptions",
       },
       body: JSON.stringify({
         textQuery: [name, address].filter(Boolean).join(", "),
@@ -915,10 +1001,13 @@ async function searchPlace(
           },
         },
       }),
+      signal: AbortSignal.timeout(PLACES_REQUEST_TIMEOUT_MS),
     },
   );
   const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message ?? "Places search failed.");
+  if (!response.ok) {
+    throw new Error(data?.error?.message ?? "Places search failed.");
+  }
   const places = (Array.isArray(data?.places) ? data.places : [])
     .map((place: Record<string, any>) => parsePlace(place))
     .filter((place: PlaceResult | null): place is PlaceResult => place != null)
@@ -933,8 +1022,10 @@ function parsePlace(value: Record<string, any>): PlaceResult | null {
   const resolvedLatitude = Number(value?.location?.latitude);
   const resolvedLongitude = Number(value?.location?.longitude);
   const id = optionalString(value?.id);
-  if (!id || !Number.isFinite(resolvedLatitude) ||
-    !Number.isFinite(resolvedLongitude)) return null;
+  if (
+    !id || !Number.isFinite(resolvedLatitude) ||
+    !Number.isFinite(resolvedLongitude)
+  ) return null;
   const photos = Array.isArray(value?.photos) ? value.photos : [];
   const rating = Number(value?.rating);
   return {
@@ -944,6 +1035,7 @@ function parsePlace(value: Record<string, any>): PlaceResult | null {
     longitude: resolvedLongitude,
     rating: Number.isFinite(rating) ? rating : null,
     photoReference: optionalString(photos[0]?.name),
+    accessibilityOptions: parseAccessibilityOptions(value.accessibilityOptions),
   };
 }
 
@@ -1053,7 +1145,10 @@ async function recommendationResponse(
   });
 }
 
-function validateStoredRecommendations(value: unknown): RecommendationItem[] {
+function validateStoredRecommendations(
+  value: unknown,
+  preferences: Preferences,
+): RecommendationItem[] {
   if (!Array.isArray(value)) return [];
   return value.filter((row) => row && typeof row === "object").map((raw) => {
     const row = raw as Record<string, any>;
@@ -1072,21 +1167,189 @@ function validateStoredRecommendations(value: unknown): RecommendationItem[] {
       address: optionalString(row.address),
       googlePlaceId: optionalString(row.googlePlaceId),
       reason: optionalString(row.reason) ?? "Recommended for your visit.",
-      relationship: optionalString(row.relationship) ?? "Complementary experience",
+      relationship: optionalString(row.relationship) ??
+        "Complementary experience",
+      accessibilityEvidence: optionalString(row.accessibilityEvidence) ?? "",
       rank: Number(row.rank),
       placeId: optionalString(row.placeId) ?? "",
       resolvedName: optionalString(row.resolvedName) ?? "AR attraction",
-      resolvedAddress: optionalString(row.resolvedAddress) ?? "Address unavailable",
+      resolvedAddress: optionalString(row.resolvedAddress) ??
+        "Address unavailable",
       resolvedLatitude: Number(row.resolvedLatitude),
       resolvedLongitude: Number(row.resolvedLongitude),
       rating: row.rating == null ? null : Number(row.rating),
       photoReference: optionalString(row.photoReference),
+      accessibilityOptions: parseAccessibilityOptions(row.accessibilityOptions),
     };
   }).filter((item) =>
     item.attractionId && item.markerId && item.placeId &&
     Number.isFinite(item.resolvedLatitude) &&
-    Number.isFinite(item.resolvedLongitude)
+    Number.isFinite(item.resolvedLongitude) &&
+    storedRecommendationPassesAccessibilityHardFilter(item, preferences)
   ).slice(0, 3);
+}
+
+function buildAccessibilityRules(preferences: Preferences): string {
+  const profile = accessibilityProfile(preferences);
+  if (!profile.hasConstraints) {
+    return "No accessibility constraint is active.";
+  }
+
+  const rules: string[] = [];
+  if (profile.wheelchair) {
+    rules.push(
+      "- WHEELCHAIR ACCESSIBLE: only select places with a known step-free, " +
+        "wheelchair-accessible entrance and lifts/ramps where needed. Reject " +
+        "hiking, trekking, climbing, stairs-only, steep, cave, and rough- or " +
+        "uneven-terrain experiences.",
+    );
+  }
+  if (profile.mobility) {
+    rules.push(
+      "- MOBILITY ASSISTANCE: only select low-exertion places with a known " +
+        "accessible entrance, short/easy routes, and seating or rest options. " +
+        "Reject hikes, trails, long walking tours, steep slopes, climbing, " +
+        "stairs-only access, and prolonged-standing activities.",
+    );
+  }
+  if (profile.visual) {
+    rules.push(
+      "- VISUAL ASSISTANCE: only select places with a known audio guide, " +
+        "audio description, tactile/Braille material, guided assistance, or " +
+        "another concrete non-visual way to experience the attraction.",
+    );
+  }
+  rules.push(
+    "- Never relax these constraints to produce three results. Fewer or no " +
+      "recommendations is the correct response when compatibility is unknown.",
+  );
+  return rules.join("\n");
+}
+
+function candidatePassesAccessibilityHardFilter(
+  candidate: Candidate,
+  preferences: Preferences,
+): boolean {
+  const profile = accessibilityProfile(preferences);
+  if (!(profile.wheelchair || profile.mobility)) return true;
+  return !isMobilityRiskText(
+    [
+      candidate.name,
+      candidate.category,
+      candidate.labels.join(" "),
+      candidate.summary,
+    ].join(" "),
+  );
+}
+
+function resolvedPlacePassesAccessibilityHardFilter(
+  candidate: RankedCandidate,
+  place: PlaceResult,
+  preferences: Preferences,
+): boolean {
+  if (!candidatePassesAccessibilityHardFilter(candidate, preferences)) {
+    return false;
+  }
+  return verifiedAccessibilityIsCompatible(
+    candidate.accessibilityEvidence,
+    place.accessibilityOptions,
+    preferences,
+  );
+}
+
+function storedRecommendationPassesAccessibilityHardFilter(
+  recommendation: RecommendationItem,
+  preferences: Preferences,
+): boolean {
+  if (!candidatePassesAccessibilityHardFilter(recommendation, preferences)) {
+    return false;
+  }
+  return verifiedAccessibilityIsCompatible(
+    recommendation.accessibilityEvidence,
+    recommendation.accessibilityOptions,
+    preferences,
+  );
+}
+
+function verifiedAccessibilityIsCompatible(
+  evidence: string,
+  options: PlaceAccessibilityOptions,
+  preferences: Preferences,
+): boolean {
+  const profile = accessibilityProfile(preferences);
+  if (!profile.hasConstraints) return true;
+  if (!evidence.trim()) return false;
+
+  if (
+    (profile.wheelchair || profile.mobility) &&
+    options.wheelchairAccessibleEntrance !== true
+  ) {
+    return false;
+  }
+  if (
+    (profile.wheelchair || profile.mobility) &&
+    !/(wheelchair|step[- ]?free|ramp|lift|elevator|accessible entrance|accessible parking|mobility|seating|rest area)/i
+      .test(evidence)
+  ) {
+    return false;
+  }
+  if (
+    profile.visual &&
+    !/(audio guide|audio description|tactile|braille|guided (tour|assistance)|staff assistance|non-visual)/i
+      .test(evidence)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function accessibilityProfile(preferences: Preferences) {
+  const selected = preferences.accessibility_preferences.map((value) =>
+    value.trim().toLowerCase()
+  );
+  const wheelchair = selected.some((value) => value.includes("wheelchair"));
+  const mobility = selected.some((value) => value.includes("mobility"));
+  const visual = selected.some((value) => value.includes("visual"));
+  return {
+    wheelchair,
+    mobility,
+    visual,
+    hasConstraints: wheelchair || mobility || visual,
+  };
+}
+
+function isMobilityRiskText(value: string): boolean {
+  return /\b(hike|hiking|trek|trekking|trail|mountain|mountaineering|climb|climbing|stairs-only|steep slope|rough terrain|uneven terrain|long walking tour)\b/i
+    .test(value);
+}
+
+function parseAccessibilityOptions(value: unknown): PlaceAccessibilityOptions {
+  const options = value && typeof value === "object"
+    ? value as Record<string, unknown>
+    : {};
+  return {
+    wheelchairAccessibleParking: optionalBoolean(
+      options.wheelchairAccessibleParking,
+    ),
+    wheelchairAccessibleEntrance: optionalBoolean(
+      options.wheelchairAccessibleEntrance,
+    ),
+    wheelchairAccessibleRestroom: optionalBoolean(
+      options.wheelchairAccessibleRestroom,
+    ),
+    wheelchairAccessibleSeating: optionalBoolean(
+      options.wheelchairAccessibleSeating,
+    ),
+  };
+}
+
+function emptyAccessibilityOptions(): PlaceAccessibilityOptions {
+  return {
+    wheelchairAccessibleParking: null,
+    wheelchairAccessibleEntrance: null,
+    wheelchairAccessibleRestroom: null,
+    wheelchairAccessibleSeating: null,
+  };
 }
 
 async function buildSignedPhotoUrl(
@@ -1118,15 +1381,24 @@ async function hmacSha256(value: string, secret: string): Promise<string> {
     encoder.encode(value),
   );
   let binary = "";
-  for (const byte of new Uint8Array(signature)) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  for (const byte of new Uint8Array(signature)) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(
+    /=+$/,
+    "",
+  );
 }
 
 function stablePreferences(preferences: Preferences): string {
   return JSON.stringify(Object.fromEntries(
     Object.entries(preferences).map(([key, values]) => [
       key,
-      [...new Set(values.map((value) => value.trim().toLowerCase()))].sort(),
+      [
+        ...new Set(
+          values.map((value: string) => value.trim().toLowerCase()),
+        ),
+      ].sort(),
     ]),
   ));
 }
@@ -1150,6 +1422,10 @@ function cleanArray(value: unknown): string[] {
 function optionalString(value: unknown): string | null {
   const text = value == null ? "" : String(value).trim();
   return text || null;
+}
+
+function optionalBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function truncate(value: string, maximum: number): string {
@@ -1184,7 +1460,9 @@ async function sha256(value: string): Promise<string> {
 
 function requiredEnv(name: string): string {
   const value = Deno.env.get(name);
-  if (!value) throw new Error(`Required environment variable ${name} is missing.`);
+  if (!value) {
+    throw new Error(`Required environment variable ${name} is missing.`);
+  }
   return value;
 }
 

@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 // This project does not currently generate Supabase Database TypeScript
@@ -9,11 +10,15 @@ const PRIMARY_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_MODEL") ??
   "gemini-3.5-flash-lite";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_FALLBACK_MODEL") ??
   "gemini-3.6-flash";
-const PROMPT_VERSION = "nearby-v3-server-places";
+const PROMPT_VERSION = "nearby-v4-accessibility-proximity";
 const DEFAULT_RADIUS_KM = 10;
+const MAX_RADIUS_KM = 20;
+const MAX_RECOMMENDATIONS = 13;
+const GEMINI_REQUEST_TIMEOUT_MS = 25_000;
+const PLACES_REQUEST_TIMEOUT_MS = 10_000;
 const CACHE_TTL_HOURS = numberFromEnv("RECOMMENDATION_CACHE_TTL_HOURS", 24);
 const CACHE_STALE_DAYS = numberFromEnv("RECOMMENDATION_CACHE_STALE_DAYS", 7);
-const DAILY_CALL_BUDGET = numberFromEnv("GEMINI_DAILY_CALL_BUDGET", 15);
+const DAILY_CALL_BUDGET = numberFromEnv("GEMINI_DAILY_CALL_BUDGET", 100);
 
 interface Preferences {
   attraction_interests: string[];
@@ -35,6 +40,14 @@ interface RecommendationItem {
   longitude?: number;
   rating?: number;
   photo_reference?: string;
+  accessibility_evidence?: string;
+}
+
+interface PlaceAccessibilityOptions {
+  wheelchairAccessibleParking: boolean | null;
+  wheelchairAccessibleEntrance: boolean | null;
+  wheelchairAccessibleRestroom: boolean | null;
+  wheelchairAccessibleSeating: boolean | null;
 }
 
 interface CacheRecord {
@@ -76,8 +89,9 @@ Deno.serve(async (req) => {
     const radiusKm = clamp(
       body.radius_km == null ? DEFAULT_RADIUS_KM : Number(body.radius_km),
       1,
-      50,
+      MAX_RADIUS_KM,
     );
+    const maximumRadiusKm = MAX_RADIUS_KM;
 
     if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
       return Response.json({ error: "Invalid latitude." }, { status: 400 });
@@ -109,6 +123,7 @@ Deno.serve(async (req) => {
         latitudeBucket,
         longitudeBucket,
         radiusKm.toFixed(2),
+        maximumRadiusKm.toFixed(2),
         preferenceHash,
       ].join("|"),
     );
@@ -123,6 +138,7 @@ Deno.serve(async (req) => {
     const cached = cacheData as CacheRecord | null;
     const cachedRecommendations = validateRecommendations(
       cached?.recommendations,
+      preferences,
     );
     const now = Date.now();
     if (
@@ -130,13 +146,18 @@ Deno.serve(async (req) => {
       cachedRecommendations.length > 0 &&
       Date.parse(cached.expires_at) > now
     ) {
-      return await recommendationResponse(cachedRecommendations, {
-        source: "supabase_cache",
-        modelName: cached.model_name,
-        cachedAt: cached.created_at,
-        radiusKm,
-        usedDefaultPreferences,
-      }, supabaseUrl, photoSigningSecret);
+      return await recommendationResponse(
+        cachedRecommendations,
+        {
+          source: "supabase_cache",
+          modelName: cached.model_name,
+          cachedAt: cached.created_at,
+          radiusKm,
+          usedDefaultPreferences,
+        },
+        supabaseUrl,
+        photoSigningSecret,
+      );
     }
 
     // Bootstrap the new cache from a compatible successful log. This avoids
@@ -155,8 +176,9 @@ Deno.serve(async (req) => {
           recommendations: loggedRecommendations.recommendations,
           latitude,
           longitude,
-          radiusKm,
+          radiusKm: maximumRadiusKm,
           apiKey: placesApiKey,
+          preferences,
         });
         if (resolvedLoggedRecommendations.length > 0) {
           await saveCache({
@@ -189,7 +211,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    const prompt = buildPrompt({ latitude, longitude, radiusKm, preferences });
+    const prompt = buildPrompt({
+      latitude,
+      longitude,
+      radiusKm,
+      maximumRadiusKm,
+      preferences,
+    });
 
     try {
       const generated = await generateWithFallback({
@@ -202,8 +230,9 @@ Deno.serve(async (req) => {
         recommendations: generated.recommendations,
         latitude,
         longitude,
-        radiusKm,
+        radiusKm: maximumRadiusKm,
         apiKey: placesApiKey,
+        preferences,
       });
 
       await saveCache({
@@ -230,26 +259,36 @@ Deno.serve(async (req) => {
         latencyMs: Date.now() - startTime,
       });
 
-      return await recommendationResponse(resolvedRecommendations, {
-        source: "gemini",
-        modelName: generated.modelName,
-        cachedAt: new Date().toISOString(),
-        radiusKm,
-        usedDefaultPreferences,
-      }, supabaseUrl, photoSigningSecret);
+      return await recommendationResponse(
+        resolvedRecommendations,
+        {
+          source: "gemini",
+          modelName: generated.modelName,
+          cachedAt: new Date().toISOString(),
+          radiusKm,
+          usedDefaultPreferences,
+        },
+        supabaseUrl,
+        photoSigningSecret,
+      );
     } catch (error) {
       // Stale-while-error: an expired result is still safer and more useful
       // than an empty map when Gemini is unavailable or quota-limited.
       if (cached && cachedRecommendations.length > 0) {
         const ageMs = now - Date.parse(cached.created_at);
         if (ageMs <= CACHE_STALE_DAYS * 24 * 60 * 60 * 1000) {
-          return await recommendationResponse(cachedRecommendations, {
-            source: "stale_supabase_cache",
-            modelName: cached.model_name,
-            cachedAt: cached.created_at,
-            radiusKm,
-            usedDefaultPreferences,
-          }, supabaseUrl, photoSigningSecret);
+          return await recommendationResponse(
+            cachedRecommendations,
+            {
+              source: "stale_supabase_cache",
+              modelName: cached.model_name,
+              cachedAt: cached.created_at,
+              radiusKm,
+              usedDefaultPreferences,
+            },
+            supabaseUrl,
+            photoSigningSecret,
+          );
         }
       }
 
@@ -379,6 +418,7 @@ async function findCompatibleRecommendationLog({
     .select(`
       response_json,
       preferences_snapshot,
+      prompt,
       model_name,
       created_at,
       current_latitude,
@@ -399,6 +439,11 @@ async function findCompatibleRecommendationLog({
 
   const expectedPreferences = stablePreferences(preferences);
   for (const row of (data ?? []) as Array<Record<string, any>>) {
+    if (
+      !String(row.prompt ?? "").includes(`POLICY VERSION: ${PROMPT_VERSION}`)
+    ) {
+      continue;
+    }
     const rowLatitude = Number(row.current_latitude);
     const rowLongitude = Number(row.current_longtitude);
     if (
@@ -413,6 +458,7 @@ async function findCompatibleRecommendationLog({
 
     const recommendations = validateRecommendations(
       row.response_json?.recommendations,
+      preferences,
     );
     if (recommendations.length === 0) continue;
 
@@ -431,15 +477,17 @@ async function resolveRecommendations({
   longitude,
   radiusKm,
   apiKey,
+  preferences,
 }: {
   recommendations: RecommendationItem[];
   latitude: number;
   longitude: number;
   radiusKm: number;
   apiKey: string;
+  preferences: Preferences;
 }): Promise<RecommendationItem[]> {
   const errors: unknown[] = [];
-  const resolved = await Promise.all(
+  const resolved: Array<RecommendationItem | null> = await Promise.all(
     recommendations.map(async (recommendation) => {
       try {
         const place = await searchPlace({
@@ -450,6 +498,14 @@ async function resolveRecommendations({
           apiKey,
         });
         if (!place) return null;
+        const distanceKm = haversineKm(
+          latitude,
+          longitude,
+          place.location.latitude,
+          place.location.longitude,
+        );
+        if (distanceKm > radiusKm) return null;
+        if (!isAccessiblePlace(recommendation, place, preferences)) return null;
         return {
           ...recommendation,
           place_id: place.id,
@@ -474,10 +530,28 @@ async function resolveRecommendations({
 
   const usable = resolved
     .filter((item): item is RecommendationItem => item != null)
+    .sort((a, b) => {
+      const aDistance = haversineKm(
+        latitude,
+        longitude,
+        a.latitude!,
+        a.longitude!,
+      );
+      const bDistance = haversineKm(
+        latitude,
+        longitude,
+        b.latitude!,
+        b.longitude!,
+      );
+      const aBand = aDistance <= 3 ? 0 : aDistance <= DEFAULT_RADIUS_KM ? 1 : 2;
+      const bBand = bDistance <= 3 ? 0 : bDistance <= DEFAULT_RADIUS_KM ? 1 : 2;
+      return aBand - bBand || a.rank - b.rank || aDistance - bDistance;
+    })
     .map((item, index) => ({ ...item, rank: index + 1 }));
   if (usable.length === 0) {
     const firstError = errors[0];
     if (firstError instanceof PlacesRequestError) throw firstError;
+    if (accessibilityProfile(preferences).hasConstraints) return [];
     throw new PlacesRequestError(
       503,
       "Google Places could not verify any recommended locations.",
@@ -498,13 +572,16 @@ async function searchPlace({
   longitude: number;
   radiusKm: number;
   apiKey: string;
-}): Promise<{
-  id: string;
-  formattedAddress: string | null;
-  location: { latitude: number; longitude: number };
-  rating: number | null;
-  photoReference: string | null;
-} | null> {
+}): Promise<
+  {
+    id: string;
+    formattedAddress: string | null;
+    location: { latitude: number; longitude: number };
+    rating: number | null;
+    photoReference: string | null;
+    accessibilityOptions: PlaceAccessibilityOptions;
+  } | null
+> {
   const query = [recommendation.name, recommendation.address]
     .filter((value) => value && String(value).trim())
     .join(", ");
@@ -522,6 +599,7 @@ async function searchPlace({
           "places.location",
           "places.rating",
           "places.photos",
+          "places.accessibilityOptions",
         ].join(","),
       },
       body: JSON.stringify({
@@ -534,6 +612,7 @@ async function searchPlace({
           },
         },
       }),
+      signal: AbortSignal.timeout(PLACES_REQUEST_TIMEOUT_MS),
     },
   );
   const data = await response.json();
@@ -557,8 +636,10 @@ async function searchPlace({
   const location = matched.location as Record<string, unknown> | undefined;
   const resolvedLatitude = Number(location?.latitude);
   const resolvedLongitude = Number(location?.longitude);
-  if (!Number.isFinite(resolvedLatitude) ||
-    !Number.isFinite(resolvedLongitude)) {
+  if (
+    !Number.isFinite(resolvedLatitude) ||
+    !Number.isFinite(resolvedLongitude)
+  ) {
     return null;
   }
   const photos = Array.isArray(matched.photos) ? matched.photos : [];
@@ -566,6 +647,9 @@ async function searchPlace({
     ? null
     : String(photos[0].name).trim() || null;
   const rating = Number(matched.rating);
+  const accessibilityOptions = parseAccessibilityOptions(
+    matched.accessibilityOptions,
+  );
 
   return {
     id: String(matched.id ?? "").trim(),
@@ -578,6 +662,7 @@ async function searchPlace({
     },
     rating: Number.isFinite(rating) ? rating : null,
     photoReference,
+    accessibilityOptions,
   };
 }
 
@@ -691,9 +776,10 @@ async function generate(
         generationConfig: {
           responseMimeType: "application/json",
           temperature: 0.35,
-          maxOutputTokens: 1800,
+          maxOutputTokens: 3200,
         },
       }),
+      signal: AbortSignal.timeout(GEMINI_REQUEST_TIMEOUT_MS),
     },
   );
 
@@ -803,15 +889,13 @@ async function recommendationResponse(
   const recommendationsWithPhotos = await Promise.all(
     recommendations.map(async (recommendation) => ({
       ...recommendation,
-      ...(recommendation.photo_reference == null
-        ? {}
-        : {
-          image_url: await buildSignedPhotoUrl(
-            supabaseUrl,
-            recommendation.photo_reference,
-            photoSigningSecret,
-          ),
-        }),
+      ...(recommendation.photo_reference == null ? {} : {
+        image_url: await buildSignedPhotoUrl(
+          supabaseUrl,
+          recommendation.photo_reference,
+          photoSigningSecret,
+        ),
+      }),
     })),
   );
   return Response.json({
@@ -821,6 +905,7 @@ async function recommendationResponse(
       model_name: meta.modelName,
       cached_at: meta.cachedAt,
       radius_km: meta.radiusKm,
+      maximum_radius_km: MAX_RADIUS_KM,
       returned_count: recommendations.length,
       used_default_preferences: meta.usedDefaultPreferences,
       prompt_version: PROMPT_VERSION,
@@ -832,18 +917,34 @@ function buildPrompt({
   latitude,
   longitude,
   radiusKm,
+  maximumRadiusKm,
   preferences,
 }: {
   latitude: number;
   longitude: number;
   radiusKm: number;
+  maximumRadiusKm: number;
   preferences: Preferences;
 }): string {
+  const accessibilityRules = buildAccessibilityRules(preferences);
   return `
 You are NarrateMy's tourism recommendation engine for Malaysia.
 
-Recommend 5 to 7 real, identifiable tourist places located approximately
-within ${radiusKm} km of latitude ${latitude}, longitude ${longitude}.
+POLICY VERSION: ${PROMPT_VERSION}
+
+Recommend 10 to ${MAX_RECOMMENDATIONS} real, identifiable tourist places. Return at least 7
+when 7 suitable places exist. Never invent a place merely to reach the target.
+
+GEOGRAPHIC SEARCH POLICY
+- Search closest-first from latitude ${latitude}, longitude ${longitude}.
+- First fill the list with suitable places within 0-3 km so dense areas such
+  as Bukit Bintang/Pavilion are represented before farther districts.
+- Then use suitable places from 3-${radiusKm} km.
+- Only when fewer than 7 suitable places exist within ${radiusKm} km may you
+  expand to the outer ring from ${radiusKm}-${maximumRadiusKm} km.
+- Never recommend anything farther than ${maximumRadiusKm} km.
+- Rank inner-area places before outer-ring places; distance is a primary
+  ranking factor after all hard constraints are satisfied.
 
 TOURIST PREFERENCES
 Attraction interests: ${JSON.stringify(preferences.attraction_interests)}
@@ -857,19 +958,29 @@ Accessibility preferences: ${
   }
 Excluded categories: ${JSON.stringify(preferences.category_exclusions)}
 
+HARD ACCESSIBILITY CONSTRAINTS
+${accessibilityRules}
+
 RULES
-1. Preferences have priority and excluded categories must not be returned.
+1. Accessibility rules and excluded categories are hard constraints. Never
+   relax them to reach the requested number of recommendations.
 2. Dietary preferences and restrictions are hard constraints for food venues.
 3. If dietary compatibility is uncertain, prefer a non-food attraction.
 4. Provide variety, with at most two recommendations from one category.
 5. Do not duplicate an attraction.
 6. Give one short personalised reason per recommendation.
-7. Return JSON only in this exact shape:
-{"recommendations":[{"name":"Place name","category":"Museum","address":"Known or approximate address","rank":1,"reason":"Why it fits"}]}
+7. When accessibility constraints are active, state the specific known feature
+   that satisfies them in accessibility_evidence. If compatibility is unknown,
+   omit the place. Use an empty string only when no accessibility constraint is active.
+8. Return JSON only in this exact shape:
+{"recommendations":[{"name":"Place name","category":"Museum","address":"Known or approximate address","rank":1,"reason":"Why it fits","accessibility_evidence":"Step-free entrance and lifts"}]}
 `.trim();
 }
 
-function validateRecommendations(value: unknown): RecommendationItem[] {
+function validateRecommendations(
+  value: unknown,
+  preferences: Preferences = DEFAULT_PREFERENCES,
+): RecommendationItem[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item) => item && typeof item === "object")
@@ -894,10 +1005,168 @@ function validateRecommendations(value: unknown): RecommendationItem[] {
         ...(optionalString(row.photo_reference) == null
           ? {}
           : { photo_reference: optionalString(row.photo_reference)! }),
+        ...(optionalString(row.accessibility_evidence) == null ? {} : {
+          accessibility_evidence: optionalString(
+            row.accessibility_evidence,
+          )!,
+        }),
       };
     })
     .filter((item) => item.name && item.category && item.reason)
-    .slice(0, 7);
+    .filter((item) =>
+      generatedAccessibilityEvidenceIsCompatible(item, preferences)
+    )
+    .slice(0, MAX_RECOMMENDATIONS);
+}
+
+function buildAccessibilityRules(preferences: Preferences): string {
+  const profile = accessibilityProfile(preferences);
+  if (!profile.hasConstraints) {
+    return "No accessibility constraint is active.";
+  }
+
+  const rules: string[] = [];
+  if (profile.wheelchair) {
+    rules.push(
+      "- WHEELCHAIR ACCESSIBLE: return only places with a known step-free, " +
+        "wheelchair-accessible entrance and usable lifts/ramps where needed. " +
+        "Reject hiking, trekking, climbing, stairs-only, steep, cave, and " +
+        "rough- or uneven-terrain experiences.",
+    );
+  }
+  if (profile.mobility) {
+    rules.push(
+      "- MOBILITY ASSISTANCE: return only low-exertion places with a known " +
+        "accessible entrance, short/easy routes, and seating or rest options. " +
+        "Reject hikes, trails, long walking tours, steep slopes, climbing, " +
+        "stairs-only access, and prolonged-standing activities.",
+    );
+  }
+  if (profile.visual) {
+    rules.push(
+      "- VISUAL ASSISTANCE: return only places with a known audio guide, " +
+        "audio description, tactile/Braille material, guided assistance, or " +
+        "another concrete non-visual way to experience the attraction.",
+    );
+  }
+  rules.push(
+    "- If the required accessibility support cannot be stated confidently, " +
+      "do not recommend that place. Returning fewer results is correct.",
+  );
+  return rules.join("\n");
+}
+
+function generatedAccessibilityEvidenceIsCompatible(
+  recommendation: RecommendationItem,
+  preferences: Preferences,
+): boolean {
+  const profile = accessibilityProfile(preferences);
+  if (!profile.hasConstraints) return true;
+
+  const evidence = recommendation.accessibility_evidence?.trim() ?? "";
+  if (!evidence) return false;
+
+  if (
+    (profile.wheelchair || profile.mobility) &&
+    !/(wheelchair|step[- ]?free|ramp|lift|elevator|accessible entrance|accessible parking|mobility|seating|rest area)/i
+      .test(evidence)
+  ) {
+    return false;
+  }
+  if (
+    profile.visual &&
+    !/(audio guide|audio description|tactile|braille|guided (tour|assistance)|staff assistance|non-visual)/i
+      .test(evidence)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isAccessiblePlace(
+  recommendation: RecommendationItem,
+  place: { accessibilityOptions: PlaceAccessibilityOptions },
+  preferences: Preferences,
+): boolean {
+  const profile = accessibilityProfile(preferences);
+  if (!profile.hasConstraints) return true;
+  if (
+    !generatedAccessibilityEvidenceIsCompatible(recommendation, preferences)
+  ) {
+    return false;
+  }
+
+  if (
+    (profile.wheelchair || profile.mobility) &&
+    place.accessibilityOptions.wheelchairAccessibleEntrance !== true
+  ) {
+    return false;
+  }
+
+  if (
+    (profile.wheelchair || profile.mobility) &&
+    isMobilityRiskText(
+      `${recommendation.name} ${recommendation.category} ${recommendation.reason}`,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function accessibilityProfile(preferences: Preferences) {
+  const selected = preferences.accessibility_preferences.map((value) =>
+    value.trim().toLowerCase()
+  );
+  const wheelchair = selected.some((value) => value.includes("wheelchair"));
+  const mobility = selected.some((value) => value.includes("mobility"));
+  const visual = selected.some((value) => value.includes("visual"));
+  return {
+    wheelchair,
+    mobility,
+    visual,
+    hasConstraints: wheelchair || mobility || visual,
+  };
+}
+
+function isMobilityRiskText(value: string): boolean {
+  return /\b(hike|hiking|trek|trekking|trail|mountain|mountaineering|climb|climbing|stairs-only|steep slope|rough terrain|uneven terrain|long walking tour)\b/i
+    .test(value);
+}
+
+function parseAccessibilityOptions(value: unknown): PlaceAccessibilityOptions {
+  const options = value && typeof value === "object"
+    ? value as Record<string, unknown>
+    : {};
+  return {
+    wheelchairAccessibleParking: optionalBoolean(
+      options.wheelchairAccessibleParking,
+    ),
+    wheelchairAccessibleEntrance: optionalBoolean(
+      options.wheelchairAccessibleEntrance,
+    ),
+    wheelchairAccessibleRestroom: optionalBoolean(
+      options.wheelchairAccessibleRestroom,
+    ),
+    wheelchairAccessibleSeating: optionalBoolean(
+      options.wheelchairAccessibleSeating,
+    ),
+  };
+}
+
+function haversineKm(
+  latitude1: number,
+  longitude1: number,
+  latitude2: number,
+  longitude2: number,
+): number {
+  const toRadians = (value: number) => value * Math.PI / 180;
+  const latitudeDelta = toRadians(latitude2 - latitude1);
+  const longitudeDelta = toRadians(longitude2 - longitude1);
+  const a = Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(toRadians(latitude1)) * Math.cos(toRadians(latitude2)) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 async function buildSignedPhotoUrl(
@@ -954,6 +1223,10 @@ function optionalNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function optionalBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function normaliseName(value: string): string {

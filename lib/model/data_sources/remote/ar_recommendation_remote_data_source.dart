@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/database_manager.dart';
@@ -18,17 +20,19 @@ class ARRecommendationRemoteDataSource {
   }) async {
     try {
       final token = _client.auth.currentSession?.accessToken;
-      final response = await _client.functions.invoke(
-        'recommend-ar',
-        body: {
-          'current_marker_id': currentMarkerId,
-          'current_attraction_name': currentAttractionName,
-          'latitude': latitude,
-          'longitude': longitude,
-          'excluded_marker_ids': excludedMarkerIds,
-        },
-        headers: token == null ? null : {'Authorization': 'Bearer $token'},
-      );
+      final response = await _client.functions
+          .invoke(
+            'recommend-ar',
+            body: {
+              'current_marker_id': currentMarkerId,
+              'current_attraction_name': currentAttractionName,
+              'latitude': latitude,
+              'longitude': longitude,
+              'excluded_marker_ids': excludedMarkerIds,
+            },
+            headers: token == null ? null : {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 60));
 
       if (response.status < 200 || response.status >= 300) {
         throw ARRecommendationRemoteException(
