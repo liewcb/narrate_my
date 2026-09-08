@@ -18,8 +18,7 @@ class GuideWalkthroughScreen extends StatefulWidget {
   });
 
   @override
-  State<GuideWalkthroughScreen> createState() =>
-      _GuideWalkthroughScreenState();
+  State<GuideWalkthroughScreen> createState() => _GuideWalkthroughScreenState();
 }
 
 class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
@@ -53,14 +52,8 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
 
     if (steps.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title: Text(
-            AppLocalizations.t(widget.titleKey),
-          ),
-        ),
-        body: const Center(
-          child: Text('No guide steps available.'),
-        ),
+        appBar: AppBar(title: Text(AppLocalizations.t(widget.titleKey))),
+        body: const Center(child: Text('No guide steps available.')),
       );
     }
 
@@ -68,18 +61,14 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          AppLocalizations.t(widget.titleKey),
-        ),
+        title: Text(AppLocalizations.t(widget.titleKey)),
         actions: [
           if (!isLast)
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
               },
-              child: Text(
-                AppLocalizations.t('ui.arGuideSkip'),
-              ),
+              child: Text(AppLocalizations.t('ui.arGuideSkip')),
             ),
         ],
       ),
@@ -96,17 +85,12 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
                   });
                 },
                 itemBuilder: (context, i) {
-                  return _GuideStepView(
-                    step: steps[i],
-                  );
+                  return _GuideStepView(step: steps[i]);
                 },
               ),
             ),
 
-            _GuideDots(
-              count: steps.length,
-              index: _index,
-            ),
+            _GuideDots(count: steps.length, index: _index),
 
             const SizedBox(height: 16),
 
@@ -120,25 +104,22 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
                         onPressed: () {
                           _goTo(_index - 1);
                         },
-                        child: Text(
-                          AppLocalizations.t('ui.arGuideBack'),
-                        ),
+                        child: Text(AppLocalizations.t('ui.arGuideBack')),
                       ),
                     ),
 
-                  if (_index > 0)
-                    const SizedBox(width: 12),
+                  if (_index > 0) const SizedBox(width: 12),
 
                   Expanded(
                     flex: 2,
                     child: FilledButton(
                       onPressed: isLast
                           ? () {
-                        Navigator.of(context).pop();
-                      }
+                              Navigator.of(context).pop();
+                            }
                           : () {
-                        _goTo(_index + 1);
-                      },
+                              _goTo(_index + 1);
+                            },
                       child: Text(
                         isLast
                             ? AppLocalizations.t('ui.arGuideDone')
@@ -161,9 +142,7 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
 class _GuideStepView extends StatelessWidget {
   final GuideStep step;
 
-  const _GuideStepView({
-    required this.step,
-  });
+  const _GuideStepView({required this.step});
 
   @override
   Widget build(BuildContext context) {
@@ -221,7 +200,7 @@ class _GuideStepView extends StatelessWidget {
             child: Text(
               AppLocalizations.t(step.bodyKey),
               textAlign: TextAlign.center,
-              maxLines: 3,
+              maxLines: 4,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 14,
@@ -240,34 +219,26 @@ class _GuideDots extends StatelessWidget {
   final int count;
   final int index;
 
-  const _GuideDots({
-    required this.count,
-    required this.index,
-  });
+  const _GuideDots({required this.count, required this.index});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(
-        count,
-            (i) {
-          final active = i == index;
+      children: List.generate(count, (i) {
+        final active = i == index;
 
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            width: active ? 22 : 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: active
-                  ? AppColors.accent
-                  : AppColors.border,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          );
-        },
-      ),
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: active ? 22 : 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: active ? AppColors.accent : AppColors.border,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+      }),
     );
   }
 }

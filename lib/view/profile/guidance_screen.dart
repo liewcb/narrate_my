@@ -6,6 +6,7 @@ import '../../../core/localization/locale_vm.dart';
 import '../../../core/theme/app_theme.dart';
 import 'widgets/ar_guide_steps.dart';
 import 'widgets/guide_step.dart';
+import 'widgets/nearby_recommendation_guide_steps.dart';
 import 'guide_walkthrough_screen.dart';
 
 /// One entry on the Guidance hub — a module's icon, label, and the list of
@@ -32,18 +33,16 @@ const List<_GuidanceModule> _kGuidanceModules = [
     labelKey: 'ui.arGuide',
     steps: arGuideSteps,
   ),
-  // Next module's guide goes here, e.g.:
-  // _GuidanceModule(
-  //   icon: Icons.map_outlined,
-  //   labelKey: 'ui.itineraryGuide',
-  //   steps: kItineraryGuideSteps,
-  // ),
+  _GuidanceModule(
+    icon: Icons.location_on_outlined,
+    labelKey: 'ui.nearbyGuide',
+    steps: nearbyRecommendationGuideSteps,
+  ),
 ];
 
 /// Profile > Guidance — a hub of short, swipeable walkthroughs, one per
-/// module. Today it only lists the AR module's guide (Exploration ->
-/// Placement -> Storytelling); other modules can register their own guide
-/// here later without touching the Profile screen that links to this hub.
+/// module. Modules register their steps here without changing the Profile
+/// screen that links to this hub.
 class GuidanceScreen extends StatelessWidget {
   const GuidanceScreen({super.key});
 
@@ -62,7 +61,7 @@ class GuidanceScreen extends StatelessWidget {
             ),
             const SizedBox(height: 30),
             ..._kGuidanceModules.map(
-                  (module) => _GuidanceModuleTile(
+              (module) => _GuidanceModuleTile(
                 module: module,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
@@ -101,7 +100,10 @@ class _GuidanceModuleTile extends StatelessWidget {
         leading: Icon(module.icon, color: AppColors.accentDark),
         title: Text(
           AppLocalizations.t(module.labelKey),
-          style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.ink),
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            color: AppColors.ink,
+          ),
         ),
         trailing: const Icon(Icons.chevron_right, color: AppColors.inkFaint),
         onTap: onTap,
