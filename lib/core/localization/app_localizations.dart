@@ -108,7 +108,16 @@ class AppLocalizations {
     'register.m12': 'Please select your date of birth.',
     'register.m13': 'Date of birth cannot be in the future.',
     'register.m14': 'Unable to save your details. Please try again.',
-    'register.m15': 'Please enter a valid username (3–20 letters, numbers, or underscores, starting with a letter).',
+    // Text updated 8 Sep to match the relaxed username rule (Foo: "no need
+    // strict like password, just ensure a 3-20 letter long and accept
+    // symbol") — was still describing the old letters/numbers/underscore
+    // regex after that validator changed.
+    'register.m15': 'Please enter a valid username (3–20 characters; letters, numbers, and symbols are allowed).',
+    'register.m16': 'Registration could not be completed. Please try again.',
+    'otp.attemptsRemaining': 'Attempts remaining: {n}.',
+    'otp.tooManyIncorrectCodes':
+        'Too many incorrect codes. Complete the verification below before trying again.',
+    'otp.captchaVerificationFailed': 'CAPTCHA verification failed. Please try again.',
 
     // login_messages.dart
     'login.m1': 'Login successful. Start enjoying your trip with NarrateMy.',
@@ -180,6 +189,8 @@ class AppLocalizations {
     'profile.m24': 'Unable to delete your account. Please try again.',
     'profile.m25': 'Unable to update your profile picture. Please try again.',
     'profile.m26': 'Username and password set successfully.',
+    'profile.m27':
+        'You must have a phone number or a username & password set before unlinking your Google account.',
 
     // ui.* — literal strings inside Module 5's screens
     'ui.save': 'Save',
@@ -204,9 +215,10 @@ class AppLocalizations {
     'ui.arGuidePlacementBody':
     'Scan a flat surface, then tap to place and reposition a 3D model '
         'in the real world.',
-    'ui.arGuideNarrationsTitle': 'Narrations',
-    'ui.arGuideNarrationsBody':
-    'Explore the attraction through different narration options. Listen to storytelling, watch related videos, and get recommendations for nearby attractions and places to explore.',
+    'ui.arGuideStorytellingTitle': 'Hear the Story',
+    'ui.arGuideStorytellingBody':
+    'Tap a placed model to open its storytelling panel and learn the '
+        'history behind it.',
     'ui.arGuideNext': 'Next',
     'ui.arGuideBack': 'Back',
     'ui.arGuideDone': 'Done',
@@ -309,8 +321,6 @@ class AppLocalizations {
     'Turn on location services to discover nearby attractions.',
     'recommendation.locationPermissionRequired':
     'Location permission is required to find nearby attractions.',
-    'recommendation.locationTimedOut':
-    'Unable to get your current location. Check your location settings and try again.',
     'recommendation.arLocationsUnavailable':
     'AR locations are temporarily unavailable.',
     'recommendation.unableToLoad':
@@ -468,41 +478,6 @@ class AppLocalizations {
   };
 
   static const Map<String, String> _zh = {
-    'ai.greeting': '我是 Manja，您的 AI 旅行助手！',
-    'ai.title': '旅行助手',
-    'ai.showSummary': '显示对话摘要',
-    'ai.searchConversation': '搜索对话',
-    'ai.resetConversation': '重置对话',
-    'ai.resetTitle': '要重置对话吗？',
-    'ai.resetMessage': '当前聊天记录将被清除，所选景点仍会保留。',
-    'ai.cancel': '取消',
-    'ai.reset': '重置',
-    'ai.leaveTitle': '要离开 AI 对话吗？',
-    'ai.leaveMessage': '离开时会保存最新的对话摘要。确定要继续吗？',
-    'ai.leave': '离开',
-    'ai.stay': '留下',
-    'ai.discussing': '正在讨论：{place}',
-    'ai.inputHint': '请输入问题……（例如：A Famosa 的历史）',
-    'ai.sendQuestion': '发送问题',
-    'ai.summary': '摘要',
-    'ai.closeSummary': '关闭摘要',
-    'ai.noSummary': '目前还没有对话摘要。',
-    'ai.checkingPlaces': '正在核实地点……',
-    'ai.mapsFailure': '无法打开 Google 地图。',
-    'ai.openMaps': '在 Google 地图中打开',
-    'ai.verifiedPlace': '已核实地点',
-    'ai.chooseVerifiedPlace': '选择已核实地点',
-    'ai.bookmark': '收藏',
-    'ai.bookmarked': '已收藏',
-    'ai.loginTitle': '登录后收藏',
-    'ai.loginMessage': '您需要先登录，才能将此地点保存到收藏夹。',
-    'ai.notNow': '暂不',
-    'ai.login': '登录',
-    'ai.searchPrompt': '搜索此对话中的消息。',
-    'ai.noMatches': '此对话中没有匹配结果。',
-    'ai.clearSearch': '清除搜索',
-    'ai.closeSearch': '关闭搜索',
-
     'register.m1': '您的账户已成功注册。',
     'register.m2': '一次性密码 (OTP) 已发送到您的手机号码。请在5分钟内输入。',
     'register.m3': '无法使用 Google 登录，请重试。',
@@ -517,7 +492,11 @@ class AppLocalizations {
     'register.m12': '请选择您的出生日期。',
     'register.m13': '出生日期不能是将来的日期。',
     'register.m14': '无法保存您的详细信息。请重试。',
-    'register.m15': '请输入有效的用户名（3-20个字母、数字或下划线，且必须以字母开头）。',
+    'register.m15': '请输入有效的用户名（3-20个字符，允许使用字母、数字和符号）。',
+    'register.m16': '无法完成注册。请重试。',
+    'otp.attemptsRemaining': '剩余尝试次数：{n}。',
+    'otp.tooManyIncorrectCodes': '错误次数过多。请先完成下方的验证，然后再试。',
+    'otp.captchaVerificationFailed': '验证码校验失败。请重试。',
 
     'login.m1': '登录成功。开始使用 NarrateMy 享受您的旅行吧。',
     'login.m2': '一次性密码 (OTP) 已发送到您的手机号码。请在5分钟内输入。',
@@ -565,6 +544,7 @@ class AppLocalizations {
     'profile.m24': '无法删除您的账户。请重试。',
     'profile.m25': '无法更新您的头像。请重试。',
     'profile.m26': '用户名和密码设置成功。',
+    'profile.m27': '在取消关联 Google 账户之前，您必须已设置电话号码或用户名与密码。',
 
     'ui.save': '保存',
     'ui.cancel': '取消',
@@ -584,8 +564,8 @@ class AppLocalizations {
     'ui.arGuideExplorationBody': '将相机对准遗产景点周围，发现附近兴趣点的标记。',
     'ui.arGuidePlacementTitle': '放置 3D 模型',
     'ui.arGuidePlacementBody': '扫描平面，然后点击以在现实世界中放置并调整 3D 模型的位置。',
-    'ui.arGuideNarrationsTitle': '导览内容',
-    'ui.arGuideNarrationsBody': '选择不同方式探索景点。您可以聆听故事讲解和其他导览内容、观看相关视频，并获取附近景点和下一站推荐。',
+    'ui.arGuideStorytellingTitle': '聆听故事',
+    'ui.arGuideStorytellingBody': '点击已放置的模型，打开讲述面板，了解其背后的历史。',
     'ui.arGuideNext': '下一步',
     'ui.arGuideBack': '上一步',
     'ui.arGuideDone': '完成',
@@ -665,7 +645,6 @@ class AppLocalizations {
     'recommendation.arExperiencesAvailableMany': '{count} 个 AR 体验可用',
     'recommendation.locationServicesOff': '请开启定位服务以发现附近的景点。',
     'recommendation.locationPermissionRequired': '需要定位权限才能查找附近的景点。',
-    'recommendation.locationTimedOut': '无法获取您的当前位置。请检查定位设置后重试。',
     'recommendation.arLocationsUnavailable': 'AR 地点暂时不可用。',
     'recommendation.unableToLoad': '无法加载附近的景点，请重试。',
     'recommendation.closeDetailsTooltip': '关闭详情',
@@ -799,43 +778,6 @@ class AppLocalizations {
   };
 
   static const Map<String, String> _ms = {
-    'ai.greeting': 'Inilah Manja, Pembantu Perjalanan AI anda!',
-    'ai.title': 'Pembantu Perjalanan',
-    'ai.showSummary': 'Tunjukkan ringkasan perbualan',
-    'ai.searchConversation': 'Cari dalam perbualan',
-    'ai.resetConversation': 'Tetapkan semula perbualan',
-    'ai.resetTitle': 'Tetapkan semula perbualan?',
-    'ai.resetMessage':
-        'Mesej sembang semasa akan dipadam. Tarikan yang dipilih akan kekal.',
-    'ai.cancel': 'Batal',
-    'ai.reset': 'Tetapkan semula',
-    'ai.leaveTitle': 'Tinggalkan sembang AI?',
-    'ai.leaveMessage':
-        'Ringkasan perbualan terkini akan disimpan apabila anda keluar. Teruskan?',
-    'ai.leave': 'Keluar',
-    'ai.stay': 'Kekal',
-    'ai.discussing': 'Sedang dibincangkan: {place}',
-    'ai.inputHint': 'Tanya sesuatu... (cth. Sejarah A Famosa)',
-    'ai.sendQuestion': 'Hantar soalan',
-    'ai.summary': 'Ringkasan',
-    'ai.closeSummary': 'Tutup ringkasan',
-    'ai.noSummary': 'Belum ada ringkasan perbualan.',
-    'ai.checkingPlaces': 'Menyemak tempat yang disahkan…',
-    'ai.mapsFailure': 'Tidak dapat membuka Google Maps.',
-    'ai.openMaps': 'Buka dalam Google Maps',
-    'ai.verifiedPlace': 'Tempat yang disahkan',
-    'ai.chooseVerifiedPlace': 'Pilih tempat yang disahkan',
-    'ai.bookmark': 'Simpan',
-    'ai.bookmarked': 'Disimpan',
-    'ai.loginTitle': 'Log masuk untuk menyimpan',
-    'ai.loginMessage': 'Anda perlu log masuk sebelum menyimpan tempat ini.',
-    'ai.notNow': 'Bukan sekarang',
-    'ai.login': 'Log masuk',
-    'ai.searchPrompt': 'Cari mesej dalam perbualan ini.',
-    'ai.noMatches': 'Tiada padanan ditemui dalam perbualan ini.',
-    'ai.clearSearch': 'Kosongkan carian',
-    'ai.closeSearch': 'Tutup carian',
-
     'register.m1': 'Akaun anda telah berjaya didaftarkan.',
     'register.m2':
     'Kata laluan sekali guna (OTP) telah dihantar ke nombor telefon anda. '
@@ -856,7 +798,12 @@ class AppLocalizations {
     'register.m12': 'Sila pilih tarikh lahir anda.',
     'register.m13': 'Tarikh lahir tidak boleh pada masa hadapan.',
     'register.m14': 'Tidak dapat menyimpan butiran anda. Sila cuba lagi.',
-    'register.m15': 'Sila masukkan nama pengguna yang sah (3–20 huruf, nombor, atau garis bawah, bermula dengan huruf).',
+    'register.m15': 'Sila masukkan nama pengguna yang sah (3–20 aksara; huruf, nombor, dan simbol dibenarkan).',
+    'register.m16': 'Pendaftaran tidak dapat diselesaikan. Sila cuba lagi.',
+    'otp.attemptsRemaining': 'Percubaan berbaki: {n}.',
+    'otp.tooManyIncorrectCodes':
+        'Terlalu banyak kod yang salah. Lengkapkan pengesahan di bawah sebelum mencuba lagi.',
+    'otp.captchaVerificationFailed': 'Pengesahan CAPTCHA gagal. Sila cuba lagi.',
 
     'login.m1': 'Log masuk berjaya. Mulakan perjalanan anda bersama NarrateMy.',
     'login.m2':
@@ -926,6 +873,8 @@ class AppLocalizations {
     'profile.m24': 'Tidak dapat memadamkan akaun anda. Sila cuba lagi.',
     'profile.m25': 'Tidak dapat mengemas kini gambar profil anda. Sila cuba lagi.',
     'profile.m26': 'Nama pengguna dan kata laluan berjaya ditetapkan.',
+    'profile.m27':
+        'Anda mesti mempunyai nombor telefon atau nama pengguna & kata laluan yang ditetapkan sebelum menyahpautkan akaun Google anda.',
 
     'ui.save': 'Simpan',
     'ui.cancel': 'Batal',
@@ -949,9 +898,10 @@ class AppLocalizations {
     'ui.arGuidePlacementBody':
     'Imbas permukaan rata, kemudian ketik untuk meletakkan dan '
         'mengubah kedudukan model 3D di dunia sebenar.',
-    'ui.arGuideNarrationsTitle': 'Narasi',
-    'ui.arGuideNarrationsBody':
-    'Pilih daripada pelbagai cara untuk meneroka tarikan tersebut. Dengarkan penceritaan dan narasi lain, tonton video berkaitan dan terima cadangan untuk tarikan berdekatan dan tempat yang mungkin anda ingin lawati seterusnya.',
+    'ui.arGuideStorytellingTitle': 'Dengar Kisahnya',
+    'ui.arGuideStorytellingBody':
+    'Ketik model yang diletakkan untuk membuka panel penceritaan dan '
+        'ketahui sejarah di sebaliknya.',
     'ui.arGuideNext': 'Seterusnya',
     'ui.arGuideBack': 'Kembali',
     'ui.arGuideDone': 'Selesai',
@@ -1051,8 +1001,6 @@ class AppLocalizations {
     'Hidupkan perkhidmatan lokasi untuk menemui tarikan berhampiran.',
     'recommendation.locationPermissionRequired':
     'Kebenaran lokasi diperlukan untuk mencari tarikan berhampiran.',
-    'recommendation.locationTimedOut':
-    'Tidak dapat mendapatkan lokasi semasa anda. Semak tetapan lokasi dan cuba lagi.',
     'recommendation.arLocationsUnavailable':
     'Lokasi AR tidak tersedia buat sementara waktu.',
     'recommendation.unableToLoad':
@@ -1215,43 +1163,6 @@ class AppLocalizations {
   };
 
   static const Map<String, String> _es = {
-    'ai.greeting': '¡Soy Manja, tu asistente de viajes con IA!',
-    'ai.title': 'Asistente de viajes',
-    'ai.showSummary': 'Mostrar resumen de la conversación',
-    'ai.searchConversation': 'Buscar en la conversación',
-    'ai.resetConversation': 'Restablecer conversación',
-    'ai.resetTitle': '¿Restablecer la conversación?',
-    'ai.resetMessage':
-        'Se borrarán los mensajes actuales. La atracción seleccionada se conservará.',
-    'ai.cancel': 'Cancelar',
-    'ai.reset': 'Restablecer',
-    'ai.leaveTitle': '¿Salir del chat de IA?',
-    'ai.leaveMessage':
-        'Al salir se guardará el resumen más reciente. ¿Quieres continuar?',
-    'ai.leave': 'Salir',
-    'ai.stay': 'Quedarme',
-    'ai.discussing': 'Hablando de: {place}',
-    'ai.inputHint': 'Pregunta algo... (p. ej., Historia de A Famosa)',
-    'ai.sendQuestion': 'Enviar pregunta',
-    'ai.summary': 'Resumen',
-    'ai.closeSummary': 'Cerrar resumen',
-    'ai.noSummary': 'Todavía no hay un resumen de la conversación.',
-    'ai.checkingPlaces': 'Verificando lugares…',
-    'ai.mapsFailure': 'No se pudo abrir Google Maps.',
-    'ai.openMaps': 'Abrir en Google Maps',
-    'ai.verifiedPlace': 'Lugar verificado',
-    'ai.chooseVerifiedPlace': 'Elige un lugar verificado',
-    'ai.bookmark': 'Guardar',
-    'ai.bookmarked': 'Guardado',
-    'ai.loginTitle': 'Inicia sesión para guardar',
-    'ai.loginMessage': 'Debes iniciar sesión para guardar este lugar.',
-    'ai.notNow': 'Ahora no',
-    'ai.login': 'Iniciar sesión',
-    'ai.searchPrompt': 'Busca mensajes en esta conversación.',
-    'ai.noMatches': 'No se encontraron coincidencias en esta conversación.',
-    'ai.clearSearch': 'Borrar búsqueda',
-    'ai.closeSearch': 'Cerrar búsqueda',
-
     'register.m1': 'Su cuenta se ha registrado correctamente.',
     'register.m2':
     'Se ha enviado una contraseña de un solo uso (OTP) a su número de teléfono. '
@@ -1271,7 +1182,12 @@ class AppLocalizations {
     'register.m12': 'Seleccione su fecha de nacimiento.',
     'register.m13': 'La fecha de nacimiento no puede ser en el futuro.',
     'register.m14': 'No se pudieron guardar sus datos. Inténtelo de nuevo.',
-    'register.m15': 'Introduzca un nombre de usuario válido (3–20 letras, números o guiones bajos, comenzando con una letra).',
+    'register.m15': 'Introduzca un nombre de usuario válido (3–20 caracteres; se permiten letras, números y símbolos).',
+    'register.m16': 'No se pudo completar el registro. Inténtelo de nuevo.',
+    'otp.attemptsRemaining': 'Intentos restantes: {n}.',
+    'otp.tooManyIncorrectCodes':
+        'Demasiados códigos incorrectos. Complete la verificación a continuación antes de volver a intentarlo.',
+    'otp.captchaVerificationFailed': 'La verificación CAPTCHA falló. Inténtelo de nuevo.',
 
     'login.m1': 'Inicio de sesión exitoso. Comience a disfrutar de su viaje con NarrateMy.',
     'login.m2':
@@ -1341,6 +1257,8 @@ class AppLocalizations {
     'profile.m24': 'No se pudo eliminar su cuenta. Inténtelo de nuevo.',
     'profile.m25': 'No se pudo actualizar su foto de perfil. Inténtelo de nuevo.',
     'profile.m26': 'Nombre de usuario y contraseña establecidos correctamente.',
+    'profile.m27':
+        'Debe tener un número de teléfono o un nombre de usuario y contraseña configurados antes de desvincular su cuenta de Google.',
 
     'ui.save': 'Guardar',
     'ui.cancel': 'Cancelar',
@@ -1364,9 +1282,10 @@ class AppLocalizations {
     'ui.arGuidePlacementBody':
     'Escanea una superficie plana y luego toca para colocar y '
         'reposicionar un modelo 3D en el mundo real.',
-    'ui.arGuideNarrationsTitle': 'narraciones',
-    'ui.arGuideNarrationsBody':
-    'Elige entre diferentes maneras de explorar la atracción. Escucha narraciones y otras narraciones, mira videos relacionados y recibe recomendaciones de atracciones cercanas y lugares que quizás quieras visitar próximamente.',
+    'ui.arGuideStorytellingTitle': 'Escucha la Historia',
+    'ui.arGuideStorytellingBody':
+    'Toca un modelo colocado para abrir su panel narrativo y conocer '
+        'la historia detrás de él.',
     'ui.arGuideNext': 'Siguiente',
     'ui.arGuideBack': 'Atrás',
     'ui.arGuideDone': 'Listo',
@@ -1470,8 +1389,6 @@ class AppLocalizations {
     'recommendation.locationPermissionRequired':
     'Se requiere permiso de ubicación para encontrar atracciones '
         'cercanas.',
-    'recommendation.locationTimedOut':
-    'No se pudo obtener su ubicación actual. Compruebe los ajustes de ubicación e inténtelo de nuevo.',
     'recommendation.arLocationsUnavailable':
     'Las ubicaciones de RA no están disponibles temporalmente.',
     'recommendation.unableToLoad':
@@ -1640,41 +1557,6 @@ class AppLocalizations {
   };
 
   static const Map<String, String> _hi = {
-    'ai.greeting': 'मैं Manja हूँ, आपका AI यात्रा सहायक!',
-    'ai.title': 'यात्रा सहायक',
-    'ai.showSummary': 'बातचीत का सारांश दिखाएँ',
-    'ai.searchConversation': 'बातचीत में खोजें',
-    'ai.resetConversation': 'बातचीत रीसेट करें',
-    'ai.resetTitle': 'बातचीत रीसेट करें?',
-    'ai.resetMessage': 'वर्तमान चैट संदेश मिट जाएँगे। चुना गया आकर्षण बना रहेगा।',
-    'ai.cancel': 'रद्द करें',
-    'ai.reset': 'रीसेट करें',
-    'ai.leaveTitle': 'AI चैट छोड़ें?',
-    'ai.leaveMessage': 'जाते समय नवीनतम सारांश सहेजा जाएगा। क्या आप जारी रखना चाहते हैं?',
-    'ai.leave': 'छोड़ें',
-    'ai.stay': 'रुकें',
-    'ai.discussing': 'चर्चा: {place}',
-    'ai.inputHint': 'कुछ पूछें... (जैसे A Famosa का इतिहास)',
-    'ai.sendQuestion': 'प्रश्न भेजें',
-    'ai.summary': 'सारांश',
-    'ai.closeSummary': 'सारांश बंद करें',
-    'ai.noSummary': 'अभी कोई बातचीत सारांश उपलब्ध नहीं है।',
-    'ai.checkingPlaces': 'सत्यापित स्थान जाँचे जा रहे हैं…',
-    'ai.mapsFailure': 'Google Maps नहीं खुल सका।',
-    'ai.openMaps': 'Google Maps में खोलें',
-    'ai.verifiedPlace': 'सत्यापित स्थान',
-    'ai.chooseVerifiedPlace': 'सत्यापित स्थान चुनें',
-    'ai.bookmark': 'सहेजें',
-    'ai.bookmarked': 'सहेजा गया',
-    'ai.loginTitle': 'सहेजने के लिए लॉग इन करें',
-    'ai.loginMessage': 'इस स्थान को सहेजने से पहले आपको लॉग इन करना होगा।',
-    'ai.notNow': 'अभी नहीं',
-    'ai.login': 'लॉग इन करें',
-    'ai.searchPrompt': 'इस बातचीत में संदेश खोजें।',
-    'ai.noMatches': 'इस बातचीत में कोई मिलान नहीं मिला।',
-    'ai.clearSearch': 'खोज साफ़ करें',
-    'ai.closeSearch': 'खोज बंद करें',
-
     'register.m1': 'आपका खाता सफलतापूर्वक पंजीकृत हो गया है।',
     'register.m2': 'आपके फ़ोन नंबर पर एक वन-टाइम पासवर्ड (OTP) भेजा गया है। कृपया इसे 5 मिनट के भीतर दर्ज करें।',
     'register.m3': 'Google से साइन इन करने में असमर्थ। कृपया पुनः प्रयास करें।',
@@ -1689,7 +1571,12 @@ class AppLocalizations {
     'register.m12': 'कृपया अपनी जन्म तिथि चुनें।',
     'register.m13': 'जन्म तिथि भविष्य में नहीं हो सकती।',
     'register.m14': 'आपका विवरण सहेजने में असमर्थ। कृपया पुनः प्रयास करें।',
-    'register.m15': 'कृपया एक मान्य उपयोगकर्ता नाम दर्ज करें (3–20 अक्षर, संख्याएँ, या अंडरस्कोर, अक्षर से शुरू होना चाहिए)।',
+    'register.m15': 'कृपया एक मान्य उपयोगकर्ता नाम दर्ज करें (3–20 वर्ण; अक्षर, संख्याएँ और प्रतीक मान्य हैं)।',
+    'register.m16': 'पंजीकरण पूरा नहीं हो सका। कृपया पुनः प्रयास करें।',
+    'otp.attemptsRemaining': 'शेष प्रयास: {n}।',
+    'otp.tooManyIncorrectCodes':
+        'बहुत अधिक गलत कोड। दोबारा प्रयास करने से पहले नीचे दिया गया सत्यापन पूरा करें।',
+    'otp.captchaVerificationFailed': 'CAPTCHA सत्यापन विफल रहा। कृपया पुनः प्रयास करें।',
 
     'login.m1': 'लॉगिन सफल रहा। NarrateMy के साथ अपनी यात्रा का आनंद लेना शुरू करें।',
     'login.m2': 'आपके फ़ोन नंबर पर एक वन-टाइम पासवर्ड (OTP) भेजा गया है। कृपया इसे 5 मिनट के भीतर दर्ज करें।',
@@ -1745,6 +1632,8 @@ class AppLocalizations {
     'profile.m24': 'आपका खाता हटाने में असमर्थ। कृपया पुनः प्रयास करें।',
     'profile.m25': 'आपकी प्रोफ़ाइल तस्वीर अपडेट करने में असमर्थ। कृपया पुनः प्रयास करें।',
     'profile.m26': 'उपयोगकर्ता नाम और पासवर्ड सफलतापूर्वक सेट कर दिए गए हैं।',
+    'profile.m27':
+        'Google खाता अनलिंक करने से पहले आपके पास फ़ोन नंबर या उपयोगकर्ता नाम और पासवर्ड सेट होना चाहिए।',
 
     'ui.save': 'सहेजें',
     'ui.cancel': 'रद्द करें',
@@ -1768,9 +1657,10 @@ class AppLocalizations {
     'ui.arGuidePlacementBody':
     'एक समतल सतह को स्कैन करें, फिर वास्तविक दुनिया में 3D मॉडल को रखने '
         'और उसकी स्थिति बदलने के लिए टैप करें।',
-    'ui.arGuideNarrationsTitle': 'आख्यान',
-    'ui.arGuideNarrationsBody':
-    'घूमने की जगह को एक्सप्लोर करने के लिए अलग-अलग तरीके चुनें। कहानियाँ और दूसरी बातें सुनें, मिलते-जुलते वीडियो देखें, और आस-पास की जगहों और उन जगहों के लिए सुझाव पाएँ जहाँ आप अगली बार जाना चाहेंगे।',
+    'ui.arGuideStorytellingTitle': 'कहानी सुनें',
+    'ui.arGuideStorytellingBody':
+    'रखे गए मॉडल पर टैप करें ताकि उसका कहानी पैनल खुले और उसके पीछे का '
+        'इतिहास जान सकें।',
     'ui.arGuideNext': 'अगला',
     'ui.arGuideBack': 'पीछे',
     'ui.arGuideDone': 'हो गया',
@@ -1866,8 +1756,6 @@ class AppLocalizations {
     'आस-पास के आकर्षण खोजने के लिए स्थान सेवाएँ चालू करें।',
     'recommendation.locationPermissionRequired':
     'आस-पास के आकर्षण खोजने के लिए स्थान अनुमति आवश्यक है।',
-    'recommendation.locationTimedOut':
-    'आपका वर्तमान स्थान प्राप्त नहीं हो सका। स्थान सेटिंग जांचें और फिर प्रयास करें।',
     'recommendation.arLocationsUnavailable': 'AR स्थान अस्थायी रूप से अनुपलब्ध हैं।',
     'recommendation.unableToLoad':
     'आस-पास के आकर्षण लोड नहीं हो सके। कृपया पुनः प्रयास करें।',

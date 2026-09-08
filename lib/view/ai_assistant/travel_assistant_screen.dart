@@ -47,6 +47,7 @@ class TravelAssistantScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final assistantController = context.read<GlobalAiAssistantController>();
     final cleanId = attractionId?.trim();
     final cleanName = attractionName?.trim();
     final cleanPlaceId = placeId?.trim();
@@ -82,7 +83,7 @@ class TravelAssistantScreen extends StatelessWidget {
         initialConversationSummaryLanguageCode:
             initialConversationSummaryLanguageCode,
         onContextPlaceResolved: (place) {
-          context.read<GlobalAiAssistantController>().selectAttraction(
+          assistantController.selectAttraction(
             attractionName: place.placeName,
             placeId: place.placeId,
             latitude: place.placeLatitude,
@@ -92,13 +93,17 @@ class TravelAssistantScreen extends StatelessWidget {
           );
         },
       ),
-      child: const _TravelAssistantView(),
+      child: _TravelAssistantView(
+        initialSessionRevision: assistantController.sessionRevision,
+      ),
     );
   }
 }
 
 class _TravelAssistantView extends StatefulWidget {
-  const _TravelAssistantView();
+  const _TravelAssistantView({required this.initialSessionRevision});
+
+  final int initialSessionRevision;
 
   @override
   State<_TravelAssistantView> createState() => _TravelAssistantViewState();
@@ -107,11 +112,37 @@ class _TravelAssistantView extends StatefulWidget {
 class _TravelAssistantViewState extends State<_TravelAssistantView> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
+  GlobalAiAssistantController? _assistantController;
+  int? _observedSessionRevision;
   bool _allowPop = false;
   bool _leaveDialogOpen = false;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = context.read<GlobalAiAssistantController>();
+    if (identical(controller, _assistantController)) return;
+
+    _assistantController?.removeListener(_handleAssistantSessionChange);
+    _assistantController = controller;
+    _observedSessionRevision ??= widget.initialSessionRevision;
+    controller.addListener(_handleAssistantSessionChange);
+    _handleAssistantSessionChange();
+  }
+
+  void _handleAssistantSessionChange() {
+    final controller = _assistantController;
+    if (!mounted || controller == null) return;
+    final revision = controller.sessionRevision;
+    if (revision == _observedSessionRevision) return;
+
+    _observedSessionRevision = revision;
+    context.read<AiTravelAssistantViewModel>().clearSessionState();
+  }
+
+  @override
   void dispose() {
+    _assistantController?.removeListener(_handleAssistantSessionChange);
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();

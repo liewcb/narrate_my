@@ -109,17 +109,13 @@ class RegisterVm extends ChangeNotifier {
     }
     if (!Validators.isValidPassword(password)) {
       _finishWithError(
-        ValidationFailure(RegisterMessages.m8InvalidPassword, field: 'username'),
+        ValidationFailure(RegisterMessages.m8InvalidPassword, field: 'password'),
       );
       return false;
     }
     if (!Validators.passwordsMatch(password, confirmPassword)) {
-      // BUG FIX: was `field: 'confirmPassword'`, but the screen only shows
-      // this tab's error when `fieldError == 'username'` (see the doc
-      // comment on the catch block below) — so this message never
-      // actually rendered anywhere before.
       _finishWithError(
-        ValidationFailure(RegisterMessages.m10PasswordsDoNotMatch, field: 'username'),
+        ValidationFailure(RegisterMessages.m10PasswordsDoNotMatch, field: 'confirmPassword'),
       );
       return false;
     }
@@ -133,13 +129,29 @@ class RegisterVm extends ChangeNotifier {
       notifyListeners();
       return true;
     } on AuthFailure catch (e) {
-      // Force field: 'username' here rather than whatever sub-field the
-      // repository tagged (it tags this tab's OWN phone input 'phone'
-      // too, same as the separate Phone tab's sendPhoneOtp does) — the
-      // screen only uses fieldError to pick which TAB shows the error,
-      // not to highlight one input inside it, so a shared 'phone' tag
-      // from two different tabs would be ambiguous.
-      _finishWithError(e, field: 'username');
+      // BUG FIX ("the error message for username and password move below
+      // then the phone number will have duplicate error message now...
+      // remove the below message error message show together one", 8
+      // Sep): this used to force every failure from this call to
+      // `field: 'username'` regardless of which input it actually
+      // belonged to, so the screen could only ever show ONE combined
+      // message under the whole tab — never the specific field. Now
+      // dispatched by failure type/field so each field gets its own
+      // message: [ValidationFailure] already carries the right field
+      // (username/password/phone, tagged in the repository);
+      // [UsernameTakenFailure] and [PhoneAlreadyRegisteredFailure] don't
+      // carry a field at all (see failures.dart), so they're mapped here.
+      final String? field;
+      if (e is ValidationFailure) {
+        field = e.field;
+      } else if (e is UsernameTakenFailure) {
+        field = 'username';
+      } else if (e is PhoneAlreadyRegisteredFailure) {
+        field = 'phone';
+      } else {
+        field = null;
+      }
+      _finishWithError(e, field: field);
       return false;
     }
   }

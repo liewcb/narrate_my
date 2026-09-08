@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/errors/failures.dart';
 import '../../../business_logic/profile/messages/login_messages.dart';
+import '../../../business_logic/profile/messages/otp_messages.dart';
 import '../../../business_logic/profile/messages/password_reset_messages.dart';
 import '../../../business_logic/profile/messages/profile_messages.dart';
 import '../../../business_logic/profile/messages/register_messages.dart';
@@ -260,7 +261,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     }
     final userId = response.user?.id;
     if (userId == null) {
-      throw ServerFailure('Registration could not be completed. Please try again.');
+      throw ServerFailure(RegisterMessages.m16RegistrationIncomplete);
     }
     await _authDataSource.setUsernameAndPasswordFlag(userId, username);
     return _fetchCurrentProfile();
@@ -353,10 +354,10 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     try {
       result = await _authDataSource.verifyCaptcha(token);
     } catch (_) {
-      throw ServerFailure('CAPTCHA verification failed. Please try again.');
+      throw ServerFailure(OtpMessages.captchaVerificationFailed);
     }
     if (result['success'] != true) {
-      throw ServerFailure('CAPTCHA verification failed. Please try again.');
+      throw ServerFailure(OtpMessages.captchaVerificationFailed);
     }
   }
 
@@ -719,7 +720,13 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     final dto = await _profileDataSource.fetchProfileRow(user.id);
     final hasPhone = user.phone != null && user.phone!.isNotEmpty;
     if (!dto.hasPassword && !hasPhone) {
-      throw NoRemainingLoginMethodFailure(ProfileMessages.m21MustVerifyPhoneBeforeUnlink);
+      // Updated 8 Sep at Foo's request: since an account can now gain a
+      // username + password AFTER registration too (setUsernameAndPassword
+      // above), the spec's verbatim M21 ("verify a phone number") no
+      // longer describes the actual rule — password counts as a valid
+      // alternative just as much as phone does. See ProfileMessages.m27's
+      // doc comment.
+      throw NoRemainingLoginMethodFailure(ProfileMessages.m27MustHaveAnotherLoginMethod);
     }
     try {
       await _authDataSource.unlinkGoogleIdentity();
