@@ -82,16 +82,19 @@ class AiPromptBuilder {
     buffer.writeln('TRIP');
     buffer.writeln('- total_days: ${request.totalDays}');
     if (request.startDate != null) {
-      buffer.writeln('- start_date: ${request.startDate!.toIso8601String().split('T').first}');
+      buffer.writeln(
+          '- start_date: ${request.startDate!.toIso8601String().split('T').first}');
     }
     if (request.endDate != null) {
-      buffer.writeln('- end_date: ${request.endDate!.toIso8601String().split('T').first}');
+      buffer.writeln(
+          '- end_date: ${request.endDate!.toIso8601String().split('T').first}');
     }
     buffer.writeln('- destinations: ${request.destinationNames.join(', ')}');
     buffer.writeln('- allocated_days_per_destination: '
         '${_formatDaySplit(request)}');
     buffer.writeln('- travel_type: ${request.travelType ?? 'Solo'}');
-    buffer.writeln('- interests: ${request.interests.isEmpty ? 'none' : request.interests.join(', ')}');
+    buffer.writeln(
+        '- interests: ${request.interests.isEmpty ? 'none' : request.interests.join(', ')}');
     buffer.writeln('- travel_pace: ${request.pace ?? 'Standard'}');
     buffer.writeln('- exploration_time: ${request.exploration ?? 'Standard'}');
     buffer.writeln('- transportation_mode: ${request.transportation}');
@@ -196,23 +199,13 @@ class AiPromptBuilder {
     return '{ ${parts.join(', ')} }';
   }
 
-  // ============================================================
-  // COMPACT PLANNER PROMPT (optimized architecture)
-  // ============================================================
-  //
-  // DeepSeek is now asked to do ONLY what benefits from AI: select, group
-  // and order places, matching interests and travel pace, with a short
-  // reason. It returns ONLY { dayIndex, placeIds[], reason }. All start/end
-  // times, visit durations, travel times, stop ordering, validation and
-  // repair are computed deterministically by Dart afterwards. This shrinks
-  // the prompt (≈5–8k chars) and the output (≈150–300 tokens), which is what
-  // makes a 5–15s normal response achievable.
-
   /// Builds the compact DeepSeek planning prompt.
   ///
-  /// [mustVisitIds] are the verified must-visit place IDs. [candidates] is
-  /// the reduced (~12–20) high-quality pool and [clusters] the geographic
-  /// groups — both already produced by the Dart scoring/clustering pipeline.
+  /// [mustVisitIds] are the verified must-visit place IDs. [candidates] is the
+  /// reduced (~10-14) high-quality pool and [clusters] the geographic groups -
+  /// both already produced by the Dart scoring/clustering pipeline.
+  ///
+  /// Prompt length is optimized for the 1,050 token budget (GLM-5.3-Flash).
   String buildCompactPlanPrompt({
     required TripDraft request,
     required List<AiCandidateContext> candidates,
@@ -220,9 +213,10 @@ class AiPromptBuilder {
     required List<String> mustVisitIds,
   }) {
     final pace = request.pace ?? 'Standard';
+    final totalDays = request.totalDays;
     final buffer = StringBuffer();
 
-    // ── DETERMINE TARGET STOPS PER DAY ───────────────────────────
+    // Target stops per day
     int targetStopsPerDay;
     switch (pace) {
       case 'Slow':
@@ -232,102 +226,67 @@ class AiPromptBuilder {
         targetStopsPerDay = 5;
         break;
       default:
-        targetStopsPerDay = 4; // Standard
+        targetStopsPerDay = 4;
     }
-    // Cap at 5 to avoid overcrowding (absolute max)
-    if (targetStopsPerDay > 5) targetStopsPerDay = 5;
-    if (targetStopsPerDay < 2) targetStopsPerDay = 2;
+    targetStopsPerDay = targetStopsPerDay.clamp(2, 5);
 
-    // ── PROMPT HEADER ────────────────────────────────────────────
-    buffer.writeln('You are a travel itinerary planner.');
-    buffer.writeln('Create a multi-day itinerary using ONLY the supplied '
-        'candidates. You SELECT, GROUP and ORDER places. You NEVER calculate '
-        'times, durations or travel minutes — Dart does that deterministically.');
-    buffer.writeln('');
+    final mustSet = mustVisitIds.toSet();
+    final foodCount = candidates.where(_isFoodCandidate).length;
+    final categories = candidates
+        .map((c) => (c.category ?? 'attraction').trim())
+        .where((c) => c.isNotEmpty)
+        .toSet();
 
-    // ── RULES ──────────────────────────────────────────────────────
-    buffer.writeln('RULES:');
-    buffer.writeln('- CRITICAL SPEED CONSTRAINT: Plan quickly and concisely. '
-        'Do not over-analyze candidates in your reasoning. Output the JSON '
-        'array immediately once you have selected the places.');
-    buffer.writeln('- Include every MUST-VISIT place exactly once. '
-        'ALL VALIDATED MUST-VISIT PLACES ARE REQUIRED TO APPEAR IN THE '
-        'GENERATED ITINERARY — never omit, replace, duplicate or invent a '
-        'must-visit place.');
-    buffer.writeln('- Use only the supplied place IDs. Never invent places or IDs.');
-    buffer.writeln('- A place may appear only once across the whole trip.');
-    buffer.writeln('- Return exactly ${request.totalDays} day(s).');
-    buffer.writeln('- dayIndex is 0-BASED: the first day is 0 and the last '
-        'day is ${request.totalDays - 1}. Never use 1-based day numbers.');
-    buffer.writeln('- Group geographically nearby places (same cluster) together.');
-    buffer.writeln('- Match the traveler interests and travel pace.');
-    buffer.writeln('- Respect the destination day allocation.');
-    buffer.writeln('');
+    // -- Compact instructions ------------------------------------
+    buffer.writeln('Plan $totalDays-day itinerary from candidates. '
+        '0-based dayIndex. Use only given placeIds. '
+        'MUST places exactly once. Max 15 places total. '
+        'Aim ~$targetStopsPerDay stops/day, mix categories, include food if available. '
+        'Keep cluster places together. JSON output only.');
 
-    // ── TARGET STOPS PER DAY (explicit) ──────────────────────────
-    buffer.writeln('- TARGET: For a "$pace" pace, you should aim to place '
-        'approximately **$targetStopsPerDay stops per day** (including meals). '
-        'This is a target, not a hard limit – if you have fewer suitable '
-        'candidates for a day, you may place fewer, but do NOT leave days '
-        'very empty when candidates are available.');
-    buffer.writeln('- DISTRIBUTION: Distribute places as evenly as possible '
-        'across all days. Do NOT overload the first few days and leave the '
-        'last days nearly empty. If a day has fewer than $targetStopsPerDay '
-        'places and there are unused candidates from the same destination, '
-        'add the highest-scored ones to fill it up.');
-    buffer.writeln('- STRICT GLOBAL CAP: Do not generate more than 15 total '
-        'places across the itinerary (this already accommodates all days).');
-    buffer.writeln('');
+    // -- Trip info (short) ---------------------------------------
+    buffer.writeln('Dests: ${request.destinationNames.join(",")}. '
+        'Split: ${_formatDaySplit(request)}. '
+        'Window: ${_windowText(request.exploration)}. '
+        'Pace: $pace. Transport: ${request.transportation}. '
+        'Interests: ${request.interests.isEmpty ? "none" : request.interests.join(",")}. '
+        'Food count: $foodCount.');
 
-    // ── WHAT NOT TO DO ───────────────────────────────────────────
-    buffer.writeln('- Do NOT calculate startTime, endTime, visitMinutes, '
-        'travel minutes, opening hours or distances — Dart computes all of '
-        'those deterministically.');
-    buffer.writeln('- Do NOT include reasons, explanations, comments or any '
-        'text outside the JSON. Output ONLY the JSON shown in OUTPUT.');
-    buffer.writeln('- Return ONLY valid JSON. No markdown, no extra text, '
-        'no fields other than dayIndex and placeIds.');
-    buffer.writeln('');
+    // -- Candidates as compact JSON array ------------------------
+    buffer.writeln('CANDIDATES:');
+    final candidatesJson = candidates.map((c) {
+      final flags = <String>[];
+      if (c.isMustVisit || mustSet.contains(c.placeId)) flags.add('M');
+      if (_isFoodCandidate(c)) flags.add('F');
+      return {
+        'id': c.placeId,
+        'n': c.name,
+        'cat': c.category ?? 'attraction',
+        'c': c.clusterId,
+        'flags': flags.join(','),
+      };
+    }).toList();
+    // Minify JSON to reduce chars
+    buffer.writeln(jsonEncode(candidatesJson));
 
-    // ── TRIP DETAILS ─────────────────────────────────────────────
-    buffer.writeln('TRIP:');
-    buffer.writeln('- destination: ${request.destinationNames.join(', ')}');
-    buffer.writeln('- days: ${request.totalDays}');
-    buffer.writeln('- day split: ${_formatDaySplit(request)}');
-    buffer.writeln('- exploration: ${_windowText(request.exploration)}');
-    buffer.writeln("- travel pace: $pace");
-    buffer.writeln('- transportation: ${request.transportation}');
-    buffer.writeln('- interests: '
-        '${request.interests.isEmpty ? 'none' : request.interests.join(', ')}');
-    buffer.writeln('- must-visits: '
-        '${mustVisitIds.isEmpty ? 'none' : mustVisitIds.join(', ')}');
-    buffer.writeln('');
-
-    // ── CANDIDATES ──────────────────────────────────────────────
-    // Minimal serialization: only the four fields the model needs for
-    // selection/grouping/ordering. Coordinates, ratings and opening hours
-    // are deterministic Dart concerns and are deliberately omitted.
-    buffer.writeln('CANDIDATES (placeId | name | category | clusterId):');
-    for (final c in candidates) {
-      buffer.writeln(
-        '${c.placeId} | ${c.name} | ${c.category ?? 'attraction'} | '
-            'c${c.clusterId}',
-      );
-    }
-    buffer.writeln('');
-
-    // ── CLUSTERS ─────────────────────────────────────────────────
-    buffer.writeln('CLUSTERS (geographic groups, NOT days):');
-    for (final cluster in clusters) {
-      buffer.writeln('- cluster ${cluster.dayIndex}');
-    }
-    buffer.writeln('');
-
-    // ── OUTPUT TEMPLATE ─────────────────────────────────────────
-    buffer.writeln('OUTPUT (JSON only):');
-    buffer.writeln(_compactJsonTemplate());
+    // -- Output template (short) ---------------------------------
+    buffer.writeln('OUTPUT: {"days":[{"dayIndex":0,"placeIds":["id1","id2"]}]}');
 
     return buffer.toString();
+  }
+
+  /// Whether a candidate reads as a food/dining place.
+  ///
+  /// Mirrors the category convention in `ScoringService._isFoodPlace` so the
+  /// prompt's FOOD flag and the pipeline's food reservation agree on what
+  /// counts as a meal stop.
+  bool _isFoodCandidate(AiCandidateContext c) {
+    final category = (c.category ?? '').toLowerCase();
+    return category.contains('restaurant') ||
+        category.contains('food') ||
+        category.contains('cafe') ||
+        category.contains('bakery') ||
+        category.contains('dining');
   }
 
   String _compactJsonTemplate() {
@@ -350,6 +309,7 @@ class AiPromptBuilder {
         '- ${window.endHour}:${window.endMinute.toString().padLeft(2, '0')}';
   }
 
+  /// Fixed JSON schema representation for full schedule generation.
   String _jsonTemplate() {
     return '''
 {
@@ -370,7 +330,6 @@ class AiPromptBuilder {
         {
           "placeId": "ChIJ...",
           "stopOrder": 2,
-          "stopOrder": 2,DISTRIBUTION
           "startTime": "10:10",
           "endTime": "11:10",
           "visitDurationMinutes": 60,

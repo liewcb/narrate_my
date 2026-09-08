@@ -59,6 +59,7 @@ class MyApp extends StatelessWidget {
           // never missed even by a screen that forgets to.
           context.watch<LocaleVm>();
           return MaterialApp(
+            debugShowCheckedModeBanner: false,
             navigatorKey: rootNavigatorKey,
             title: 'narrate_my',
             theme: AppTheme.light,

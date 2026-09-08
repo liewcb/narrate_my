@@ -8,4 +8,5 @@ abstract class PlaceRepository {
   Future<List<Place>> getAllPlaces();
   Future<void> deletePlace(String placeId);
   Future<bool> exists(String placeId);
+  Future<List<Place>> searchPlaces(String query);
 }

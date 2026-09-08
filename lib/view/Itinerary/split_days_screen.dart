@@ -34,6 +34,10 @@ class SplitDaysScreen extends StatefulWidget {
 }
 
 class _SplitDaysScreenState extends State<SplitDaysScreen> {
+  // Balance threshold: a destination is considered "unbalanced" if its days
+  // are less than 50% or more than 150% of the average.
+  static const double _balanceThreshold = 0.5;
+
   final List<Color> _colorPalette = [
     AppColors.green,
     AppColors.accent,
@@ -72,17 +76,40 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
   int get _totalAllocated =>
       widget.destinations.fold(0, (sum, d) => sum + d.days);
 
+  // ----------------------------------------------------------------------
+  // 1. Update days – now prevents dropping below 1
+  // ----------------------------------------------------------------------
   void _updateDays(int index, int change) {
     setState(() {
       int newDays = widget.destinations[index].days + change;
+      // 🛑 Do not allow zero days
+      if (newDays < 1) return;
+
       int totalOthers = 0;
       for (int i = 0; i < widget.destinations.length; i++) {
         if (i != index) totalOthers += widget.destinations[i].days;
       }
-      if (newDays >= 0 && (totalOthers + newDays) <= widget.totalPlannedDays) {
+      if ((totalOthers + newDays) <= widget.totalPlannedDays) {
         widget.destinations[index].days = newDays;
       }
     });
+  }
+
+  // ----------------------------------------------------------------------
+  // 2. Balance check
+  // ----------------------------------------------------------------------
+  bool _isAllocationBalanced() {
+    if (widget.destinations.isEmpty) return true;
+    final totalDays = widget.totalPlannedDays;
+    final count = widget.destinations.length;
+    final avg = totalDays / count;
+    for (final dest in widget.destinations) {
+      if (dest.days < avg * (1 - _balanceThreshold) ||
+          dest.days > avg * (1 + _balanceThreshold)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   String _buildDateRange(int index) {
@@ -95,23 +122,78 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     return "Day $startDay – Day $endDay";
   }
 
-  void _saveAllocationsToNotifier() {
+  // ----------------------------------------------------------------------
+  // 3. Save to notifier and proceed – with balance dialog if needed
+  // ----------------------------------------------------------------------
+  void _onContinue() {
+    // Build allocation map
     final allocatedDays = <String, int>{};
     for (final dest in widget.destinations) {
       allocatedDays[dest.name] = dest.days;
     }
 
+    // Update draft
     final currentDraft = context.read<TripDraftNotifier>().draft;
     final updatedDraft = currentDraft.copyWith(daySplit: allocatedDays);
     context.read<TripDraftNotifier>().updateDraft(updatedDraft);
+
+    // Check balance
+    if (!_isAllocationBalanced()) {
+      _showUnevenDistributionDialog();
+    } else {
+      _proceedToGeneration();
+    }
   }
 
+  void _showUnevenDistributionDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Uneven distribution'),
+        content: const Text(
+            'The days are not evenly distributed among destinations. '
+                'Do you want to proceed anyway?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Adjust'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context, true);
+              _proceedToGeneration();
+            },
+            child: const Text('Proceed'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _proceedToGeneration() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const GenerationScreen()),
+    );
+  }
+
+  // ----------------------------------------------------------------------
+  // BUILD
+  // ----------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return PopScope(
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) {
-          _saveAllocationsToNotifier(); // Save allocation state when navigating back
+          // Save allocation state when navigating back
+          final allocatedDays = <String, int>{};
+          for (final dest in widget.destinations) {
+            allocatedDays[dest.name] = dest.days;
+          }
+          final currentDraft = context.read<TripDraftNotifier>().draft;
+          final updatedDraft = currentDraft.copyWith(daySplit: allocatedDays);
+          context.read<TripDraftNotifier>().updateDraft(updatedDraft);
         }
       },
       child: Scaffold(
@@ -165,6 +247,9 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     );
   }
 
+  // ----------------------------------------------------------------------
+  // UI sub‑widgets (unchanged)
+  // ----------------------------------------------------------------------
   Widget _buildHeader() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -181,7 +266,7 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
         const SizedBox(height: 8),
         Text(
           "You have ${widget.totalPlannedDays} total days planned. "
-          "Allocate how many days to spend in each destination.",
+              "Allocate how many days to spend in each destination.",
           style: AppTextStyles.bodySm.copyWith(
             color: _subtitleColor,
             height: 1.5,
@@ -276,7 +361,7 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                 _buildLegendItem(
                   color: _getColorForDestination(widget.destinations[i].id),
                   label:
-                      "${widget.destinations[i].name} "
+                  "${widget.destinations[i].name} "
                       "(${widget.destinations[i].days}d)",
                 ),
             ],
@@ -501,31 +586,6 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
     );
   }
 
-  /// Navigates to the next screen with the updated day allocation.
-  /// Navigates to the next screen with the updated day allocation.
-  void _onContinue() {
-    // 1. Build a map of the new day allocations
-    final allocatedDays = <String, int>{};
-    for (final dest in widget.destinations) {
-      allocatedDays[dest.name] = dest.days;
-    }
-
-    // ✅ 2. Read the current draft directly from the global vault
-    final currentDraft = context.read<TripDraftNotifier>().draft;
-
-    // ✅ 3. Create an updated draft by adding the day splits
-    final updatedDraft = currentDraft.copyWith(daySplit: allocatedDays);
-
-    // ✅ 4. Save the finalized draft back to the vault
-    context.read<TripDraftNotifier>().updateDraft(updatedDraft);
-
-    // ✅ 5. Navigate to the Generation Screen (no need to pass the draft!)
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const GenerationScreen()),
-    );
-  }
-
   Widget _buildStickyFooter() {
     bool isComplete = _totalAllocated == widget.totalPlannedDays;
     Color accentColor = widget.destinations.isNotEmpty
@@ -571,7 +631,7 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
             );
             return;
           }
-          _onContinue(); // ✅ Call the new method
+          _onContinue(); // calls the updated method with balance check
         },
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,

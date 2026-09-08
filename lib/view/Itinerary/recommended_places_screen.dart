@@ -175,7 +175,7 @@ class _RecommendedPlacesScreenState extends State<RecommendedPlacesScreen>
     // and the actual ListView.separated when we have items.
 
     return RefreshIndicator(
-      onRefresh: () => _vm.loadRecommendations(),
+      onRefresh: () => _vm.loadRecommendations(force: true),
       color: AppColors.terracottaDark,
       child: _buildCategoryContent(category),
     );

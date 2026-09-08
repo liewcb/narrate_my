@@ -5,6 +5,7 @@ import '../../core/config/itinerary_constants.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/services/google_maps_service.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
+import '../../model/business_logic/itinerary_service/place_candidate_validation.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/business_logic/itinerary_service/scoring_service.dart';
 import '../../model/entities/coordinates.dart';
@@ -77,6 +78,12 @@ class EditItineraryViewModel extends ChangeNotifier {
   /// blocked by a must-visit that lives on a different day.
   Set<String> _dayMustVisitIds = const {};
 
+  /// STABLE place_id of every place scheduled on ANY day of this itinerary.
+  /// Duplicate validation for Change/Add uses this whole-itinerary set so a
+  /// place from another day can never be picked twice (day-scoped checks
+  /// layer on top through [_dayMustVisitIds]).
+  Set<String> _itineraryUsedPlaceIds = const {};
+
   EditItineraryViewModel({
     required ItineraryResult result,
     required int dayIndex,
@@ -99,6 +106,16 @@ class EditItineraryViewModel extends ChangeNotifier {
         .where((s) => s.isMustVisit)
         .map((s) => s.placeId)
         .toSet();
+    _itineraryUsedPlaceIds = {
+      for (final d in (result.scheduledDays ?? const <ScheduledDay>[]))
+        for (final s in d.stops) s.attraction.place.placeId,
+    };
+    debugPrint('[EDIT_DAY_CONTEXT] day=$dayNumber '
+        'dayIndex=$_dayIndex '
+        'date=${dayDate.toIso8601String().substring(0, 10)} '
+        'existingStops=${_stops.length} '
+        'existingPlaceIds=${_stops.map((s) => s.placeId).join(",")} '
+        'itineraryUsedIds=${_itineraryUsedPlaceIds.length}');
   }
 
   // ─── Getters ────────────────────────────────────────────────
@@ -123,6 +140,101 @@ class EditItineraryViewModel extends ChangeNotifier {
     if (pool == null) return [];
     final usedIds = _stops.map((s) => s.placeId).toSet();
     return pool.all.where((p) => !usedIds.contains(p.placeId)).toList();
+  }
+
+  /// Stable place_ids scheduled anywhere in this itinerary (for the
+  /// whole-trip duplicate rule used by the picker / search / bookmarks).
+  Set<String> get itineraryUsedPlaceIds =>
+      Set.unmodifiable(_itineraryUsedPlaceIds);
+
+  /// Geographic centre of the selected day's current stops (null when the
+  /// day has no valid coordinates).
+  Coordinates? get dayCenter {
+    double lat = 0, lng = 0;
+    var n = 0;
+    for (final s in _stops) {
+      final p = s.place;
+      if (!PlaceCandidateValidation.hasValidCoordinates(p)) continue;
+      lat += p.placeLatitude;
+      lng += p.placeLongitude;
+      n++;
+    }
+    if (n == 0) return null;
+    return Coordinates(latitude: lat / n, longitude: lng / n);
+  }
+
+  // ─── Central candidate validation (ONE pipeline for everything) ──
+
+  /// Validates a candidate place for THIS day through the shared
+  /// [PlaceCandidateValidation] pipeline: identity → name → coordinates →
+  /// duplicate (whole itinerary) → day/destination range → opening hours on
+  /// the itinerary [dayDate] (with the proposed visit window when known).
+  ///
+  /// Used by Change Place, Add Place, search, bookmarks and recommendations
+  /// — there is deliberately no second, weaker validation path.
+  CandidateValidationResult validatePlaceCandidate(
+    Place candidate, {
+    required String stage,
+    String? replacingPlaceId,
+    int? visitStartMinutes,
+    int? visitEndMinutes,
+  }) {
+    final used = Set<String>.of(_itineraryUsedPlaceIds);
+    if (replacingPlaceId != null) used.remove(replacingPlaceId.trim());
+    return PlaceCandidateValidation.validate(
+      candidate,
+      stage: stage,
+      dayDate: dayDate,
+      usedPlaceIds: used,
+      dayCenter: dayCenter,
+      maxRadiusKm: ItineraryConstants.maxSearchRadiusKm,
+      visitStartMinutes: visitStartMinutes,
+      visitEndMinutes: visitEndMinutes,
+    );
+  }
+
+  /// Reloads this day's temporary context from the source schedule and
+  /// re-runs full validation. Real refresh: it rebuilds day stops, the
+  /// day must-visit set, the whole-itinerary used-id set and revalidates —
+  /// it is NOT a plain setState. In-progress traveler edits on the
+  /// CURRENT day are preserved when present (preview-state rule); use
+  /// [discardEditsAndRebuild] to force a clean reload from the source.
+  bool refreshContext() {
+    debugPrint('[EDIT_REFRESH] START day=${_dayIndex + 1}');
+    debugPrint('[EDIT_REFRESH_LOAD] re-deriving day context from the '
+        'source schedule (dayDate=$dayDate)');
+    _itineraryUsedPlaceIds = {
+      for (final d in (_originalResult.scheduledDays
+      ?? const <ScheduledDay>[]))
+        for (final s in d.stops) s.attraction.place.placeId,
+    };
+    if (!_hasChanges()) {
+      _stops = _buildStops();
+      _dayMustVisitIds = _stops
+          .where((s) => s.isMustVisit)
+          .map((s) => s.placeId)
+          .toSet();
+    }
+    debugPrint('[EDIT_REFRESH_VALIDATE] stops=${_stops.length} '
+        'itineraryUsedIds=${_itineraryUsedPlaceIds.length}');
+    final errors = validate();
+    _error = errors.isEmpty ? null : errors.first;
+    debugPrint('[EDIT_REFRESH] COMPLETE '
+        'validation=${errors.isEmpty ? "PASS" : "FAIL: ${errors.first}"}');
+    notifyListeners();
+    return errors.isEmpty;
+  }
+
+  /// Force a clean rebuild of the day from the source schedule (drops
+  /// temporary edits for this day).
+  void discardEditsAndRebuild() {
+    _stops = _buildStops();
+    _dayMustVisitIds = _stops
+        .where((s) => s.isMustVisit)
+        .map((s) => s.placeId)
+        .toSet();
+    _error = null;
+    notifyListeners();
   }
 
   // ─── Editability (date AND time aware) ──────────────────────
@@ -524,19 +636,26 @@ class EditItineraryViewModel extends ChangeNotifier {
     }
   }
 
+  /// Shared pre-add gate: ONE central validation pipeline (identity, name,
+  /// coordinates, whole-itinerary duplicate, day range, opening hours on
+  /// the itinerary day). Sets [_error] with the traveler-facing reason.
   bool canAddCandidate(Place candidate) {
-    if (_stops.any((s) => s.placeId == candidate.placeId)) {
-      _error = 'This place is already in your itinerary.';
+    final result = validatePlaceCandidate(candidate, stage: 'ADD_PLACE');
+    if (result.isInvalid) {
+      _error = result.message;
+      debugPrint('[EDIT_ADD_PLACE] REJECT ${candidate.placeId} — '
+          '${result.code?.name}: ${result.message}');
       notifyListeners();
       return false;
     }
     return true;
   }
 
-  /// Adds a candidate to the end of the day. Returns `true` only when the
-  /// addition keeps the day valid; otherwise the addition is reverted and
-  /// [_error] carries a user-friendly reason.
-  bool addCandidate(Place candidate) {
+  /// Adds a place to the end of the SELECTED day only. Every other day is
+  /// untouched. Returns `true` only when the candidate passed the central
+  /// validation AND the revalidated day stayed valid; otherwise the
+  /// previous temporary state is restored and [_error] explains why.
+  Future<bool> addCandidate(Place candidate) async {
     if (!canAddCandidate(candidate)) return false;
 
     final snapshot = _snapshotStops();
@@ -544,7 +663,21 @@ class EditItineraryViewModel extends ChangeNotifier {
     final startTime = _stops.isNotEmpty
         ? _stops.last.endTime.add(const Duration(minutes: 15))
         : DateTime(day.year, day.month, day.day, 9, 0);
-    final endTime = startTime.add(Duration(minutes: candidate.visitDurationMinutes ?? 90));
+    final endTime =
+        startTime.add(Duration(minutes: candidate.visitDurationMinutes ?? 90));
+
+    // Travel time for the new inbound leg: recomputed via the existing
+    // routing service, INFORMATION ONLY (a long route never rejects —
+    // only the day window / schedule validity checked below can).
+    int inboundTravel = _stops.isNotEmpty ? 15 : 0;
+    if (_stops.isNotEmpty) {
+      final routed = await _travelMinutes(
+          _stops.last.place.coordinates, candidate.coordinates);
+      if (routed != null) inboundTravel = routed;
+      debugPrint('[EDIT_ROUTE_INFO] ${_stops.last.name} → ${candidate.placeName}: '
+          '$inboundTravel min (informational — not a validation rule)');
+    }
+
     _stops.add(EditableStop(
       placeId: candidate.placeId,
       name: candidate.placeName,
@@ -554,7 +687,7 @@ class EditItineraryViewModel extends ChangeNotifier {
       place: candidate,
       startTime: startTime,
       endTime: endTime,
-      travelFromPrevMinutes: _stops.isNotEmpty ? 15 : 0,
+      travelFromPrevMinutes: inboundTravel,
     ));
     _rechainSchedule();
 
@@ -562,22 +695,92 @@ class EditItineraryViewModel extends ChangeNotifier {
     if (errors.isNotEmpty) {
       _restoreStops(snapshot);
       _error = errors.first;
+      debugPrint('[EDIT_ADD_PLACE] REJECT ${candidate.placeId} after '
+          'day validation: ${errors.first}');
       notifyListeners();
       return false;
     }
+    _itineraryUsedPlaceIds = {..._itineraryUsedPlaceIds, candidate.placeId};
     _error = null;
+    debugPrint('[EDIT_ADD_PLACE] ACCEPT ${candidate.placeId} '
+        '(${candidate.placeName}) day=${_dayIndex + 1} '
+        'stopsNow=${_stops.length}');
     notifyListeners();
     return true;
   }
 
-  /// Replaces a stop. Returns `true` only when the replacement keeps the day
-  /// valid; otherwise the original stop is restored and [_error] carries a
-  /// user-friendly reason.
-  bool replaceStop(int index, Place candidate) {    if (index < 0 || index >= _stops.length) return false;
-    if (_stops.any((s) => s.placeId == candidate.placeId && s.placeId != _stops[index].placeId)) {
-      _error = 'This place is already in your itinerary.';
+  /// Replaces ONE stop's place in place: stop index, day, must-visit
+  /// flags and every OTHER stop are preserved. Travel time for the
+  /// replaced stop's inbound leg is recomputed (information + display);
+  /// a route failure never rejects the replacement. The candidate must
+  /// pass the same central validation as every other flow, and opening
+  /// hours are checked against THIS day's visit window.
+  Future<bool> replaceStop(int index, Place candidate) async {
+    if (index < 0 || index >= _stops.length) {
+      _error = 'This stop can no longer be changed. Please try again.';
       notifyListeners();
       return false;
+    }
+    final original = _stops[index];
+
+    // Locked (elapsed) stops cannot be replaced either.
+    final lockedReason = stopLockedReason(index);
+    if (lockedReason != null) {
+      _error = lockedReason;
+      debugPrint('[EDIT_CHANGE_PLACE] REJECT index=$index — $lockedReason');
+      notifyListeners();
+      return false;
+    }
+
+    // Must-visit protection (day-scoped): a required place is never
+    // silently replaced.
+    if (original.isMustVisit) {
+      _error = 'This is a must-visit place and cannot be replaced. '
+          'Keep the day\'s required places.';
+      debugPrint('[EDIT_CHANGE_PLACE] REJECT index=$index — must-visit '
+          'protection (${original.placeId})');
+      notifyListeners();
+      return false;
+    }
+
+    debugPrint('[EDIT_DAY_CHANGE] day=${_dayIndex + 1} '
+        'date=${dayDate.toIso8601String().substring(0, 10)} '
+        'stopIndex=$index '
+        'from=${original.placeId}(${original.name}) '
+        'to=${candidate.placeId}(${candidate.placeName})');
+
+    // Central validation — same pipeline as Add/search/bookmark/recommend —
+    // including the full visit window against the itinerary day's date.
+    final startMin = original.startTime.hour * 60 + original.startTime.minute;
+    final endMin = original.endTime.hour * 60 + original.endTime.minute;
+    final check = validatePlaceCandidate(
+      candidate,
+      stage: 'CHANGE_PLACE',
+      replacingPlaceId: original.placeId,
+      visitStartMinutes: startMin,
+      visitEndMinutes: endMin,
+    );
+    if (check.isInvalid) {
+      _error = check.message;
+      debugPrint('[EDIT_CHANGE_PLACE] REJECT ${candidate.placeId} — '
+          '${check.code?.name}: ${check.message}');
+      notifyListeners();
+      return false;
+    }
+
+    // Recompute the inbound leg travel (prev → replacement) INFORMATION
+    // ONLY — a route failure keeps the previous value and never blocks.
+    var inboundTravel = original.travelFromPrevMinutes;
+    if (index > 0) {
+      final prev = _stops[index - 1];
+      final routed =
+          await _travelMinutes(prev.place.coordinates, candidate.coordinates);
+      if (routed != null) inboundTravel = routed;
+      debugPrint('[EDIT_ROUTE_INFO] ${prev.name} → ${candidate.placeName}: '
+          '$inboundTravel min — informational only, not a validation '
+          'restriction');
+    } else {
+      inboundTravel = 0;
     }
 
     final snapshot = _snapshotStops();
@@ -585,12 +788,15 @@ class EditItineraryViewModel extends ChangeNotifier {
       placeId: candidate.placeId,
       name: candidate.placeName,
       address: candidate.placeAddress,
-      durationMinutes: candidate.visitDurationMinutes ?? 90,
+      durationMinutes:
+          candidate.visitDurationMinutes ?? original.durationMinutes,
       isMustVisit: _mustVisitPlaceIds.contains(candidate.placeId),
       place: candidate,
-      startTime: _stops[index].startTime,
-      endTime: _stops[index].startTime.add(Duration(minutes: candidate.visitDurationMinutes ?? 90)),
-      travelFromPrevMinutes: _stops[index].travelFromPrevMinutes,
+      startTime: original.startTime,
+      endTime: original.startTime.add(Duration(
+          minutes: candidate.visitDurationMinutes ??
+              original.durationMinutes)),
+      travelFromPrevMinutes: inboundTravel,
     );
     _rechainSchedule();
 
@@ -598,22 +804,85 @@ class EditItineraryViewModel extends ChangeNotifier {
     if (errors.isNotEmpty) {
       _restoreStops(snapshot);
       _error = errors.first;
+      debugPrint('[EDIT_CHANGE_PLACE] REVERT ${candidate.placeId} after '
+          'day validation: ${errors.first}');
       notifyListeners();
       return false;
     }
+    _itineraryUsedPlaceIds = {
+      ..._itineraryUsedPlaceIds.where((id) => id != original.placeId),
+      candidate.placeId,
+    };
+    _dayMustVisitIds = _stops
+        .where((s) => s.isMustVisit)
+        .map((s) => s.placeId)
+        .toSet();
     _error = null;
+    debugPrint('[EDIT_CHANGE_PLACE] ACCEPT index=$index '
+        '${original.placeId} → ${candidate.placeId} '
+        'stops=${_stops.length} (other stops untouched)');
     notifyListeners();
     return true;
   }
 
-  /// Applies a validated proposed day (from the Add Custom Place workflow)
-  /// to the temporary stop list. The proposal is re-validated with the same
-  /// deterministic engine; on failure the previous temporary state is
-  /// restored and [_error] carries a user-friendly reason.
+  /// Applies a validated proposed day (from the Add Place workflow) to the
+  /// temporary stop list of the SELECTED day only.
+  ///
+  /// Preservation guard (never allow "Market only" to replace the day):
+  /// the proposal must contain EVERY current stop plus EXACTLY ONE new
+  /// place; existing stop places keep their objects. The new place goes
+  /// through the same central candidate pipeline, and the complete day is
+  /// re-validated with the same deterministic engine. On any failure the
+  /// previous temporary state is restored and [_error] explains why.
   bool applyProposedDay(ScheduledDay proposedDay) {
+    final beforeIds = _stops.map((s) => s.placeId).toSet();
+    final afterIds = proposedDay.stops
+        .map((s) => s.attraction.place.placeId.trim())
+        .toSet();
+
+    final missing = beforeIds.difference(afterIds);
+    final added = afterIds.difference(beforeIds);
+    if (missing.isNotEmpty ||
+        added.length != 1 ||
+        proposedDay.stops.length != _stops.length + 1) {
+      _error = 'The proposed plan would change existing stops — it was not '
+          'applied. Only one place may be added at a time.';
+      debugPrint('[EDIT_ADD_PLACE] REJECT proposed day — '
+          'missing=[${missing.join(",")}] added=[${added.join(",")}] '
+          'before=${_stops.length} proposed=${proposedDay.stops.length}');
+      notifyListeners();
+      return false;
+    }
+
+    // Central validation of the ONE new place against this day.
+    final newPlace = proposedDay.stops
+        .firstWhere((s) => s.attraction.place.placeId.trim() == added.first)
+        .attraction
+        .place;
+    final check = validatePlaceCandidate(newPlace, stage: 'ADD_PLACE');
+    if (check.isInvalid) {
+      _error = check.message;
+      debugPrint('[EDIT_ADD_PLACE] REJECT ${newPlace.placeId} — '
+          '${check.code?.name}: ${check.message}');
+      notifyListeners();
+      return false;
+    }
+
     final snapshot = _snapshotStops();
+    // Preserve each EXISTING stop object (identity, must-visit flag and
+    // place data); only the new place is inserted.
+    final byPlaceId = {for (final s in _stops) s.placeId: s};
     final converted = proposedDay.stops.map((s) {
       final p = s.attraction.place;
+      final existing = byPlaceId[p.placeId];
+      if (existing != null) {
+        final copy = existing.copy();
+        copy.startTime = s.startTime;
+        copy.endTime = s.endTime;
+        copy.durationMinutes = s.durationMinutes;
+        copy.travelFromPrevMinutes = s.travelFromPreviousMinutes;
+        return copy;
+      }
       return EditableStop(
         placeId: p.placeId,
         name: p.placeName,
@@ -632,10 +901,20 @@ class EditItineraryViewModel extends ChangeNotifier {
     if (errors.isNotEmpty) {
       _restoreStops(snapshot);
       _error = errors.first;
+      debugPrint('[EDIT_ADD_PLACE] REVERT ${newPlace.placeId} — day '
+          'validation failed: ${errors.first}');
       notifyListeners();
       return false;
     }
+    _itineraryUsedPlaceIds = {..._itineraryUsedPlaceIds, newPlace.placeId};
+    _dayMustVisitIds = _stops
+        .where((s) => s.isMustVisit)
+        .map((s) => s.placeId)
+        .toSet();
     _error = null;
+    debugPrint('[EDIT_ADD_PLACE] ACCEPT ${newPlace.placeName} '
+        '(${newPlace.placeId}) inserted into day=${_dayIndex + 1} — '
+        '${beforeIds.length} existing stops preserved + 1 new');
     notifyListeners();
     return true;
   }
@@ -645,7 +924,9 @@ class EditItineraryViewModel extends ChangeNotifier {
   /// Returns a list of error messages. Empty list means validation passed.
   List<String> validate() {
     final errors = <String>[];
-    debugPrint('[EDIT VALIDATION] Started');
+    debugPrint('[EDIT_VALIDATION] Started day=${_dayIndex + 1} '
+        'date=${dayDate.toIso8601String().substring(0, 10)} '
+        'stops=${_stops.length}');
 
     // 1. This day's must-visits all present (day-scoped guard).
     for (final mvId in _dayMustVisitIds) {
@@ -654,20 +935,39 @@ class EditItineraryViewModel extends ChangeNotifier {
         break;
       }
     }
-    debugPrint('[EDIT VALIDATION] Must-visits: ${errors.isEmpty ? "PASS" : "FAIL"}');
+    debugPrint('[EDIT_VALIDATION] Must-visits: '
+        '${errors.isEmpty ? "PASS" : "FAIL"}');
 
-    // 2. No duplicate place IDs.
+    // 2. No duplicate place IDs (stable identity, never the name).
     final ids = _stops.map((s) => s.placeId).toList();
     if (ids.length != ids.toSet().length) {
       errors.add('You have duplicate stops in this day.');
+      debugPrint('[EDIT_DUPLICATE] day=${_dayIndex + 1} result=FAIL');
     }
-    debugPrint('[EDIT VALIDATION] Duplicates: ${errors.isEmpty ? "PASS" : "FAIL"}');
 
     if (_stops.isEmpty) {
       errors.add('Add at least one stop before finishing.');
-      debugPrint('[EDIT VALIDATION] RESULT: FAIL');
+      debugPrint('[EDIT_VALIDATION] RESULT: FAIL');
       return errors;
     }
+
+    // 2b. Basic per-stop data validity (never rely on the UI for this).
+    for (final s in _stops) {
+      if (s.placeId.trim().isEmpty) {
+        errors.add('One of the stops has no valid place ID.');
+        break;
+      }
+      if (s.name.trim().isEmpty) {
+        errors.add('"${s.placeId}" has no valid name.');
+        break;
+      }
+      if (!PlaceCandidateValidation.hasValidCoordinates(s.place)) {
+        errors.add('"${s.name}" has invalid location data.');
+        break;
+      }
+    }
+    debugPrint('[EDIT_VALIDATION] Stop data integrity: '
+        '${errors.isEmpty ? "PASS" : "FAIL"}');
 
     // 3. Exploration window + chronological order.
     final win = window;
@@ -700,37 +1000,34 @@ class EditItineraryViewModel extends ChangeNotifier {
         }
       }
     }
-    debugPrint('[EDIT VALIDATION] Exploration time: ${errors.isEmpty ? "PASS" : "FAIL"}');
-    debugPrint('[EDIT VALIDATION] Travel time: ${errors.isEmpty ? "PASS" : "FAIL"}');
+    debugPrint('[EDIT_VALIDATION] Exploration time: '
+        '${errors.isEmpty ? "PASS" : "FAIL"}');
+    debugPrint('[EDIT_VALIDATION] Travel time: '
+        '${errors.isEmpty ? "PASS" : "FAIL"}');
 
-    // 4. Opening hours (best-effort).
+    // 4. Opening hours (best-effort): the visit must fit within AT LEAST
+    //    ONE of the day's opening periods (overnight-aware) — never must
+    //    every period contain it. Unknown hours = not a rejection.
     if (errors.isEmpty) {
       for (final s in _stops) {
-        final oh = s.place.openingHours;
-        if (oh == null || oh.periods.isEmpty) continue;
-        final dayOfWeek = (_tripStartDate.add(Duration(days: _dayIndex)).weekday) % 7;
-        final matchingPeriods = oh.periods.where((p) => p.open.day == dayOfWeek);
-        if (matchingPeriods.isNotEmpty) {
-          final allMatch = matchingPeriods.every((p) {
-            final openMin = int.parse(p.open.time.substring(0, 2)) * 60 +
-                int.parse(p.open.time.substring(2, 4));
-            final closeMin = int.parse(p.close.time.substring(0, 2)) * 60 +
-                int.parse(p.close.time.substring(2, 4));
-            final startMins = s.startTime.hour * 60 + s.startTime.minute;
-            final endMins = s.endTime.hour * 60 + s.endTime.minute;
-            return startMins >= openMin && endMins <= closeMin;
-          });
-          if (!allMatch) {
-            errors.add('"${s.name}" is closed during the selected time.');
-            debugPrint('[EDIT VALIDATION] Opening hours: FAIL');
-            break;
-          }
+        final startMins = s.startTime.hour * 60 + s.startTime.minute;
+        final endMins = s.endTime.hour * 60 + s.endTime.minute;
+        final open = PlaceCandidateValidation.isOpenForVisit(
+            s.place, dayDate, startMins, endMins);
+        debugPrint('[EDIT_OPENING_HOURS] day=${_dayIndex + 1} '
+            'date=${dayDate.toIso8601String().substring(0, 10)} '
+            'place=${s.placeId}(${s.name}) '
+            'visit=${_fmtWin(startMins)}-${_fmtWin(endMins)} '
+            'result=${open ? "PASS" : "FAIL"}');
+        if (!open) {
+          errors.add('"${s.name}" is closed during the selected time.');
+          break;
         }
       }
-      debugPrint('[EDIT VALIDATION] Opening hours: PASS');
     }
 
-    debugPrint('[EDIT VALIDATION] RESULT: ${errors.isEmpty ? "PASS" : "FAIL"}');
+    debugPrint('[EDIT_VALIDATION] RESULT: '
+        '${errors.isEmpty ? "PASS" : "FAIL — ${errors.first}"}');
     return errors;
   }
 
@@ -740,12 +1037,18 @@ class EditItineraryViewModel extends ChangeNotifier {
     final errors = validate();
     if (errors.isNotEmpty) {
       _error = errors.first;
+      debugPrint('[EDIT_SAVE] ABORT — final validation failed: '
+          '${errors.first}');
       notifyListeners();
       return;
     }
 
     final originalDays = _originalResult.scheduledDays ?? const [];
-    if (_dayIndex < 0 || _dayIndex >= originalDays.length) return;
+    if (_dayIndex < 0 || _dayIndex >= originalDays.length) {
+      debugPrint('[EDIT_SAVE] ABORT — day index $_dayIndex out of range '
+          '(${originalDays.length} days)');
+      return;
+    }
 
     final newDays = List<ScheduledDay>.from(originalDays);
     newDays[_dayIndex] = _buildScheduledDay();
@@ -767,6 +1070,10 @@ class EditItineraryViewModel extends ChangeNotifier {
     );
     debugPrint('[APPLY] appliedResult built — day=${_dayIndex + 1} '
         'stops=${_stops.length} totalDays=${newDays.length}');
+    debugPrint('[EDIT_SAVE] COMMIT — day=${_dayIndex + 1} '
+        'date=${dayDate.toIso8601String().substring(0, 10)} '
+        'stops=${_stops.length} returned to host as updated result '
+        '(no database write here)');
     _error = null;
     notifyListeners();
   }

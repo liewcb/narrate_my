@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart';
 import '../../model/business_logic/itinerary_service/ai_place_insertion_service.dart';
 import '../../model/business_logic/itinerary_service/custom_place_service.dart';
 import '../../model/business_logic/itinerary_service/database_recommended_places_service.dart';
+import '../../model/business_logic/itinerary_service/place_candidate_validation.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/business_logic/itinerary_service/scoring_service.dart';
 import '../../model/entities/coordinates.dart';
@@ -104,8 +105,23 @@ class RecommendedPlacesVM extends ChangeNotifier {
         : _restaurants;
   }
 
-  Future<void> loadRecommendations() async {
-    if (_recommendationsLoaded || isLoadingRecommendations) return;
+  /// Loads (or force RELOADS on refresh) the recommendations for THIS day.
+  /// Refresh must actually re-hit the database — never serve a cached list.
+  Future<void> loadRecommendations({bool force = false}) async {
+    if (isLoadingRecommendations) return;
+    if (_recommendationsLoaded && !force) return;
+    if (force) {
+      debugPrint('[EDIT_REFRESH] force reload — recommendations for '
+          'Day $dayNumber');
+      _recommendationsLoaded = false;
+    }
+
+    debugPrint('[EDIT_RECOMMENDATION] day=$dayNumber '
+        'date=${dayDate.toIso8601String().substring(0, 10)} '
+        'existingStops=${existingStops.length} '
+        'existingPlaceIds='
+        '${existingStops.map((s) => s.place.placeId).join(",")} '
+        'itineraryUsedIds=${usedPlaceIds.length}');
 
     isLoadingRecommendations = true;
     recommendationsError = null;
@@ -122,6 +138,9 @@ class RecommendedPlacesVM extends ChangeNotifier {
         transportMode: transportMode,
         maxPerCategory: 15, // Retrieve more initially so we can filter them down
       );
+
+      debugPrint('[EDIT_RECOMMENDATION] candidatesFromDb='
+          '${result.attractions.length + result.restaurants.length}');
 
       // ✅ DART FAST PRE-CHECK FILTER: Hide places that exceed the day's hours
       final filteredAttractions = result.attractions.where((candidate) {
@@ -144,6 +163,10 @@ class RecommendedPlacesVM extends ChangeNotifier {
       _attractions = _cleanResults(filteredAttractions);
       _restaurants = _cleanResults(filteredRestaurants);
       _recommendationsLoaded = true;
+
+      debugPrint('[EDIT_RECOMMENDATION] afterValidation='
+          'attractions=${_attractions.length} '
+          'restaurants=${_restaurants.length}');
 
       if (_attractions.isEmpty && _restaurants.isEmpty) {
         recommendationsError =
@@ -175,12 +198,23 @@ class RecommendedPlacesVM extends ChangeNotifier {
 
     if (usedPlaceIds.contains(id)) {
       planError = 'This place is already used in your itinerary.';
+      debugPrint('[EDIT_DUPLICATE] select place_id=$id — already '
+          'scheduled (day $dayNumber / whole itinerary)');
       notifyListeners();
       return;
     }
 
-    if (!_hasValidCoordinates(place)) {
-      planError = 'This place does not have valid location data.';
+    // SAME central pipeline as every other candidate source.
+    final validation = PlaceCandidateValidation.validate(
+      place,
+      stage: 'ADD_PLACE',
+      dayDate: dayDate,
+      usedPlaceIds: usedPlaceIds,
+    );
+    if (validation.isInvalid) {
+      planError = validation.message;
+      debugPrint('[EDIT_VALIDATION] REJECT ${id} at selection — '
+          '${validation.code?.name}: ${validation.message}');
       notifyListeners();
       return;
     }
@@ -292,6 +326,9 @@ class RecommendedPlacesVM extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Same central candidate pipeline as Change Place / search / bookmarks:
+  /// identity → name → coordinates → duplicate (whole itinerary) →
+  /// opening hours ON THE ITINERARY DAY DATE (unknown hours = allowed).
   List<NearbyPlaceResult> _cleanResults(
       List<NearbyPlaceResult> source,
       ) {
@@ -301,14 +338,20 @@ class RecommendedPlacesVM extends ChangeNotifier {
     for (final result in source) {
       final place = result.place;
       final id = place.placeId.trim();
-      final duration = place.visitDurationMinutes ?? 60;
 
-      if (id.isEmpty) continue;
-      if (usedPlaceIds.contains(id)) continue;
-      if (!seen.add(id)) continue;
-      if (!_hasValidCoordinates(place)) continue;
-      if (place.placeName.trim().isEmpty) continue;
-      if (duration <= 0) continue;
+      if (!seen.add(id)) {
+        debugPrint('[EDIT_DUPLICATE] recommendation duplicate '
+            'place_id=$id dropped');
+        continue;
+      }
+
+      final validation = PlaceCandidateValidation.validate(
+        place,
+        stage: 'RECOMMEND',
+        dayDate: dayDate,
+        usedPlaceIds: usedPlaceIds,
+      );
+      if (validation.isInvalid) continue;
 
       cleaned.add(result);
 
