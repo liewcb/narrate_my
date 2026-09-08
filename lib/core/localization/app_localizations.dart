@@ -326,6 +326,7 @@ class AppLocalizations {
     'ar.noPlacementSurface':
     'No suitable placement surface detected. Please move your device to '
         'scan the surrounding area.',
+    'ar.tapBlueSurfaceToPlace': 'Tap the blue surface to place Manja',
     'ar.actionPause': 'Pause',
     'ar.actionReplay': 'Replay Story',
     'ar.actionResume': 'Resume',
@@ -611,6 +612,7 @@ class AppLocalizations {
     'ar.continueYourExperience': '继续您的体验',
     'ar.findingNextExperiences': '正在寻找最佳的后续体验…',
     'ar.noPlacementSurface': '未检测到合适的放置表面。请移动设备扫描周围区域。',
+    'ar.tapBlueSurfaceToPlace': '点击蓝色平面放置 Manja',
     'ar.actionPause': '暂停',
     'ar.actionReplay': '重新播放故事',
     'ar.actionResume': '继续',
@@ -946,6 +948,7 @@ class AppLocalizations {
     'ar.noPlacementSurface':
     'Tiada permukaan penempatan yang sesuai dikesan. Sila gerakkan '
         'peranti anda untuk mengimbas kawasan sekeliling.',
+    'ar.tapBlueSurfaceToPlace': 'Ketik permukaan biru untuk meletakkan Manja',
     'ar.actionPause': 'Jeda',
     'ar.actionReplay': 'Main Semula Cerita',
     'ar.actionResume': 'Sambung',
@@ -1299,6 +1302,7 @@ class AppLocalizations {
     'ar.noPlacementSurface':
     'No se detectó una superficie adecuada para colocar. Mueve tu '
         'dispositivo para escanear el área circundante.',
+    'ar.tapBlueSurfaceToPlace': 'Toca la superficie azul para colocar a Manja',
     'ar.actionPause': 'Pausar',
     'ar.actionReplay': 'Repetir Historia',
     'ar.actionResume': 'Reanudar',
@@ -1614,6 +1618,7 @@ class AppLocalizations {
     'ar.noPlacementSurface':
     'कोई उपयुक्त प्लेसमेंट सतह नहीं मिली। कृपया आस-पास के क्षेत्र को '
         'स्कैन करने के लिए अपना डिवाइस हिलाएं।',
+    'ar.tapBlueSurfaceToPlace': 'Manja को रखने के लिए नीली सतह पर टैप करें',
     'ar.actionPause': 'रोकें',
     'ar.actionReplay': 'कहानी फिर से चलाएं',
     'ar.actionResume': 'फिर से शुरू करें',

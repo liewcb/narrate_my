@@ -40,6 +40,9 @@ class ARSessionManager {
   /// Receives a callback when image tracking database configuration finishes
   ARImageTrackingConfiguredHandler? onImageTrackingConfigured;
 
+  /// Receives a callback when a horizontal or vertical plane is detected
+  VoidCallback? onPlaneDetected;
+
   ARSessionManager(int id, this.buildContext, this.planeDetectionConfig,
       {this.debug = false}) {
     _channel = MethodChannel('arsession_$id');
@@ -143,6 +146,9 @@ class ARSessionManager {
             onImageDetected!(imageName, transformation);
           }
           break;
+        case 'onPlaneDetected':
+          onPlaneDetected?.call();
+          break;
         case 'onTrackingState':
           if (onTrackingStateChanged != null) {
             final arguments = call.arguments as Map<dynamic, dynamic>;
@@ -170,6 +176,13 @@ class ARSessionManager {
       print('Error caught: ' + e.toString());
     }
     return Future.value();
+  }
+
+  /// Immediately dismisses and removes the native coaching overlay ("Move iPhone")
+  Future<void> hideCoachingOverlay() async {
+    try {
+      await _channel.invokeMethod<void>('hideCoachingOverlay');
+    } catch (_) {}
   }
 
   /// Function to initialize the platform-specific AR view. Can be used to initially set or update session settings.

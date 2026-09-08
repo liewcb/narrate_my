@@ -145,6 +145,10 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                     result(success)
                 }
                 break
+            case "hideCoachingOverlay":
+                dismissCoachingOverlayIfNeeded()
+                result(nil)
+                break
             default:
                 result(FlutterMethodNotImplemented)
                 break
@@ -347,6 +351,7 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
         }
         
         // Add coaching view
+        coachingOverlayDismissed = false
         if let configAutoHideCoachingOverlay = arguments["autoHideCoachingOverlay"] as? Bool {
             autoHideCoachingOverlay = configAutoHideCoachingOverlay
         }
@@ -396,6 +401,9 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
                 node.addChildNode(plane)
             }
             dismissCoachingOverlayIfNeeded()
+            DispatchQueue.main.async {
+                self.sessionManagerChannel.invokeMethod("onPlaneDetected", arguments: nil)
+            }
         }
         
         // Handle image anchors - store the anchor node for later use
@@ -414,6 +422,9 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
         if let planeAnchor = anchor as? ARPlaneAnchor, let plane = trackedPlanes[anchor.identifier] {
             modelBuilder.updatePlaneNode(planeNode: plane.1, anchor: planeAnchor)
             dismissCoachingOverlayIfNeeded()
+            DispatchQueue.main.async {
+                self.sessionManagerChannel.invokeMethod("onPlaneDetected", arguments: nil)
+            }
         }
 
         if continuousImageTracking, let imageAnchor = anchor as? ARImageAnchor {
@@ -1041,18 +1052,19 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
 
     private func dismissCoachingOverlayIfNeeded() {
         guard autoHideCoachingOverlay else { return }
-        guard !coachingOverlayDismissed else { return }
         coachingOverlayDismissed = true
 
         DispatchQueue.main.async {
-            guard self.coachingView.superview != nil else { return }
-            if #available(iOS 13.0, *) {
-                if self.coachingView.isActive {
-                    self.coachingView.setActive(false, animated: true)
-                }
-            }
             self.coachingView.activatesAutomatically = false
-            self.coachingView.removeFromSuperview()
+            if #available(iOS 13.0, *) {
+                self.coachingView.setActive(false, animated: false)
+            }
+            self.coachingView.session = nil
+            self.coachingView.isHidden = true
+            self.coachingView.alpha = 0.0
+            if self.coachingView.superview != nil {
+                self.coachingView.removeFromSuperview()
+            }
         }
     }
 }
@@ -1062,7 +1074,19 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
 extension IosARView: ARCoachingOverlayViewDelegate {
     
     func coachingOverlayViewWillActivate(_ coachingOverlayView: ARCoachingOverlayView){
-        // use this delegate method to hide anything in the UI that could cover the coaching overlay view
+        // If planes have already been detected or coaching overlay was dismissed, prevent reactivation
+        if (trackedPlanes.count > 0 || coachingOverlayDismissed) && autoHideCoachingOverlay {
+            coachingOverlayView.activatesAutomatically = false
+            if #available(iOS 13.0, *) {
+                coachingOverlayView.setActive(false, animated: false)
+            }
+            coachingOverlayView.session = nil
+            coachingOverlayView.isHidden = true
+            coachingOverlayView.alpha = 0.0
+            if coachingOverlayView.superview != nil {
+                coachingOverlayView.removeFromSuperview()
+            }
+        }
     }
     
     func coachingOverlayViewDidRequestSessionReset(_ coachingOverlayView: ARCoachingOverlayView) {

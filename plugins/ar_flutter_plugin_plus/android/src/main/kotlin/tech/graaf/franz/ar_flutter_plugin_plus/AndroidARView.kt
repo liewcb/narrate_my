@@ -100,6 +100,7 @@ internal class AndroidARView(
     private var showWorldOrigin = false
     private var showAnimatedGuide = false
     private var animatedGuide: View? = null
+    private var planeDetectedNotified = false
 
     private var isARInitialized = false
     private var mUserRequestedInstall = true
@@ -562,6 +563,7 @@ internal class AndroidARView(
         }
         activeAugmentedImages.clear()
         lastAugmentedImageUpdateMs.clear()
+        planeDetectedNotified = false
     }
 
     private fun resumeSessionInternal() {
@@ -1691,6 +1693,12 @@ internal class AndroidARView(
                 if (showPlanes) {
                     val planes = session?.getAllTrackables(Plane::class.java) ?: emptyList()
                     planeRenderer.draw(planes, viewMatrix, projectionMatrix)
+                    if (!planeDetectedNotified && planes.any { it.trackingState == TrackingState.TRACKING }) {
+                        planeDetectedNotified = true
+                        activity.runOnUiThread {
+                            sessionManagerChannel.invokeMethod("onPlaneDetected", null)
+                        }
+                    }
                 }
 
                 if (showFeaturePoints) {

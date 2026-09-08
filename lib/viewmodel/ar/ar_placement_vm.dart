@@ -33,6 +33,7 @@ class ARPlacementViewModel extends ChangeNotifier {
   ARAvatarConfig? _avatarConfig;
 
   bool _isAvatarPlaced = false;
+  bool _isPlaneDetected = false;
   bool _isModelLoading = false;
   bool _show3DLandmarkModel = false;
   bool _showVideoPlayer = false;
@@ -73,6 +74,7 @@ class ARPlacementViewModel extends ChangeNotifier {
       _placementService.narrationService.currentScript;
 
   bool get isAvatarPlaced => _isAvatarPlaced;
+  bool get isPlaneDetected => _isPlaneDetected;
   bool get hasAvatarInScene => _nodes.isNotEmpty;
   bool get isModelLoading => _isModelLoading;
   bool get show3DLandmarkModel => _show3DLandmarkModel;
@@ -91,6 +93,7 @@ class ARPlacementViewModel extends ChangeNotifier {
     _placementState = PlacementState.initializing;
     _errorMessage = null;
     _isAvatarPlaced = false;
+    _isPlaneDetected = false;
     _show3DLandmarkModel = false;
     _showVideoPlayer = false;
     _hasStartedStorytelling = false;
@@ -198,6 +201,14 @@ class ARPlacementViewModel extends ChangeNotifier {
     _isModelLoading = false;
     _currentYawDegrees = 0;
     arSessionManager!.onPlaneOrPointTap = onPlaneOrPointTap;
+    arSessionManager!.onPlaneDetected = () {
+      if (_disposed) return;
+      if (!_isPlaneDetected) {
+        _isPlaneDetected = true;
+        unawaited(arSessionManager?.hideCoachingOverlay());
+        notifyListeners();
+      }
+    };
     unawaited(_initializeSession(sessionManager, objectManager));
   }
 
@@ -211,6 +222,7 @@ class ARPlacementViewModel extends ChangeNotifier {
         showPlanes: true,
         showWorldOrigin: false,
         handleTaps: true,
+        showAnimatedGuide: false,
       );
       if (_disposed || arSessionManager != session) return;
       objects.onInitialize();
@@ -237,6 +249,7 @@ class ARPlacementViewModel extends ChangeNotifier {
     _nodes.clear();
     _anchors.clear();
     _isAvatarPlaced = false;
+    _isPlaneDetected = false;
     _wasPlayingBeforeLock = _playbackState == StoryPlaybackState.playing;
     _show3DLandmarkModel = false;
     _isModelLoading = false;
@@ -247,6 +260,7 @@ class ARPlacementViewModel extends ChangeNotifier {
         showPlanes: true,
         showFeaturePoints: true,
         handleTaps: true,
+        showAnimatedGuide: false,
       );
     } catch (_) {}
 
@@ -292,6 +306,9 @@ class ARPlacementViewModel extends ChangeNotifier {
         _isModelLoading) {
       return;
     }
+
+    _isPlaneDetected = true;
+    unawaited(arSessionManager?.hideCoachingOverlay());
 
     // Strict Real-AR filter: Only place on detected horizontal ground planes (no walls/points)
     final singleHitTest = _placementService.selectBestHitTest(hitTestResults);

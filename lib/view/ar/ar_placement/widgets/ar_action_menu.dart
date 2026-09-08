@@ -21,6 +21,7 @@ class ARActionMenu extends StatelessWidget {
         bool isPlaced,
         bool hasAvatarInScene,
         bool hasStarted,
+        bool isPlaneDetected,
         String? videoUrl,
         String? videoUrlBackup,
         String landmarkName,
@@ -30,6 +31,7 @@ class ARActionMenu extends StatelessWidget {
         isPlaced: vm.isAvatarPlaced,
         hasAvatarInScene: vm.hasAvatarInScene,
         hasStarted: vm.hasStartedStorytelling,
+        isPlaneDetected: vm.isPlaneDetected,
         videoUrl: vm.videoUrl,
         videoUrlBackup: vm.videoUrlBackup,
         landmarkName: vm.landmarkName,
@@ -38,7 +40,11 @@ class ARActionMenu extends StatelessWidget {
         if (data.hasStarted) return const SizedBox.shrink();
 
         // 1. Center prompt guiding the user to tap and place Manja (initial scan or lockscreen resume)
+        // Disappear immediately once the blue plane/surface is detected!
         if (!data.isPlaced || !data.hasAvatarInScene) {
+          if (data.isPlaneDetected) {
+            return const SizedBox.shrink();
+          }
           return Center(
             child: IgnorePointer(
               child: Image.asset(

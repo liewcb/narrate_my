@@ -20,6 +20,7 @@ class ARStorytellingPanel extends StatelessWidget {
       bool isPlaced,
       bool hasAvatarInScene,
       bool hasStarted,
+      bool isPlaneDetected,
       String subtitle,
       StoryPlaybackState playbackState,
       bool show3d,
@@ -30,6 +31,7 @@ class ARStorytellingPanel extends StatelessWidget {
         isPlaced: vm.isAvatarPlaced,
         hasAvatarInScene: vm.hasAvatarInScene,
         hasStarted: vm.hasStartedStorytelling,
+        isPlaneDetected: vm.isPlaneDetected,
         subtitle: vm.currentSubtitle,
         playbackState: vm.playbackState,
         show3d: vm.show3DLandmarkModel,
@@ -95,7 +97,7 @@ class ARStorytellingPanel extends StatelessWidget {
                         ),
 
                       // Re-scan & re-place prompt: Prominently displayed floating on top whenever Manja is reset after lockscreen
-                      if (!data.hasAvatarInScene)
+                      if (!data.hasAvatarInScene && !data.isPlaneDetected)
                         _buildReScanSurfacePrompt(),
                     ],
                   ),
