@@ -61,44 +61,62 @@ class _BookmarksView extends StatelessWidget {
                         side: const BorderSide(color: AppColors.border),
                       ),
                       child: ListTile(
-                        leading: Tooltip(
-                          message: place.photoGoogleMapsUri == null
-                              ? 'Place photo'
-                              : 'View photo on Google Maps',
-                          child: InkWell(
-                            onTap: place.photoGoogleMapsUri == null
-                                ? null
-                                : () => launchUrl(
-                                    Uri.parse(place.photoGoogleMapsUri!),
-                                    mode: LaunchMode.externalApplication,
-                                  ),
-                            borderRadius: BorderRadius.circular(10),
-                            child: PlaceImage(
-                              imageUrl: place.imageUrl,
-                              width: 58,
-                              height: 58,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
+                        leading: PlaceImage(
+                          imageUrl: place.imageUrl,
+                          width: 58,
+                          height: 58,
+                          borderRadius: BorderRadius.circular(10),
                         ),
                         title: Text(
                           place.placeName,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        subtitle: Text(
-                          [
-                            if (place.category?.trim().isNotEmpty == true)
-                              place.category!.trim(),
-                            if (place.placeAddress.trim().isNotEmpty)
-                              place.placeAddress.trim(),
-                            if (place.imageUrl?.trim().isNotEmpty == true)
-                              'Photo · Google Maps',
-                          ].join('\n'),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              [
+                                if (place.category?.trim().isNotEmpty == true)
+                                  place.category!.trim(),
+                                if (place.placeAddress.trim().isNotEmpty)
+                                  place.placeAddress.trim(),
+                              ].join('\n'),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            if (place.photoGoogleMapsUri != null)
+                              TextButton.icon(
+                                onPressed: () => launchUrl(
+                                  Uri.parse(place.photoGoogleMapsUri!),
+                                  mode: LaunchMode.externalApplication,
+                                ),
+                                style: TextButton.styleFrom(
+                                  minimumSize: const Size(0, 30),
+                                  padding: const EdgeInsets.only(
+                                    top: 3,
+                                    right: 8,
+                                  ),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                icon: const Icon(
+                                  Icons.photo_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  'View photo',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
+                        isThreeLine: true,
                         trailing: IconButton(
                           tooltip: 'Remove bookmark',
                           icon: const Icon(

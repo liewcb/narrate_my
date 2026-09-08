@@ -211,18 +211,20 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
             displayedARPosition?.latitude ?? recommendation.latitude,
             displayedARPosition?.longitude ?? recommendation.longitude,
           ),
-          icon: arSite == null
-              ? (_recommendationMarker ??
-                    maps.BitmapDescriptor.defaultMarkerWithHue(
-                      maps.BitmapDescriptor.hueAzure,
-                    ))
-              : (_arAvailableMarker ?? maps.BitmapDescriptor.defaultMarker),
+          // Gemini recommendations stay blue even when AR is also available.
+          // The details sheet still communicates the AR capability.
+          icon:
+              _recommendationMarker ??
+              maps.BitmapDescriptor.defaultMarkerWithHue(
+                maps.BitmapDescriptor.hueAzure,
+              ),
           infoWindow: maps.InfoWindow(
             title: recommendation.name,
             snippet: arSite == null
                 ? recommendation.category
-                : AppLocalizations.t('recommendation.arAvailableSnippet')
-                      .replaceFirst('{category}', recommendation.category),
+                : AppLocalizations.t(
+                    'recommendation.arAvailableSnippet',
+                  ).replaceFirst('{category}', recommendation.category),
           ),
           onTap: () => showNearbyRecommendationDetails(
             context,
@@ -250,8 +252,9 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
             title: site.name,
             snippet: site.experiences.length == 1
                 ? AppLocalizations.t('recommendation.arExperiencesAvailableOne')
-                : AppLocalizations.t('recommendation.arExperiencesAvailableMany')
-                      .replaceFirst('{count}', '${site.experiences.length}'),
+                : AppLocalizations.t(
+                    'recommendation.arExperiencesAvailableMany',
+                  ).replaceFirst('{count}', '${site.experiences.length}'),
           ),
           onTap: () => showNearbyArSiteDetails(
             context,
@@ -489,14 +492,27 @@ class _MapHeader extends StatelessWidget {
                     color: const Color(0xFFE8F5F1),
                     borderRadius: BorderRadius.circular(99),
                   ),
-                  child: Text(
-                    AppLocalizations.t('recommendation.foundCount')
-                        .replaceFirst('{count}', '$count'),
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.location_on_rounded,
+                        color:
+                            _NearbyRecommendationMapState._recommendationBlue,
+                        size: 15,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        AppLocalizations.t(
+                          'recommendation.foundCount',
+                        ).replaceFirst('{count}', '$count'),
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -551,7 +567,7 @@ class _MapHint extends StatelessWidget {
         children: [
           Icon(
             hasRecommendations ? Icons.location_on_rounded : Icons.info_outline,
-            color: AppColors.accent,
+            color: AppColors.ink,
             size: 22,
           ),
           const SizedBox(width: 8),
