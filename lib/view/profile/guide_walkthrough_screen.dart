@@ -116,12 +116,20 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
                 children: [
                   if (_index > 0)
                     Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          _goTo(_index - 1);
-                        },
-                        child: Text(
-                          AppLocalizations.t('ui.arGuideBack'),
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton(
+                          onPressed: () {
+                            _goTo(_index - 1);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            AppLocalizations.t('ui.arGuideBack'),
+                          ),
                         ),
                       ),
                     ),
@@ -130,19 +138,27 @@ class _GuideWalkthroughScreenState extends State<GuideWalkthroughScreen> {
                     const SizedBox(width: 12),
 
                   Expanded(
-                    flex: 2,
-                    child: FilledButton(
-                      onPressed: isLast
-                          ? () {
-                        Navigator.of(context).pop();
-                      }
-                          : () {
-                        _goTo(_index + 1);
-                      },
-                      child: Text(
-                        isLast
-                            ? AppLocalizations.t('ui.arGuideDone')
-                            : AppLocalizations.t('ui.arGuideNext'),
+                    flex: _index > 0 ? 2 : 1,
+                    child: SizedBox(
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: isLast
+                            ? () {
+                          Navigator.of(context).pop();
+                        }
+                            : () {
+                          _goTo(_index + 1);
+                        },
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          isLast
+                              ? AppLocalizations.t('ui.arGuideDone')
+                              : AppLocalizations.t('ui.arGuideNext'),
+                        ),
                       ),
                     ),
                   ),
