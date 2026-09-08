@@ -26,6 +26,24 @@ class AuthRemoteDataSource {
   bool get currentUserHasGoogleIdentity =>
       currentUser?.identities?.any((i) => i.provider == 'google') ?? false;
 
+  /// Added at Foo's request — NOT in the spec ("keeps loading forever if
+  /// user backs out of the Google account chooser", 8 Sep). Whichever of
+  /// [signInWithGoogleAndAwaitSession]/[linkGoogleAndAwaitUpdate] is
+  /// currently in flight stores its completer here so
+  /// [cancelPendingGoogleAuth] can end the wait early — backing out of the
+  /// browser's account chooser fires no Supabase auth event at all, so
+  /// without this the caller would just sit there until the full timeout.
+  Completer<void>? _pendingGoogleAuth;
+
+  /// Ends whichever Google flow above is currently waiting, if any.
+  /// Safe to call even when nothing is pending.
+  void cancelPendingGoogleAuth() {
+    final completer = _pendingGoogleAuth;
+    if (completer != null && !completer.isCompleted) {
+      completer.completeError(const AuthException('Google sign-in was cancelled.'));
+    }
+  }
+
   // --- Username lookup (pre-auth, via RPC — see 0002_auth_functions.sql) ---
 
   /// Returns null if no account has this username (UC401 A5 / M4).
@@ -144,6 +162,7 @@ class AuthRemoteDataSource {
     Duration timeout = const Duration(minutes: 3),
   }) async {
     final completer = Completer<void>();
+    _pendingGoogleAuth = completer;
     late final StreamSubscription<AuthState> sub;
     sub = _client.auth.onAuthStateChange.listen((state) {
       if (state.event == AuthChangeEvent.signedIn && !completer.isCompleted) {
@@ -161,6 +180,7 @@ class AuthRemoteDataSource {
       await completer.future.timeout(timeout);
     } finally {
       await sub.cancel();
+      if (identical(_pendingGoogleAuth, completer)) _pendingGoogleAuth = null;
     }
   }
 
@@ -188,21 +208,37 @@ class AuthRemoteDataSource {
   // ALREADY authenticated here, so this adds a Google identity onto the
   // existing session rather than creating/signing into one.
   //
-  // NOTE: `linkIdentity`'s completion signal is less commonly documented
-  // than plain sign-in's — waiting on `AuthChangeEvent.userUpdated` is this
-  // adapter's best-effort read of the Supabase Flutter SDK's behavior, not
-  // something verified against a live project. If linking silently hangs
-  // on your Supabase project, check the SDK version's actual event name
-  // first before assuming the redirect/deep-link wiring is at fault.
-
+  // BUG FIX ("link a NEW account to Gmail loads forever", 8 Sep): this used
+  // to wait ONLY for `AuthChangeEvent.userUpdated` — the comment used to
+  // admit that was a best-effort guess, never verified against a live
+  // project. In practice, completing a Google `linkIdentity()` redirect has
+  // been observed to fire a DIFFERENT event on some accounts (e.g.
+  // `signedIn`/`tokenRefreshed`) — especially a brand-new account with no
+  // prior `userUpdated` history — so the completer never fired and the
+  // caller's loading spinner sat there until the full [timeout]. This now
+  // reacts to ANY auth state change plus a lightweight fallback poll, and
+  // checks the actual ground truth (is the Google identity really present
+  // on `currentUser` now?) before completing, instead of trusting one
+  // specific event name that may not fire for every account.
   Future<void> linkGoogleAndAwaitUpdate({
     required String redirectTo,
     Duration timeout = const Duration(minutes: 3),
   }) async {
     final completer = Completer<void>();
+    _pendingGoogleAuth = completer;
     late final StreamSubscription<AuthState> sub;
     sub = _client.auth.onAuthStateChange.listen((state) {
-      if (state.event == AuthChangeEvent.userUpdated && !completer.isCompleted) {
+      if (!completer.isCompleted && currentUserHasGoogleIdentity) {
+        completer.complete();
+      }
+    });
+    // Belt-and-suspenders: some setups fire no relevant stream event at all
+    // for the very first linked identity. A short poll alongside the
+    // listener guarantees this completes as soon as the identity actually
+    // appears, instead of only ever resolving via a stream event or timing
+    // out after the full [timeout].
+    final poll = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!completer.isCompleted && currentUserHasGoogleIdentity) {
         completer.complete();
       }
     });
@@ -216,7 +252,9 @@ class AuthRemoteDataSource {
       }
       await completer.future.timeout(timeout);
     } finally {
+      poll.cancel();
       await sub.cancel();
+      if (identical(_pendingGoogleAuth, completer)) _pendingGoogleAuth = null;
     }
   }
 
@@ -233,6 +271,16 @@ class AuthRemoteDataSource {
       throw const AuthException('No linked Google identity found.');
     }
     await _client.auth.unlinkIdentity(google);
+    // BUG FIX ("unlink will not changing the word unlink to link again", 8
+    // Sep): `unlinkIdentity()` removes the identity server-side, but
+    // `_client.auth.currentUser` is the SDK's LOCALLY CACHED user object —
+    // nothing guarantees it drops the removed identity immediately. The
+    // screen re-reads `currentUser.identities` right after this call (via
+    // `PersonalInfoVm.unlinkGoogleAccount` -> `load()`), so a stale local
+    // cache meant the Google row kept showing "Linked"/"Unlink" even though
+    // the unlink had actually succeeded. Forcing a session refresh pulls
+    // the current identity list fresh from the server before that re-read.
+    await _client.auth.refreshSession();
   }
 
   // --- Phone change (UC402 A9) --------------------------------------------------

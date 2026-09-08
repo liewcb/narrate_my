@@ -39,7 +39,7 @@ class _RegisterView extends StatefulWidget {
 }
 
 class _RegisterViewState extends State<_RegisterView>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // No TabBarView below — same reasoning as login_screen.dart's
   // _tabController: the two tabs' forms are different lengths (Username
   // has two extra fields), and a fixed-height TabBarView forced both to
@@ -75,12 +75,18 @@ class _RegisterViewState extends State<_RegisterView>
     // screens already do via their own StatefulWidget's setState.
     _passwordController.addListener(_onPasswordFieldsChanged);
     _confirmController.addListener(_onPasswordFieldsChanged);
+    // BUG FIX ("press login or register with google it will automaticlly
+    // redirect user to google pages and if user back to the screen withou
+    // choosing any account, it will keep loading", 8 Sep): see
+    // didChangeAppLifecycleState below.
+    WidgetsBinding.instance.addObserver(this);
   }
 
   void _onPasswordFieldsChanged() => setState(() {});
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _passwordController.removeListener(_onPasswordFieldsChanged);
     _confirmController.removeListener(_onPasswordFieldsChanged);
     _tabController.dispose();
@@ -90,6 +96,22 @@ class _RegisterViewState extends State<_RegisterView>
     _confirmController.dispose();
     _usernamePhoneController.dispose();
     super.dispose();
+  }
+
+  /// The Google account-chooser opens in an external browser tab/window —
+  /// there's no callback Supabase can fire when the tourist just closes it
+  /// without picking an account. The app coming back to the foreground
+  /// while still `isLoading` is the only observable signal that happened,
+  /// so a short grace period after resume (in case a real sign-in is still
+  /// completing) cancels the wait.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final vm = context.read<RegisterVm>();
+    if (!vm.isLoading) return;
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted && vm.isLoading) vm.cancelGoogleSignIn();
+    });
   }
 
   Future<void> _handleGoogle(RegisterVm vm) async {

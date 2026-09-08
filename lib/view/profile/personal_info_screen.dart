@@ -9,6 +9,7 @@ import '../../viewmodel/profile_viewmodel/otp_vm.dart';
 import '../../viewmodel/profile_viewmodel/personal_info_vm.dart';
 import './auth/otp_screen.dart';
 import './change_password_screen.dart';
+import './set_password_screen.dart';
 import './widgets/phone_field.dart';
 import './widgets/primary_button.dart';
 import './widgets/underline_field.dart';
@@ -42,7 +43,8 @@ class _PersonalInfoView extends StatefulWidget {
   State<_PersonalInfoView> createState() => _PersonalInfoViewState();
 }
 
-class _PersonalInfoViewState extends State<_PersonalInfoView> {
+class _PersonalInfoViewState extends State<_PersonalInfoView>
+    with WidgetsBindingObserver {
   final _fullNameController = TextEditingController();
   final _newPhoneController = TextEditingController();
   String _newPhoneE164 = '';
@@ -50,10 +52,40 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
   bool _editing = false;
 
   @override
+  void initState() {
+    super.initState();
+    // BUG FIX ("press login or register with google it will automaticlly
+    // redirect user to google pages and if user back to the screen withou
+    // choosing any account, it will keep loading", 8 Sep — the Google
+    // LINK flow on this screen has the same problem as register/login's
+    // Google sign-in): see didChangeAppLifecycleState below.
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _fullNameController.dispose();
     _newPhoneController.dispose();
     super.dispose();
+  }
+
+  /// See register_screen.dart's identical override for the full reasoning
+  /// — the app resuming is the only observable signal that the Google
+  /// account-chooser browser tab closed without picking an account.
+  /// `isSaving` is shared by every action on this screen (Save Name,
+  /// phone-change OTP send, Google link/unlink), but
+  /// `cancelGoogleLink()`/`cancelPendingGoogleAuth()` is a no-op unless a
+  /// Google flow is actually the one in flight, so checking the shared
+  /// flag here is safe.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final vm = context.read<PersonalInfoVm>();
+    if (!vm.isSaving) return;
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted && vm.isSaving) vm.cancelGoogleLink();
+    });
   }
 
   void _syncControllers(PersonalInfoVm vm) {
@@ -66,15 +98,29 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
     final ok = await vm.save(fullName: _fullNameController.text);
     if (ok && mounted) {
       setState(() => _editing = false);
+      // BUG FIX ("the languages change notification will keep spaming if
+      // the user keep taping", 8 Sep — same fix applied here for
+      // consistency): the app has exactly one, app-wide
+      // `ScaffoldMessenger`, so repeated Save/Cancel taps used to queue a
+      // growing SnackBar backlog that kept popping up on whatever screen
+      // the tourist had since navigated to.
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
     }
   }
 
   void _cancel(PersonalInfoVm vm) {
     _fullNameController.text = vm.profile?.fullName ?? '';
     setState(() => _editing = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.discardedMessage)));
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(vm.discardedMessage)));
+    // BUG FIX ("the cancel button will also let user back to profile
+    // pages, same to preferences and the personal infomation pages", 8
+    // Sep): Cancel now backs all the way out to Profile Home instead of
+    // just staying on this screen with editing turned off.
+    if (Navigator.canPop(context)) Navigator.of(context).pop();
   }
 
   Future<void> _changePhone(PersonalInfoVm vm) async {
@@ -142,6 +188,19 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
         _synced = false;
         if (mounted) _syncControllers(vm);
       }
+    }
+  }
+
+  /// Added at Foo's request — NOT in the written spec ("so shall i follow
+  /// the normal apps, do add the user can add username and password
+  /// afterward??", 8 Sep). Only reachable when `vm.profile?.hasPassword`
+  /// is false — see the Password row below.
+  Future<void> _setPassword(PersonalInfoVm vm) async {
+    final done = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const SetPasswordScreen()),
+    );
+    if (done == true && mounted) {
+      await vm.load();
     }
   }
 
@@ -288,19 +347,31 @@ class _PersonalInfoViewState extends State<_PersonalInfoView> {
                                     : AppLocalizations.t('ui.change')),
                               ),
                             ),
-                            if (vm.profile?.hasPassword == true)
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: const Icon(Icons.lock_outline, color: AppColors.ink),
-                                title: Text(AppLocalizations.t('ui.password')),
-                                trailing: TextButton(
-                                  onPressed: () => Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                        builder: (_) => const ChangePasswordScreen()),
-                                  ),
-                                  child: Text(AppLocalizations.t('ui.change')),
-                                ),
+                            // Added at Foo's request: an account with no
+                            // password yet (phone-OTP-only or Google-only)
+                            // now gets a "Set Username & Password" action
+                            // here instead of the row disappearing
+                            // entirely, so it can add password login as an
+                            // additional method later.
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.lock_outline, color: AppColors.ink),
+                              title: Text(AppLocalizations.t('ui.password')),
+                              subtitle: vm.profile?.hasPassword == true
+                                  ? null
+                                  : Text(AppLocalizations.t('ui.notSet')),
+                              trailing: TextButton(
+                                onPressed: () => vm.profile?.hasPassword == true
+                                    ? Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                            builder: (_) => const ChangePasswordScreen()),
+                                      )
+                                    : _setPassword(vm),
+                                child: Text(vm.profile?.hasPassword == true
+                                    ? AppLocalizations.t('ui.change')
+                                    : AppLocalizations.t('ui.add')),
                               ),
+                            ),
                             ListTile(
                               contentPadding: EdgeInsets.zero,
                               leading:

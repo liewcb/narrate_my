@@ -60,6 +60,18 @@ abstract class ProfileRepository {
   /// UC401 A1. A4 (failed/cancelled) surfaces as [GoogleSignInFailure].
   Future<Profile> loginWithGoogle();
 
+  /// Added at Foo's request — NOT in the written spec ("if user press
+  /// login or register with google it will automaticlly redirect user to
+  /// google pages and if user back to the screen withou choosing any
+  /// account, it will keep loading, fix this", 8 Sep). Backing out of the
+  /// Google account chooser without picking an account never fires any
+  /// Supabase auth event, so [loginWithGoogle]/[registerOrSignInWithGoogle]/
+  /// [linkGoogleAccount] would otherwise wait for the full timeout. Callers
+  /// (the screen's `WidgetsBindingObserver`) invoke this once the app comes
+  /// back to the foreground while still loading, to end the wait
+  /// immediately instead.
+  void cancelPendingGoogleAuth();
+
   /// UC401 A2 steps 1–3: verifies the phone IS registered (A5), then sends
   /// the OTP.
   Future<void> sendPhoneLoginOtp(String e164Phone);
@@ -186,6 +198,21 @@ abstract class ProfileRepository {
   /// before the caller even shows the confirmation prompt (M19), matching
   /// the spec's own step ordering (A20 step 2 precedes step 3).
   Future<void> unlinkGoogleAccount();
+
+  /// Added at Foo's request — NOT in the written spec ("so shall i follow
+  /// the normal apps, do add the user can add username and password
+  /// afterward??", 8 Sep). For an account that currently has NO password
+  /// (`profile.hasPassword == false` — signed up via phone-OTP or Google
+  /// only), sets a username + password on the already-authenticated
+  /// session, giving the account a second, independent login method
+  /// without disturbing the one(s) it already has. Validates the same way
+  /// UC400 A3 registration does (format, then server-side uniqueness via
+  /// `resolve_username`) — throws [ValidationFailure] / [UsernameTakenFailure]
+  /// on the same terms as registration would.
+  Future<Profile> setUsernameAndPassword({
+    required String username,
+    required String password,
+  });
 
   // --- Added at Foo's request — NOT in the written spec ---------------------
 

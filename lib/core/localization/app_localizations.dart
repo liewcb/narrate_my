@@ -101,6 +101,8 @@ class AppLocalizations {
     'Password must contain at least 8 characters, including at least one letter and one number.',
     'passwordReset.m7': 'The passwords entered do not match. Please try again.',
     'passwordReset.m8': 'Too many requests. Please try again later.',
+    'passwordReset.m9':
+        'This phone number is registered without a password. Please log in with Phone + OTP instead.',
 
     // profile_messages.dart
     'profile.m1': 'Manage your profile, preferences, and preferred language.',
@@ -139,6 +141,7 @@ class AppLocalizations {
         'in 30 days unless you log back in.',
     'profile.m24': 'Unable to delete your account. Please try again.',
     'profile.m25': 'Unable to update your profile picture. Please try again.',
+    'profile.m26': 'Username and password set successfully.',
 
     // ui.* — literal strings inside Module 5's screens
     'ui.save': 'Save',
@@ -188,6 +191,9 @@ class AppLocalizations {
     'ui.add': 'Add',
     'ui.change': 'Change',
     'ui.notSet': 'Not set',
+    'ui.setUsernameAndPassword': 'Set Username & Password',
+    'ui.setUsernameAndPasswordHint':
+        'Add a username and password so you can also log in without your phone or Google account.',
     'ui.sendOtp': 'Send OTP',
     'ui.changePhoneNumber': 'Change Phone Number',
     'ui.unlinkGoogleAccount': 'Unlink Google Account',
@@ -433,6 +439,7 @@ class AppLocalizations {
     'passwordReset.m6': '密码必须至少包含8个字符，并至少包含一个字母和一个数字。',
     'passwordReset.m7': '输入的密码不匹配。请重试。',
     'passwordReset.m8': '请求次数过多，请稍后再试。',
+    'passwordReset.m9': '此电话号码注册时未设置密码。请改用手机号码 + 一次性密码 (OTP) 登录。',
 
     'profile.m1': '管理您的个人资料、偏好设置和首选语言。',
     'profile.m2': '您的个人资料已成功更新。',
@@ -459,6 +466,7 @@ class AppLocalizations {
     'profile.m23': '您的账户已停用，30天后将被永久删除，除非您重新登录。',
     'profile.m24': '无法删除您的账户。请重试。',
     'profile.m25': '无法更新您的头像。请重试。',
+    'profile.m26': '用户名和密码设置成功。',
 
     'ui.save': '保存',
     'ui.cancel': '取消',
@@ -501,6 +509,8 @@ class AppLocalizations {
     'ui.add': '添加',
     'ui.change': '更改',
     'ui.notSet': '未设置',
+    'ui.setUsernameAndPassword': '设置用户名和密码',
+    'ui.setUsernameAndPasswordHint': '添加用户名和密码，即使没有手机或 Google 账户也能登录。',
     'ui.sendOtp': '发送验证码',
     'ui.changePhoneNumber': '更改电话号码',
     'ui.unlinkGoogleAccount': '取消关联 Google 账户',
@@ -728,6 +738,8 @@ class AppLocalizations {
         'termasuk sekurang-kurangnya satu huruf dan satu nombor.',
     'passwordReset.m7': 'Kata laluan yang dimasukkan tidak sepadan. Sila cuba lagi.',
     'passwordReset.m8': 'Terlalu banyak permintaan. Sila cuba lagi kemudian.',
+    'passwordReset.m9':
+        'Nombor telefon ini didaftarkan tanpa kata laluan. Sila log masuk menggunakan Telefon + OTP.',
 
     'profile.m1': 'Uruskan profil, keutamaan, dan bahasa pilihan anda.',
     'profile.m2': 'Profil anda telah berjaya dikemas kini.',
@@ -765,6 +777,7 @@ class AppLocalizations {
         'dalam masa 30 hari melainkan anda log masuk semula.',
     'profile.m24': 'Tidak dapat memadamkan akaun anda. Sila cuba lagi.',
     'profile.m25': 'Tidak dapat mengemas kini gambar profil anda. Sila cuba lagi.',
+    'profile.m26': 'Nama pengguna dan kata laluan berjaya ditetapkan.',
 
     'ui.save': 'Simpan',
     'ui.cancel': 'Batal',
@@ -813,6 +826,9 @@ class AppLocalizations {
     'ui.add': 'Tambah',
     'ui.change': 'Tukar',
     'ui.notSet': 'Belum ditetapkan',
+    'ui.setUsernameAndPassword': 'Tetapkan Nama Pengguna & Kata Laluan',
+    'ui.setUsernameAndPasswordHint':
+        'Tambah nama pengguna dan kata laluan supaya anda juga boleh log masuk tanpa telefon atau akaun Google anda.',
     'ui.sendOtp': 'Hantar OTP',
     'ui.changePhoneNumber': 'Tukar Nombor Telefon',
     'ui.unlinkGoogleAccount': 'Nyahpaut Akaun Google',
@@ -1074,6 +1090,8 @@ class AppLocalizations {
     'La contraseña debe tener al menos 8 caracteres, incluyendo al menos una letra y un número.',
     'passwordReset.m7': 'Las contraseñas introducidas no coinciden. Inténtelo de nuevo.',
     'passwordReset.m8': 'Demasiadas solicitudes. Inténtelo de nuevo más tarde.',
+    'passwordReset.m9':
+        'Este número de teléfono está registrado sin contraseña. Inicie sesión con Teléfono + OTP.',
 
     'profile.m1': 'Administre su perfil, preferencias e idioma preferido.',
     'profile.m2': 'Su perfil se ha actualizado correctamente.',
@@ -1112,6 +1130,7 @@ class AppLocalizations {
         'días a menos que vuelva a iniciar sesión.',
     'profile.m24': 'No se pudo eliminar su cuenta. Inténtelo de nuevo.',
     'profile.m25': 'No se pudo actualizar su foto de perfil. Inténtelo de nuevo.',
+    'profile.m26': 'Nombre de usuario y contraseña establecidos correctamente.',
 
     'ui.save': 'Guardar',
     'ui.cancel': 'Cancelar',
@@ -1160,6 +1179,9 @@ class AppLocalizations {
     'ui.add': 'Agregar',
     'ui.change': 'Cambiar',
     'ui.notSet': 'No establecido',
+    'ui.setUsernameAndPassword': 'Establecer Nombre de Usuario y Contraseña',
+    'ui.setUsernameAndPasswordHint':
+        'Agregue un nombre de usuario y una contraseña para poder iniciar sesión también sin su teléfono o cuenta de Google.',
     'ui.sendOtp': 'Enviar OTP',
     'ui.changePhoneNumber': 'Cambiar Número de Teléfono',
     'ui.unlinkGoogleAccount': 'Desvincular Cuenta de Google',
@@ -1419,6 +1441,7 @@ class AppLocalizations {
     'passwordReset.m6': 'पासवर्ड में कम से कम 8 अक्षर होने चाहिए, जिसमें कम से कम एक अक्षर और एक अंक शामिल हो।',
     'passwordReset.m7': 'दर्ज किए गए पासवर्ड मेल नहीं खाते। कृपया पुनः प्रयास करें।',
     'passwordReset.m8': 'बहुत अधिक अनुरोध। कृपया बाद में पुनः प्रयास करें।',
+    'passwordReset.m9': 'यह फ़ोन नंबर बिना पासवर्ड के पंजीकृत है। कृपया फ़ोन + OTP से लॉग इन करें।',
 
     'profile.m1': 'अपनी प्रोफ़ाइल, प्राथमिकताएँ और पसंदीदा भाषा प्रबंधित करें।',
     'profile.m2': 'आपकी प्रोफ़ाइल सफलतापूर्वक अपडेट हो गई है।',
@@ -1451,6 +1474,7 @@ class AppLocalizations {
         'दिनों में स्थायी रूप से हटा दिया जाएगा।',
     'profile.m24': 'आपका खाता हटाने में असमर्थ। कृपया पुनः प्रयास करें।',
     'profile.m25': 'आपकी प्रोफ़ाइल तस्वीर अपडेट करने में असमर्थ। कृपया पुनः प्रयास करें।',
+    'profile.m26': 'उपयोगकर्ता नाम और पासवर्ड सफलतापूर्वक सेट कर दिए गए हैं।',
 
     'ui.save': 'सहेजें',
     'ui.cancel': 'रद्द करें',
@@ -1499,6 +1523,9 @@ class AppLocalizations {
     'ui.add': 'जोड़ें',
     'ui.change': 'बदलें',
     'ui.notSet': 'सेट नहीं है',
+    'ui.setUsernameAndPassword': 'उपयोगकर्ता नाम और पासवर्ड सेट करें',
+    'ui.setUsernameAndPasswordHint':
+        'एक उपयोगकर्ता नाम और पासवर्ड जोड़ें ताकि आप अपने फ़ोन या Google खाते के बिना भी लॉग इन कर सकें।',
     'ui.sendOtp': 'OTP भेजें',
     'ui.changePhoneNumber': 'फ़ोन नंबर बदलें',
     'ui.unlinkGoogleAccount': 'Google खाता अनलिंक करें',

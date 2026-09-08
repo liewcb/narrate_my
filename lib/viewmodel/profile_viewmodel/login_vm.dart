@@ -59,6 +59,14 @@ class LoginVm extends ChangeNotifier {
     }
   }
 
+  /// Added at Foo's request — NOT in the written spec. Call when the screen
+  /// detects the app returning to the foreground with [isLoading] still
+  /// true and no session ever arrived (the tourist backed out of Google's
+  /// account chooser). Ends the wait immediately — [signInWithGoogle]'s own
+  /// `catch` above then reports it the same way any other Google failure
+  /// would.
+  void cancelGoogleSignIn() => _profileRepository.cancelPendingGoogleAuth();
+
   /// UC401 A2, steps 1–3. On success the screen navigates to the OTP screen
   /// with `OtpFlow.loginPhone` and this same [e164Phone].
   Future<bool> sendPhoneOtp(String e164Phone) async {

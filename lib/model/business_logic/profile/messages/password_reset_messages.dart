@@ -30,4 +30,10 @@ class PasswordResetMessages {
   static String get m7PasswordsDoNotMatch => AppLocalizations.t('passwordReset.m7');
 
   static String get m8TooManyRequests => AppLocalizations.t('passwordReset.m8');
+
+  // Added at Foo's request — NOT in the spec's verbatim M1–M8. A phone
+  // number that's registered but was never given a password (a phone/OTP
+  // -only account) has nothing to reset; M4 ("not registered") was
+  // misleading for that case since the number genuinely IS registered.
+  static String get m9PhoneNoPassword => AppLocalizations.t('passwordReset.m9');
 }

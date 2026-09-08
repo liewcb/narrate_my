@@ -84,6 +84,9 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   @override
   Future<Profile> loginWithGoogle() => _googleSignIn();
 
+  @override
+  void cancelPendingGoogleAuth() => _authDataSource.cancelPendingGoogleAuth();
+
   Future<Profile> _googleSignIn() async {
     try {
       await _authDataSource.signInWithGoogleAndAwaitSession(
@@ -365,10 +368,24 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       throw ValidationFailure(PasswordResetMessages.m4PhoneNotRegistered, field: 'phone');
     }
     final status = await _authDataSource.phoneAccountStatus(e164Phone);
-    // A1: not registered at all, OR registered but not via Username &
-    // Password — both collapse to the same M4 message.
-    if (status == null || !status.hasPassword) {
+    // A1: genuinely not registered at all — M4, the spec's verbatim text.
+    if (status == null) {
       throw AccountNotFoundFailure(PasswordResetMessages.m4PhoneNotRegistered);
+    }
+    // BUG FIX (8 Sep, Foo: "forget password does not work for number that
+    // register only with phone number... will show the phone number is not
+    // registered, which is not accurate"): this used to collapse BOTH cases
+    // — genuinely unregistered, and registered-but-no-password (a
+    // phone/OTP-only account) — into the same M4 "not registered" message.
+    // The phone number IS registered in the second case; there's just no
+    // password to reset because the tourist never set one, so M4 was
+    // actively misleading. Splits out its own message (not in the spec's
+    // verbatim M1–M8, added the same way `RegisterMessages.m11+` were).
+    if (!status.hasPassword) {
+      throw ValidationFailure(
+        PasswordResetMessages.m9PhoneNoPassword,
+        field: 'phone',
+      );
     }
     try {
       await _authDataSource.sendOtp(e164Phone, shouldCreateUser: false);
@@ -584,6 +601,42 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     } catch (_) {
       throw ProfileUpdateFailure(ProfileMessages.m6UnableToUpdate);
     }
+  }
+
+  @override
+  Future<Profile> setUsernameAndPassword({
+    required String username,
+    required String password,
+  }) async {
+    final user = _authDataSource.currentUser;
+    if (user == null) {
+      throw SessionExpiredFailure(LoginMessages.m4AccountNotFound);
+    }
+    // Same format checks as UC400 A3's Username tab (sendUsernameRegistrationOtp
+    // above) — reusing RegisterMessages here even though this isn't the
+    // registration flow, since the validation rules and their messages are
+    // identical and this app has no separate "manage login methods" catalog.
+    if (!Validators.isNotEmpty(username) || !Validators.isValidUsernameFormat(username)) {
+      throw ValidationFailure(RegisterMessages.m15UsernameRequired, field: 'username');
+    }
+    if (!Validators.isValidPassword(password)) {
+      throw ValidationFailure(RegisterMessages.m8InvalidPassword, field: 'password');
+    }
+    final existingUsername = await _authDataSource.resolveUsername(username);
+    if (existingUsername != null) {
+      throw UsernameTakenFailure(RegisterMessages.m7UsernameTaken);
+    }
+    try {
+      // No current-password re-check (unlike changePassword above) — there
+      // is no existing password to verify against. The tourist is already
+      // authenticated via their existing session (phone or Google), which
+      // is the only credential this action requires.
+      await _authDataSource.updatePassword(password);
+    } catch (_) {
+      throw ProfileUpdateFailure(ProfileMessages.m6UnableToUpdate);
+    }
+    await _authDataSource.setUsernameAndPasswordFlag(user.id, username);
+    return _fetchCurrentProfile();
   }
 
   @override

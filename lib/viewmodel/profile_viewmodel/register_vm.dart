@@ -61,6 +61,12 @@ class RegisterVm extends ChangeNotifier {
     }
   }
 
+  /// Added at Foo's request — NOT in the written spec. Same cancellation
+  /// escape hatch as `LoginVm`/`PersonalInfoVm` — call when the screen
+  /// detects the app returning to the foreground with [isLoading] still
+  /// true (the tourist backed out of Google's account chooser).
+  void cancelGoogleSignIn() => _profileRepository.cancelPendingGoogleAuth();
+
   /// UC400 A2, steps 1–4. On success the OTP has been sent — the screen
   /// should navigate to the OTP screen with `OtpFlow.registerPhone` and
   /// this same [e164Phone]. Returns true on success.

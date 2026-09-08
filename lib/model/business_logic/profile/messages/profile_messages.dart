@@ -70,4 +70,8 @@ class ProfileMessages {
   static String get m24UnableToDeleteAccount => AppLocalizations.t('profile.m24');
 
   static String get m25UnableToUpdatePhoto => AppLocalizations.t('profile.m25');
+
+  // Added 8 Sep at Foo's request — "add username and password afterward"
+  // for phone-OTP/Google-only accounts, not in the spec's M1-M21.
+  static String get m26UsernamePasswordSet => AppLocalizations.t('profile.m26');
 }

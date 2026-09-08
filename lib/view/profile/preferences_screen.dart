@@ -77,8 +77,16 @@ class _PreferencesViewState extends State<_PreferencesView> {
       await context.read<AccessibilityVm>().refresh();
       if (!mounted) return;
       setState(() => _editing = false);
+      // BUG FIX ("the languages change notification will keep spaming if
+      // the user keep taping", 8 Sep — same fix applied here for
+      // consistency): the app has exactly one, app-wide
+      // `ScaffoldMessenger`, so repeated Save/Cancel taps used to queue a
+      // growing SnackBar backlog that kept popping up on whatever screen
+      // the tourist had since navigated to. Clearing any still-queued
+      // SnackBar first means at most one is ever pending at a time.
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(ProfileMessages.m2UpdatedSuccessfully)));
     }
   }
 
@@ -93,7 +101,13 @@ class _PreferencesViewState extends State<_PreferencesView> {
       _editing = false;
     });
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(ProfileMessages.m5ChangesDiscarded)));
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(ProfileMessages.m5ChangesDiscarded)));
+    // BUG FIX ("the cancel button will also let user back to profile
+    // pages, same to preferences and the personal infomation pages", 8
+    // Sep): Cancel now backs all the way out to Profile Home instead of
+    // just staying on this screen with editing turned off.
+    if (Navigator.canPop(context)) Navigator.of(context).pop();
   }
 
   @override
@@ -129,10 +143,13 @@ class _PreferencesViewState extends State<_PreferencesView> {
                           children: [
                             _SectionLabel(AppLocalizations.t('ui.attractionInterests')),
                             const SizedBox(height: 10),
+                            // crossAxisCount matches the Initial Preferences
+                            // (onboarding) screen's grid — same tile picture
+                            // size/layout in both places, per Foo's request.
                             AttractionTileGrid(
                               options: kAttractionCategories,
                               selected: _attraction,
-                              crossAxisCount: 3,
+                              crossAxisCount: 2,
                               onToggle: (v) => setState(() => _toggle(_attraction, v)),
                             ),
                             const SizedBox(height: 22),
@@ -146,7 +163,7 @@ class _PreferencesViewState extends State<_PreferencesView> {
                               title: AppLocalizations.t('ui.dietaryPreferences'),
                               options: kDietaryOptions,
                               selected: _dietary,
-                              onToggle: (v) => setState(() => _toggle(_dietary, v)),
+                              onToggle: (v) => setState(() => _toggleDietary(v)),
                             ),
                             _ChipSection(
                               title: AppLocalizations.t('ui.dietaryRestrictionsTitle'),
@@ -212,6 +229,20 @@ class _PreferencesViewState extends State<_PreferencesView> {
       set.remove(value);
     } else {
       set.add(value);
+    }
+  }
+
+  /// Dietary Preferences' own toggle handler — Halal is a lifestyle choice
+  /// that, in practice, always implies "no pork" as a hard restriction. This
+  /// keeps the two sections consistent automatically instead of relying on
+  /// the tourist to separately remember to also tick "No Pork" below.
+  /// One-directional by design: un-ticking Halal does NOT remove "No Pork"
+  /// again, since the tourist may have selected it for an unrelated reason
+  /// and silently removing it would be a bigger surprise than leaving it.
+  void _toggleDietary(String value) {
+    _toggle(_dietary, value);
+    if (value == 'Halal' && _dietary.contains('Halal')) {
+      _dietaryRestrictions.add('No Pork');
     }
   }
 }

@@ -85,6 +85,20 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
         }
       });
 
+  /// Dietary Preferences' own toggle handler — see the matching method in
+  /// `preferences_screen.dart` for the full rationale. Selecting Halal here
+  /// auto-selects "No Pork" below; un-selecting Halal does not remove it.
+  void _toggleDietary(String value) => setState(() {
+        if (_dietary.contains(value)) {
+          _dietary.remove(value);
+        } else {
+          _dietary.add(value);
+        }
+        if (value == 'Halal' && _dietary.contains('Halal')) {
+          _dietaryRestrictions.add('No Pork');
+        }
+      });
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<PreferencesVm>();
@@ -138,7 +152,7 @@ class _InitialPreferencesViewState extends State<_InitialPreferencesView> {
               _ChipWrap(
                 options: kDietaryOptions,
                 selected: _dietary,
-                onToggle: (v) => _toggle(_dietary, v),
+                onToggle: (v) => _toggleDietary(v),
               ),
               const SizedBox(height: 22),
               _SectionLabel(AppLocalizations.t('ui.dietaryRestrictionsTitle')),

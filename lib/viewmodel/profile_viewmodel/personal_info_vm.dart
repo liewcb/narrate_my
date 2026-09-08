@@ -120,6 +120,13 @@ class PersonalInfoVm extends ChangeNotifier {
     }
   }
 
+  /// Added at Foo's request — NOT in the written spec. Same cancellation
+  /// escape hatch as `RegisterVm`/`LoginVm` — call when the screen detects
+  /// the app returning to the foreground with [isSaving] still true and the
+  /// Google row still unlinked (the tourist backed out of Google's account
+  /// chooser instead of picking one).
+  void cancelGoogleLink() => _profileRepository.cancelPendingGoogleAuth();
+
   /// UC402 A13. On success (M12), [profile]'s `hasGoogleLinked` flips —
   /// the screen doesn't need a separate refresh.
   Future<bool> linkGoogleAccount() async {

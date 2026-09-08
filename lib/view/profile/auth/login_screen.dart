@@ -46,7 +46,7 @@ class _LoginView extends StatefulWidget {
 }
 
 class _LoginViewState extends State<_LoginView>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // No TabBarView below — the two tabs' forms are genuinely different
   // lengths (Username has an extra field + forgot-password link), and a
   // fixed-height TabBarView forced both to share one height, so the
@@ -72,12 +72,35 @@ class _LoginViewState extends State<_LoginView>
   final _passwordController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // BUG FIX ("press login with Google, back out of the account chooser
+    // without picking one, it keeps loading", 8 Sep): see
+    // didChangeAppLifecycleState below.
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _phoneController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  /// See register_screen.dart's identical override for the full reasoning
+  /// — the app resuming is the only observable signal that the Google
+  /// account-chooser browser tab closed.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final vm = context.read<LoginVm>();
+    if (!vm.isLoading) return;
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted && vm.isLoading) vm.cancelGoogleSignIn();
+    });
   }
 
   void _completeLogin() {

@@ -38,13 +38,21 @@ class Validators {
   /// REQ_501_14: username uniqueness itself can only be checked against
   /// the database (see `resolve_username` RPC) — this only validates the
   /// *format* is reasonable before that round trip. Spec doesn't define an
-  /// explicit format rule beyond uniqueness, so this applies a conservative,
-  /// common-sense shape: 3–20 chars, letters/numbers/underscore, must start
-  /// with a letter.
-  static final RegExp _username = RegExp(r'^[A-Za-z][A-Za-z0-9_]{2,19}$');
-
-  static bool isValidUsernameFormat(String username) =>
-      _username.hasMatch(username.trim());
+  /// explicit format rule beyond uniqueness.
+  ///
+  /// RELAXED (8 Sep, Foo: "for the username i want can symbol but no need
+  /// strict like password, just ensure a 3-20 letter long and accept
+  /// symbol tgen ok"): used to be a strict letter-start,
+  /// alphanumeric/underscore-only regex (which is why e.g. "admin123@"
+  /// was rejected). Now just a length check (3–20 chars) with symbols
+  /// allowed — the only thing still disallowed is internal whitespace,
+  /// since a username with spaces in it isn't practical to log in with.
+  static bool isValidUsernameFormat(String username) {
+    final trimmed = username.trim();
+    if (trimmed.length < 3 || trimmed.length > 20) return false;
+    if (trimmed.contains(RegExp(r'\s'))) return false;
+    return true;
+  }
 
   /// OTP entry — Supabase phone OTPs are 6 digits by default.
   static bool isValidOtpFormat(String otp) =>

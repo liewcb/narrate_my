@@ -108,23 +108,24 @@ class ProfileRemoteDataSource {
 
   // --- Added at Foo's request — NOT in the written UC402 spec ---------------
 
-  /// Uploads to the `avatars` Storage bucket (0007_avatar_storage.sql)
-  /// under `{userId}/avatar.<ext>`, overwriting any previous upload at that
-  /// EXACT path (`upsert: true`). A prior upload with a DIFFERENT extension
-  /// is left behind as an orphan file in Storage — acceptable for this
-  /// assignment's scope, flagged here rather than silently ignored.
-  /// Returns the public URL (the bucket is public-read, see 0007) with a
-  /// cache-busting query param appended, since the underlying object path
-  /// is reused on every re-upload and `NetworkImage` would otherwise keep
-  /// showing the old cached bytes for the same URL.
+  /// Uploads to the `profile_avatars` Storage bucket (create it manually in
+  /// the Supabase dashboard/SQL editor — no migration file for it exists in
+  /// this repo) under `{userId}/avatar.<ext>`, overwriting any previous
+  /// upload at that EXACT path (`upsert: true`). A prior upload with a
+  /// DIFFERENT extension is left behind as an orphan file in Storage —
+  /// acceptable for this assignment's scope, flagged here rather than
+  /// silently ignored. Returns the public URL (the bucket must be
+  /// public-read) with a cache-busting query param appended, since the
+  /// underlying object path is reused on every re-upload and `NetworkImage`
+  /// would otherwise keep showing the old cached bytes for the same URL.
   Future<String> uploadAvatar(String userId, Uint8List bytes, String fileExt) async {
     final path = '$userId/avatar.$fileExt';
-    await _client.storage.from('avatars').uploadBinary(
+    await _client.storage.from('profile_avatars').uploadBinary(
           path,
           bytes,
           fileOptions: const FileOptions(upsert: true),
         );
-    final publicUrl = _client.storage.from('avatars').getPublicUrl(path);
+    final publicUrl = _client.storage.from('profile_avatars').getPublicUrl(path);
     return '$publicUrl?v=${DateTime.now().millisecondsSinceEpoch}';
   }
 
