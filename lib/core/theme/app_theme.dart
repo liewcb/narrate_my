@@ -198,3 +198,90 @@ class AppTheme {
     );
   }
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// ADDED FROM itinerary_theme_tokens.dart (merged)
+// ──────────────────────────────────────────────────────────────────────
+//
+// RESTORED (2nd time) — these four classes were dropped by an earlier
+// commit (a Module 5 edit built from a stale local copy of this file,
+// made before this content was merged in). The first restore attempt
+// also failed to make it into the commit (most likely because the file
+// was open in the IDE and got overwritten before `git add` ran).
+// Restored verbatim from Joel's commit 91627d8; nothing here was
+// authored by Module 5, just put back.
+//
+// IMPORTANT: close this file's editor tab in Android Studio BEFORE
+// running `git add` / `git commit`, so the IDE doesn't silently
+// overwrite this on-disk change with a stale in-memory copy again.
+
+/// Itinerary screens' text styles, expressed with the current theme's
+/// palette and Nunito typeface.
+class AppTextStyles {
+  AppTextStyles._();
+
+  static TextStyle get pageTitle => GoogleFonts.nunito(
+    fontWeight: FontWeight.w600,
+    fontSize: 24,
+    color: AppColors.ink,
+  );
+
+  static TextStyle get sectionLabel => GoogleFonts.nunito(
+    fontWeight: FontWeight.w700,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    color: AppColors.inkSoft,
+  );
+
+  static TextStyle get bodyLg => GoogleFonts.nunito(
+    fontWeight: FontWeight.w400,
+    fontSize: 16,
+    color: AppColors.ink,
+  );
+
+  static TextStyle get bodySm => GoogleFonts.nunito(
+    fontWeight: FontWeight.w400,
+    fontSize: 14,
+    color: AppColors.ink,
+  );
+
+  static TextStyle get labelSm => GoogleFonts.nunito(
+    fontWeight: FontWeight.w400,
+    fontSize: 12,
+    color: AppColors.inkFaint,
+  );
+
+  static TextStyle get button => GoogleFonts.nunito(
+    fontWeight: FontWeight.w600,
+    fontSize: 15,
+    color: AppColors.bg,
+  );
+}
+
+/// Corner radius tokens used by itinerary screens.
+class AppRadius {
+  AppRadius._();
+
+  static const double card = 16.0;
+  static const double iconSm = 6.0;
+  static const double pill = 999.0;
+}
+
+/// Spacing tokens used by itinerary screens (mapped to the theme grid).
+class AppSpacing {
+  AppSpacing._();
+
+  static const double componentGap = 8.0;
+  static const double cardPadding = 16.0;
+  static const double screenMargin = 20.0;
+  static const double sectionGap = 24.0;
+  static const double pillPaddingX = 16.0;
+  static const double pillPaddingY = 8.0;
+}
+
+/// Alias token for soft shadows used on cards.
+class AppShadows {
+  AppShadows._();
+
+  static const Color card = Color(0x0A000000);
+}
