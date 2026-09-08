@@ -11,6 +11,7 @@ import '../../model/repositories/adapters/profile/profile_adapter.dart';
 import '../../viewmodel/profile_viewmodel/profile_vm.dart';
 import './bookmarks_screen.dart';
 import './guest_profile_screen.dart';
+import './guidance_screen.dart';
 import './language_screen.dart';
 import './personal_info_screen.dart';
 import './preferences_screen.dart';
@@ -142,86 +143,97 @@ class _ProfileHomeView extends StatelessWidget {
         child: vm.isLoading
             ? const Center(child: CircularProgressIndicator())
             : vm.errorMessage != null
-                ? _ErrorRetry(message: vm.errorMessage!, onRetry: vm.load)
-                : RefreshIndicator(
-                    onRefresh: vm.load,
-                    child: ListView(
-                      padding: const EdgeInsets.all(20),
+            ? _ErrorRetry(message: vm.errorMessage!, onRetry: vm.load)
+            : RefreshIndicator(
+          onRefresh: vm.load,
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text(
+                ProfileMessages.m1ScreenSubtitle,
+                style: const TextStyle(color: AppColors.inkSoft, fontSize: 13.5),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  _AvatarPicker(vm: vm, onTap: () => _pickAvatar(context, vm)),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          ProfileMessages.m1ScreenSubtitle,
-                          style: const TextStyle(color: AppColors.inkSoft, fontSize: 13.5),
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          children: [
-                            _AvatarPicker(vm: vm, onTap: () => _pickAvatar(context, vm)),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    vm.profile?.fullName?.isNotEmpty == true
-                                        ? vm.profile!.fullName!
-                                        : 'Tourist',
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.ink,
-                                    ),
-                                  ),
-                                  if (vm.profile?.username != null)
-                                    Text(
-                                      '@${vm.profile!.username}',
-                                      style: const TextStyle(color: AppColors.inkFaint, fontSize: 13),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 28),
-                        _SectionTile(
-                          icon: Icons.badge_outlined,
-                          label: AppLocalizations.t('ui.personalInfo'),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const PersonalInfoScreen()),
+                          vm.profile?.fullName?.isNotEmpty == true
+                              ? vm.profile!.fullName!
+                              : 'Tourist',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.ink,
                           ),
                         ),
-                        _SectionTile(
-                          icon: Icons.tune,
-                          label: AppLocalizations.t('ui.preferences'),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const PreferencesScreen()),
+                        if (vm.profile?.username != null)
+                          Text(
+                            '@${vm.profile!.username}',
+                            style: const TextStyle(color: AppColors.inkFaint, fontSize: 13),
                           ),
-                        ),
-                        _SectionTile(
-                          icon: Icons.language,
-                          label: AppLocalizations.t('ui.language'),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const LanguageScreen()),
-                          ),
-                        ),
-                        _SectionTile(
-                          icon: Icons.bookmark_border,
-                          label: AppLocalizations.t('ui.bookmarks'),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const BookmarksScreen()),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        const Divider(),
-                        const SizedBox(height: 12),
-                        _SectionTile(
-                          icon: Icons.logout,
-                          label: AppLocalizations.t('ui.logout'),
-                          color: AppColors.error,
-                          onTap: () => _logout(context, vm),
-                        ),
                       ],
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 28),
+              _SectionTile(
+                icon: Icons.badge_outlined,
+                label: AppLocalizations.t('ui.personalInfo'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PersonalInfoScreen()),
+                ),
+              ),
+              _SectionTile(
+                icon: Icons.tune,
+                label: AppLocalizations.t('ui.preferences'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PreferencesScreen()),
+                ),
+              ),
+              _SectionTile(
+                icon: Icons.language,
+                label: AppLocalizations.t('ui.language'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LanguageScreen()),
+                ),
+              ),
+              _SectionTile(
+                icon: Icons.bookmark_border,
+                label: AppLocalizations.t('ui.bookmarks'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const BookmarksScreen()),
+                ),
+              ),
+              // Added: entry point into the Guidance hub — short,
+              // swipeable walkthroughs per module (AR today; more
+              // modules can register their own guide later) —
+              // see `guidance/guidance_screen.dart`.
+              _SectionTile(
+                icon: Icons.menu_book_outlined,
+                label: AppLocalizations.t('ui.guidance'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const GuidanceScreen()),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Divider(),
+              const SizedBox(height: 12),
+              _SectionTile(
+                icon: Icons.logout,
+                label: AppLocalizations.t('ui.logout'),
+                color: AppColors.error,
+                onTap: () => _logout(context, vm),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -273,7 +285,7 @@ class _AvatarPicker extends StatelessWidget {
             radius: 32,
             backgroundColor: AppColors.accentSoft,
             backgroundImage:
-                vm.profile?.avatarUrl != null ? NetworkImage(vm.profile!.avatarUrl!) : null,
+            vm.profile?.avatarUrl != null ? NetworkImage(vm.profile!.avatarUrl!) : null,
             child: vm.profile?.avatarUrl == null
                 ? const Icon(Icons.person, size: 32, color: AppColors.accentDark)
                 : null,

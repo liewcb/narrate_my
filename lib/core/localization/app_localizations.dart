@@ -152,6 +152,25 @@ class AppLocalizations {
     'ui.preferences': 'Preferences',
     'ui.language': 'Language',
     'ui.bookmarks': 'Bookmarks',
+    'ui.guidance': 'Guidance',
+    'ui.guidanceSubtitle': 'Step-by-step walkthroughs for each part of the app.',
+    'ui.arGuide': 'AR Guide',
+    'ui.arGuideExplorationTitle': 'Explore in AR',
+    'ui.arGuideExplorationBody':
+    'Point your camera around a heritage site to discover markers on '
+        'nearby points of interest.',
+    'ui.arGuidePlacementTitle': 'Place a 3D Model',
+    'ui.arGuidePlacementBody':
+    'Scan a flat surface, then tap to place and reposition a 3D model '
+        'in the real world.',
+    'ui.arGuideStorytellingTitle': 'Hear the Story',
+    'ui.arGuideStorytellingBody':
+    'Tap a placed model to open its storytelling panel and learn the '
+        'history behind it.',
+    'ui.arGuideNext': 'Next',
+    'ui.arGuideBack': 'Back',
+    'ui.arGuideDone': 'Done',
+    'ui.arGuideSkip': 'Skip',
     'ui.changePassword': 'Change Password',
     'ui.currentPassword': 'Current Password',
     'ui.newPassword': 'New Password',
@@ -449,6 +468,19 @@ class AppLocalizations {
     'ui.preferences': '偏好设置',
     'ui.language': '语言',
     'ui.bookmarks': '收藏夹',
+    'ui.guidance': '使用指南',
+    'ui.guidanceSubtitle': '各模块的分步操作指南。',
+    'ui.arGuide': 'AR 指南',
+    'ui.arGuideExplorationTitle': '在 AR 中探索',
+    'ui.arGuideExplorationBody': '将相机对准遗产景点周围，发现附近兴趣点的标记。',
+    'ui.arGuidePlacementTitle': '放置 3D 模型',
+    'ui.arGuidePlacementBody': '扫描平面，然后点击以在现实世界中放置并调整 3D 模型的位置。',
+    'ui.arGuideStorytellingTitle': '聆听故事',
+    'ui.arGuideStorytellingBody': '点击已放置的模型，打开讲述面板，了解其背后的历史。',
+    'ui.arGuideNext': '下一步',
+    'ui.arGuideBack': '上一步',
+    'ui.arGuideDone': '完成',
+    'ui.arGuideSkip': '跳过',
     'ui.changePassword': '更改密码',
     'ui.currentPassword': '当前密码',
     'ui.newPassword': '新密码',
@@ -740,6 +772,25 @@ class AppLocalizations {
     'ui.preferences': 'Keutamaan',
     'ui.language': 'Bahasa',
     'ui.bookmarks': 'Penanda Halaman',
+    'ui.guidance': 'Panduan',
+    'ui.guidanceSubtitle': 'Panduan langkah demi langkah untuk setiap bahagian aplikasi.',
+    'ui.arGuide': 'Panduan AR',
+    'ui.arGuideExplorationTitle': 'Terokai dalam AR',
+    'ui.arGuideExplorationBody':
+    'Halakan kamera anda di sekitar tapak warisan untuk menemui penanda '
+        'pada tempat menarik berdekatan.',
+    'ui.arGuidePlacementTitle': 'Letakkan Model 3D',
+    'ui.arGuidePlacementBody':
+    'Imbas permukaan rata, kemudian ketik untuk meletakkan dan '
+        'mengubah kedudukan model 3D di dunia sebenar.',
+    'ui.arGuideStorytellingTitle': 'Dengar Kisahnya',
+    'ui.arGuideStorytellingBody':
+    'Ketik model yang diletakkan untuk membuka panel penceritaan dan '
+        'ketahui sejarah di sebaliknya.',
+    'ui.arGuideNext': 'Seterusnya',
+    'ui.arGuideBack': 'Kembali',
+    'ui.arGuideDone': 'Selesai',
+    'ui.arGuideSkip': 'Langkau',
     'ui.changePassword': 'Tukar Kata Laluan',
     'ui.currentPassword': 'Kata Laluan Semasa',
     'ui.newPassword': 'Kata Laluan Baharu',
@@ -1065,6 +1116,25 @@ class AppLocalizations {
     'ui.preferences': 'Preferencias',
     'ui.language': 'Idioma',
     'ui.bookmarks': 'Marcadores',
+    'ui.guidance': 'Guía',
+    'ui.guidanceSubtitle': 'Guías paso a paso para cada parte de la app.',
+    'ui.arGuide': 'Guía de RA',
+    'ui.arGuideExplorationTitle': 'Explora en RA',
+    'ui.arGuideExplorationBody':
+    'Apunta tu cámara alrededor de un sitio patrimonial para descubrir '
+        'marcadores de puntos de interés cercanos.',
+    'ui.arGuidePlacementTitle': 'Coloca un Modelo 3D',
+    'ui.arGuidePlacementBody':
+    'Escanea una superficie plana y luego toca para colocar y '
+        'reposicionar un modelo 3D en el mundo real.',
+    'ui.arGuideStorytellingTitle': 'Escucha la Historia',
+    'ui.arGuideStorytellingBody':
+    'Toca un modelo colocado para abrir su panel narrativo y conocer '
+        'la historia detrás de él.',
+    'ui.arGuideNext': 'Siguiente',
+    'ui.arGuideBack': 'Atrás',
+    'ui.arGuideDone': 'Listo',
+    'ui.arGuideSkip': 'Omitir',
     'ui.changePassword': 'Cambiar Contraseña',
     'ui.currentPassword': 'Contraseña Actual',
     'ui.newPassword': 'Nueva Contraseña',
@@ -1382,6 +1452,25 @@ class AppLocalizations {
     'ui.preferences': 'प्राथमिकताएँ',
     'ui.language': 'भाषा',
     'ui.bookmarks': 'बुकमार्क',
+    'ui.guidance': 'मार्गदर्शन',
+    'ui.guidanceSubtitle': 'ऐप के हर हिस्से के लिए चरण-दर-चरण मार्गदर्शिका।',
+    'ui.arGuide': 'AR गाइड',
+    'ui.arGuideExplorationTitle': 'AR में एक्सप्लोर करें',
+    'ui.arGuideExplorationBody':
+    'आस-पास के रुचि वाले स्थानों पर मार्कर खोजने के लिए अपने कैमरे को '
+        'किसी विरासत स्थल के चारों ओर घुमाएँ।',
+    'ui.arGuidePlacementTitle': '3D मॉडल रखें',
+    'ui.arGuidePlacementBody':
+    'एक समतल सतह को स्कैन करें, फिर वास्तविक दुनिया में 3D मॉडल को रखने '
+        'और उसकी स्थिति बदलने के लिए टैप करें।',
+    'ui.arGuideStorytellingTitle': 'कहानी सुनें',
+    'ui.arGuideStorytellingBody':
+    'रखे गए मॉडल पर टैप करें ताकि उसका कहानी पैनल खुले और उसके पीछे का '
+        'इतिहास जान सकें।',
+    'ui.arGuideNext': 'अगला',
+    'ui.arGuideBack': 'पीछे',
+    'ui.arGuideDone': 'हो गया',
+    'ui.arGuideSkip': 'छोड़ें',
     'ui.changePassword': 'पासवर्ड बदलें',
     'ui.currentPassword': 'वर्तमान पासवर्ड',
     'ui.newPassword': 'नया पासवर्ड',
