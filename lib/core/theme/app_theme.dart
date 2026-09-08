@@ -143,7 +143,6 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: false,
         contentPadding: const EdgeInsets.symmetric(vertical: 13),
-        // BUG FIX ("error message 看不到 so need 放兩行", 8 Sep): Flutter's
         // InputDecoration defaults errorText to a single line with an
         // ellipsis — every longer error message in this app (most of
         // Module 5's verbatim spec messages) was getting cut off mid-
