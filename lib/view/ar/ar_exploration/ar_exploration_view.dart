@@ -178,6 +178,7 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
               primaryMarker: vm.primaryMarker,
               deviceHeadingDegrees: vm.deviceHeadingDegrees,
               devicePitchDegrees: vm.devicePitchDegrees,
+              userAltitude: vm.userAltitude,
               onTapMarker: (marker) => _navigateToPlacement(context, marker),
             ),
             Positioned(

@@ -56,6 +56,13 @@ class ARSceneState {
   final double? userLat;
   final double? userLng;
 
+  /// Tourist's current GPS altitude in meters, if the device supplied
+  /// one. Used by [ARMarkerOverlay] to offset a marker vertically
+  /// relative to the tourist instead of anchoring every marker at the
+  /// same fixed height (which is what let two markers at very different
+  /// heights land on the same screen point).
+  final double? userAltitude;
+
   /// Count returned by the DB query BEFORE the activation_radius filter
   /// is applied — lets you tell "query returned nothing" apart from
   /// "query returned rows but they got filtered out".
@@ -75,6 +82,7 @@ class ARSceneState {
     this.devicePitchDegrees = 0,
     this.userLat,
     this.userLng,
+    this.userAltitude,
     this.rawFetchedCount = 0,
     this.allComputedMarkers = const [],
   });
@@ -227,6 +235,7 @@ class ARExplorationService {
       devicePitchDegrees: _lastPitch,
       userLat: pos.latitude,
       userLng: pos.longitude,
+      userAltitude: pos.altitude,
       rawFetchedCount: _lastFetchedMarkers.length,
       allComputedMarkers: allWithGeometry,
     ));

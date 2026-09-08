@@ -56,4 +56,21 @@ class AppConfig {
   /// tolerance over which a marker fades and slides out, instead of
   /// snapping away the instant it crosses the boundary.
   static const double edgeFadeDegrees = 10;
+
+  /// Altitude difference (meters, marker minus tourist) that maps to the
+  /// full [altitudeVerticalRangeFraction] vertical swing on screen. Two
+  /// markers whose altitude differs by more than this collapse to the
+  /// same clamped edge instead of separating further — keeps a distant
+  /// rooftop from flying off the top of the screen.
+  static const double maxExpectedAltitudeRangeMeters = 50;
+
+  /// How much of the screen height the altitude offset is allowed to move
+  /// a marker, up or down, from the fixed anchor line.
+  static const double altitudeVerticalRangeFraction = 0.18;
+
+  /// Clamp bounds (fraction of screen height) for the marker's final
+  /// vertical position, so an extreme altitude delta can't push a marker
+  /// off the top/bottom of the screen entirely.
+  static const double markerMinDyFraction = 0.10;
+  static const double markerMaxDyFraction = 0.62;
 }
