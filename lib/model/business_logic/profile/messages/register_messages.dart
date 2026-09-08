@@ -56,4 +56,10 @@ class RegisterMessages {
   // password silently skipped past to whatever the phone field's state
   // happened to be. Not part of the spec's verbatim M1–M14.
   static String get m15UsernameRequired => AppLocalizations.t('register.m15');
+
+  // Added 8 Sep at Foo's request ("some of the error message have half
+  // english there") — this was a hardcoded English literal in
+  // profile_adapter.dart's verifyUsernameRegistrationOtp, for the rare
+  // edge case where Supabase's OTP-verify response carries no user id.
+  static String get m16RegistrationIncomplete => AppLocalizations.t('register.m16');
 }

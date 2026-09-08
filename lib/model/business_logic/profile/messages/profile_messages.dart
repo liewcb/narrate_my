@@ -74,4 +74,12 @@ class ProfileMessages {
   // Added 8 Sep at Foo's request — "add username and password afterward"
   // for phone-OTP/Google-only accounts, not in the spec's M1-M21.
   static String get m26UsernamePasswordSet => AppLocalizations.t('profile.m26');
+
+  // Added 8 Sep at Foo's request ("since add the password now ... so
+  // changes the error message when user unlink the only verification
+  // method") — M21 above is kept verbatim as the spec's original wording
+  // (phone-only), but since a password now also counts as a valid
+  // alternative login method, the guard's actual message uses this
+  // updated text instead. See profile_adapter.dart's unlink guard.
+  static String get m27MustHaveAnotherLoginMethod => AppLocalizations.t('profile.m27');
 }

@@ -103,6 +103,7 @@ class _SetPasswordViewState extends State<_SetPasswordView> {
                 label: AppLocalizations.t('ui.newPassword'),
                 controller: _passwordController,
                 obscureText: true,
+                errorText: vm.fieldError == 'password' ? vm.errorMessage : null,
               ),
               PasswordRulesHint(password: _passwordController.text),
               const SizedBox(height: 16),
@@ -110,12 +111,20 @@ class _SetPasswordViewState extends State<_SetPasswordView> {
                 label: AppLocalizations.t('ui.confirmNewPassword'),
                 controller: _confirmController,
                 obscureText: true,
+                errorText: vm.fieldError == 'confirmPassword' ? vm.errorMessage : null,
               ),
               PasswordMatchHint(
                 password: _passwordController.text,
                 confirmation: _confirmController.text,
               ),
-              if (vm.fieldError == 'password' && vm.errorMessage != null) ...[
+              // Fallback banner only for errors with no field mapping
+              // (e.g. session expired) — see SetPasswordVm's fieldError
+              // usage. Field-tagged errors show only under their own
+              // field above, never here too.
+              if (vm.errorMessage != null &&
+                  vm.fieldError != 'username' &&
+                  vm.fieldError != 'password' &&
+                  vm.fieldError != 'confirmPassword') ...[
                 const SizedBox(height: 10),
                 Text(vm.errorMessage!,
                     style: const TextStyle(color: AppColors.error, fontSize: 13)),

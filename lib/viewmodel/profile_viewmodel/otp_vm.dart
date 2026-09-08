@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/errors/failures.dart';
+import '../../model/business_logic/profile/messages/otp_messages.dart';
 import '../../model/entities/profile.dart';
 import '../../model/repositories/adapters/profile/profile_adapter.dart';
 import '../../model/repositories/interfaces/profile/profile_repository.dart';
@@ -176,9 +177,15 @@ class OtpVm extends ChangeNotifier {
       // only while there's still at least one try left; once the count
       // hits 0 `showCaptcha` takes over and the screen's own "too many
       // failed attempts" message covers it instead.
+      //
+      // BUG FIX ("some of the error message have half english there", 8
+      // Sep): this used to hardcode the English suffix (" $n attempts
+      // remaining.") directly, so a translated failure message like "验证
+      // 码不正确或已过期。" got an untranslated English tail bolted onto
+      // it regardless of the selected app language. The suffix now comes
+      // from OtpMessages (localized), with `{n}` substituted in.
       errorMessage = remainingAttempts > 0
-          ? '${e.message} $remainingAttempts attempt'
-              '${remainingAttempts == 1 ? '' : 's'} remaining.'
+          ? '${e.message} ${OtpMessages.attemptsRemainingTemplate.replaceAll('{n}', remainingAttempts.toString())}'
           : e.message;
       notifyListeners();
       rethrow;
@@ -191,8 +198,7 @@ class OtpVm extends ChangeNotifier {
   }
 
   /// Shown when an attempt is made while the CAPTCHA gate is up.
-  static const String _captchaRequiredMessage =
-      'Too many incorrect codes. Complete the verification below before trying again.';
+  static String get _captchaRequiredMessage => OtpMessages.tooManyIncorrectCodes;
 
   /// C3 / REQ_501_9: re-issues the OTP once the cooldown has elapsed.
   Future<bool> resend() async {
