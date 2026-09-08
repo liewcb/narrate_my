@@ -71,19 +71,24 @@ class _ChangePasswordViewState extends State<_ChangePasswordView> {
                 label: AppLocalizations.t('ui.currentPassword'),
                 controller: _currentController,
                 obscureText: true,
+                errorText: vm.fieldError == 'currentPassword' ? vm.errorMessage : null,
               ),
               const SizedBox(height: 16),
               UnderlineField(
                   label: AppLocalizations.t('ui.newPassword'),
                   controller: _newController,
-                  obscureText: true),
+                  obscureText: true,
+                  errorText: vm.fieldError == 'newPassword' ? vm.errorMessage : null),
               const SizedBox(height: 16),
               UnderlineField(
                 label: AppLocalizations.t('ui.confirmNewPassword'),
                 controller: _confirmController,
                 obscureText: true,
+                errorText: vm.fieldError == 'confirmPassword' ? vm.errorMessage : null,
               ),
-              if (vm.errorMessage != null) ...[
+              // Fallback banner only for errors with no field mapping —
+              // see ChangePasswordVm.fieldError's doc comment.
+              if (vm.errorMessage != null && vm.fieldError == null) ...[
                 const SizedBox(height: 14),
                 Text(vm.errorMessage!, style: const TextStyle(color: AppColors.error, fontSize: 13.5)),
               ],

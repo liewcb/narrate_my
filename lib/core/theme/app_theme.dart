@@ -143,6 +143,14 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: false,
         contentPadding: const EdgeInsets.symmetric(vertical: 13),
+        // InputDecoration defaults errorText to a single line with an
+        // ellipsis — every longer error message in this app (most of
+        // Module 5's verbatim spec messages) was getting cut off mid-
+        // sentence. Set once here, at the theme level, so every field in
+        // the app (Register, Login, Reset/Change Password, Personal Info,
+        // phone fields, Set Password) gets the fix without touching each
+        // field widget individually.
+        errorMaxLines: 2,
         labelStyle: GoogleFonts.nunito(
           fontSize: 10.5,
           color: AppColors.inkFaint,
@@ -170,7 +178,7 @@ class AppTheme {
       ),
       switchTheme: SwitchThemeData(
         trackColor: WidgetStateProperty.resolveWith(
-              (states) => states.contains(WidgetState.selected)
+          (states) => states.contains(WidgetState.selected)
               ? AppColors.accent
               : AppColors.moduleBorder,
         ),
@@ -192,11 +200,10 @@ class AppTheme {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// ADDED FROM itinerary_theme_tokens.dart (merged)
+// Itinerary theme tokens
 // ──────────────────────────────────────────────────────────────────────
 
-/// Itinerary screens' text styles, expressed with the current theme's
-/// palette and Nunito typeface.
+/// Text styles shared by itinerary screens.
 class AppTextStyles {
   AppTextStyles._();
 
@@ -238,7 +245,7 @@ class AppTextStyles {
   );
 }
 
-/// Corner radius tokens used by itinerary screens.
+/// Corner radius tokens shared by itinerary screens.
 class AppRadius {
   AppRadius._();
 
@@ -247,7 +254,7 @@ class AppRadius {
   static const double pill = 999.0;
 }
 
-/// Spacing tokens used by itinerary screens (mapped to the theme grid).
+/// Spacing tokens shared by itinerary screens.
 class AppSpacing {
   AppSpacing._();
 
@@ -259,7 +266,7 @@ class AppSpacing {
   static const double pillPaddingY = 8.0;
 }
 
-/// Alias token for soft shadows used on cards.
+/// Soft shadow color shared by cards.
 class AppShadows {
   AppShadows._();
 

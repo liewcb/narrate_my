@@ -8,6 +8,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/localization/locale_vm.dart';
 import '../../../core/widgets/app_bottom_navigation.dart';
 import '../../../model/entities/ar_object.dart';
+import '../../../model/repositories/adapters/recommendation/ar_recommendation_repository_adapter.dart';
 import '../../../viewmodel/ar/ar_placement_vm.dart';
 import '../../../viewmodel/ar/ar_recommendation_vm.dart';
 import './widgets/ar_placement_top_bar.dart';
@@ -41,7 +42,10 @@ class ARPlacementScreen extends StatelessWidget {
           )..init(selectedMarker),
         ),
         ChangeNotifierProvider<ARRecommendationVm>(
-          create: (_) => ARRecommendationVm(cameraMarkerIds: cameraMarkerIds),
+          create: (_) => ARRecommendationVm(
+            ARRecommendationRepositoryAdapter(),
+            cameraMarkerIds: cameraMarkerIds,
+          ),
         ),
       ],
       child: const _ARPlacementContent(),

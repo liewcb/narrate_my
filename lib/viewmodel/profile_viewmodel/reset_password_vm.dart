@@ -19,9 +19,19 @@ class ResetPasswordVm extends ChangeNotifier {
   bool isLoading = false;
   String? errorMessage;
 
+  /// Added 8 Sep at Foo's request ("the error message for my module
+  /// change it under the field") — which field [errorMessage] belongs to
+  /// ('password' or 'confirmPassword'), so the screen can show it right
+  /// under that specific field instead of one combined message at the
+  /// bottom. Null means the failure isn't tied to a specific field (e.g.
+  /// a session/server error) — the screen falls back to a single banner
+  /// only in that case, same pattern as Personal Info's Full Name field.
+  String? fieldError;
+
   void _startSubmit() {
     isLoading = true;
     errorMessage = null;
+    fieldError = null;
     notifyListeners();
   }
 
@@ -60,12 +70,14 @@ class ResetPasswordVm extends ChangeNotifier {
     if (!Validators.passwordsMatch(newPassword, confirmPassword)) {
       isLoading = false;
       errorMessage = PasswordResetMessages.m7PasswordsDoNotMatch;
+      fieldError = 'confirmPassword';
       notifyListeners();
       return false;
     }
     if (!Validators.isValidPassword(newPassword)) {
       isLoading = false;
       errorMessage = PasswordResetMessages.m6InvalidPassword;
+      fieldError = 'password';
       notifyListeners();
       return false;
     }
@@ -77,6 +89,8 @@ class ResetPasswordVm extends ChangeNotifier {
     } on AuthFailure catch (e) {
       isLoading = false;
       errorMessage = e.message;
+      // No field mapping here (e.g. SessionExpiredFailure) — falls back
+      // to the screen's single banner.
       notifyListeners();
       return false;
     }

@@ -5,7 +5,10 @@ import '../../interfaces/recommendation/ar_recommendation_repository.dart';
 class ARRecommendationRepositoryAdapter implements ARRecommendationRepository {
   final ARRecommendationRemoteDataSource _remoteDataSource;
 
-  ARRecommendationRepositoryAdapter(this._remoteDataSource);
+  ARRecommendationRepositoryAdapter({
+    ARRecommendationRemoteDataSource? remoteDataSource,
+  }) : _remoteDataSource =
+           remoteDataSource ?? ARRecommendationRemoteDataSource();
 
   @override
   Future<List<ARRecommendation>> recommend({

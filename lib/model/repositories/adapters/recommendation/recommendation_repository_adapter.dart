@@ -14,11 +14,12 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
   final RecommendationCacheLocalDataSource _cacheDataSource;
   final RecommendationPreferenceContextDataSource _preferenceContextDataSource;
 
-  RecommendationRepositoryAdapter(
-    this._remoteDataSource, {
+  RecommendationRepositoryAdapter({
+    RecommendationRemoteDataSource? remoteDataSource,
     RecommendationCacheLocalDataSource? cacheDataSource,
     RecommendationPreferenceContextDataSource? preferenceContextDataSource,
-  }) : _cacheDataSource =
+  }) : _remoteDataSource = remoteDataSource ?? RecommendationRemoteDataSource(),
+       _cacheDataSource =
            cacheDataSource ?? RecommendationCacheLocalDataSource(),
        _preferenceContextDataSource =
            preferenceContextDataSource ??

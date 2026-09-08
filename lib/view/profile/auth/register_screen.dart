@@ -269,18 +269,25 @@ class _RegisterViewState extends State<_RegisterView>
                   currentPassword: _passwordController.text,
                   currentConfirmation: _confirmController.text,
                   phoneController: _usernamePhoneController,
-                  phoneErrorText: _usernamePhoneLocalError,
                   onPhoneFieldChanged: () {
                     if (_usernamePhoneLocalError != null) {
                       setState(() => _usernamePhoneLocalError = null);
                     }
                   },
-                  // Scoped to this tab only — a Phone-tab or Google error
-                  // shouldn't also render here. Forced to 'username' by
-                  // RegisterVm for every failure from this call (see its
-                  // doc comment) so any error from this submit shows,
-                  // regardless of which specific field caused it.
-                  errorMessage: vm.fieldError == 'username' ? vm.errorMessage : null,
+                  // BUG FIX (8 Sep, Foo: "the error message for username
+                  // and password move below then the phone number will
+                  // have duplicate error message now... remove the below
+                  // message error message show together one"): each field
+                  // now shows only its OWN error, right under itself —
+                  // RegisterVm tags fieldError by the actual field that
+                  // failed (see its sendUsernameOtp), so these four are
+                  // mutually exclusive; there is no separate combined
+                  // banner anymore.
+                  usernameError: vm.fieldError == 'username' ? vm.errorMessage : null,
+                  passwordError: vm.fieldError == 'password' ? vm.errorMessage : null,
+                  confirmError: vm.fieldError == 'confirmPassword' ? vm.errorMessage : null,
+                  phoneError:
+                      _usernamePhoneLocalError ?? (vm.fieldError == 'phone' ? vm.errorMessage : null),
                   onPhoneChanged: (e164) => _usernamePhoneE164 = e164,
                   isLoading: vm.isLoading,
                   onSubmit: () => _handleUsernameSubmit(vm),
@@ -352,8 +359,10 @@ class _UsernameTab extends StatelessWidget {
   final String currentPassword;
   final String currentConfirmation;
   final TextEditingController phoneController;
-  final String? errorMessage;
-  final String? phoneErrorText;
+  final String? usernameError;
+  final String? passwordError;
+  final String? confirmError;
+  final String? phoneError;
   final VoidCallback onPhoneFieldChanged;
   final ValueChanged<String> onPhoneChanged;
   final bool isLoading;
@@ -366,8 +375,10 @@ class _UsernameTab extends StatelessWidget {
     required this.currentPassword,
     required this.currentConfirmation,
     required this.phoneController,
-    required this.errorMessage,
-    required this.phoneErrorText,
+    required this.usernameError,
+    required this.passwordError,
+    required this.confirmError,
+    required this.phoneError,
     required this.onPhoneFieldChanged,
     required this.onPhoneChanged,
     required this.isLoading,
@@ -382,12 +393,17 @@ class _UsernameTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        UnderlineField(label: AppLocalizations.t('ui.username'), controller: usernameController),
+        UnderlineField(
+          label: AppLocalizations.t('ui.username'),
+          controller: usernameController,
+          errorText: usernameError,
+        ),
         const SizedBox(height: 16),
         UnderlineField(
           label: AppLocalizations.t('ui.password'),
           controller: passwordController,
           obscureText: true,
+          errorText: passwordError,
         ),
         // Live strength feedback (6 Sep, Foo's request, item 8) — mirrors
         // Validators.isValidPassword exactly, same widget already used on
@@ -398,21 +414,18 @@ class _UsernameTab extends StatelessWidget {
           label: 'Confirm Password',
           controller: confirmController,
           obscureText: true,
+          errorText: confirmError,
         ),
         PasswordMatchHint(password: currentPassword, confirmation: currentConfirmation),
         const SizedBox(height: 16),
         PhoneField(
           localNumberController: phoneController,
-          errorText: phoneErrorText,
+          errorText: phoneError,
           onChanged: (e164) {
             onPhoneChanged(e164);
             onPhoneFieldChanged();
           },
         ),
-        if (errorMessage != null) ...[
-          const SizedBox(height: 12),
-          Text(errorMessage!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
-        ],
         const SizedBox(height: 20),
         PrimaryButton(
             label: AppLocalizations.t('ui.createAccount'), isLoading: isLoading, onPressed: onSubmit),

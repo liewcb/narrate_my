@@ -56,7 +56,7 @@ class SetPasswordVm extends ChangeNotifier {
     if (!Validators.passwordsMatch(password, confirmPassword)) {
       isLoading = false;
       errorMessage = RegisterMessages.m10PasswordsDoNotMatch;
-      fieldError = 'password';
+      fieldError = 'confirmPassword';
       notifyListeners();
       return null;
     }

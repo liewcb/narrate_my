@@ -108,14 +108,20 @@ class _ResetPasswordViewState extends State<_ResetPasswordView> {
                 label: AppLocalizations.t('ui.newPassword'),
                 controller: _passwordController,
                 obscureText: true,
+                errorText: vm.fieldError == 'password' ? vm.errorMessage : null,
               ),
               const SizedBox(height: 16),
               UnderlineField(
                 label: AppLocalizations.t('ui.confirmNewPassword'),
                 controller: _confirmController,
                 obscureText: true,
+                errorText: vm.fieldError == 'confirmPassword' ? vm.errorMessage : null,
               ),
-              if (vm.errorMessage != null) ...[
+              // Fallback banner only for errors with no field mapping
+              // (e.g. session expired) — see ResetPasswordVm.fieldError's
+              // doc comment. Field-tagged errors show only under their
+              // own field above, never here too.
+              if (vm.errorMessage != null && vm.fieldError == null) ...[
                 const SizedBox(height: 14),
                 Text(
                   vm.errorMessage!,

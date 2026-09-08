@@ -11,7 +11,6 @@ import '../../model/business_logic/shared_services/location_service.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/recommendation.dart';
-import '../../model/repositories/adapters/ar_exploration/ar_site_repository_adapter.dart';
 import '../../model/repositories/interfaces/ar_exploration/ar_site_repository.dart';
 import '../../model/repositories/interfaces/recommendation/recommendation_repository.dart';
 
@@ -26,13 +25,11 @@ class NearbyRecommendationVm extends ChangeNotifier {
   final PermissionService _permissionService;
 
   NearbyRecommendationVm(
-    this._repository, {
-    ARSiteRepository? arSiteRepository,
+    this._repository,
+    this._arSiteRepository, {
     LocationService? locationService,
     PermissionService? permissionService,
-  }) : _arSiteRepository =
-           arSiteRepository ?? SupabaseARSiteRepositoryAdapter(),
-       _locationService = locationService ?? LocationService(),
+  }) : _locationService = locationService ?? LocationService(),
        _permissionService = permissionService ?? PermissionService();
 
   bool _isLoading = false;
