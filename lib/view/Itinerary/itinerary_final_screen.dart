@@ -352,6 +352,7 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
                                         interests:
                                         _vm.draft?.interests.toList() ??
                                             const [],
+                                        userId: widget.userId,
                                       ),
                                 ),
                               ).then((updated) {

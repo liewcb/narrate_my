@@ -100,16 +100,18 @@ class ItineraryValidator {
   /// per-leg travel time, daily window, start < end) always run.
   ///
   /// [customizationMode] separates MANUAL EDIT STOP customization from
-  /// ITINERARY GENERATION validation. When true, route/chain feasibility
-  /// (routing availability, inter-stop overlap, travel-time limits and
-  /// pace capacity) is treated as INFORMATION ONLY and never rejects the
-  /// traveler's edit. Always kept, in every mode: completed-stop
+  /// ITINERARY GENERATION validation. When true it means:
+  ///   NO ROUTE VALIDATION, NO TRAVEL-TIME VALIDATION,
+  ///   NO INTER-STOP SCHEDULE VALIDATION, NO DAILY EXPLORATION-WINDOW
+  ///   REJECTION, NO SCHEDULE OPTIMIZATION, NO pace-buffer capacity.
+  /// Time overlaps with other stops are allowed and nothing is repaired.
+  /// Only genuine data/business validation remains: completed-stop
   /// immutability, candidate place identity (duplicate placeId, valid
-  /// coordinates), operating-hour business rules, basic per-stop time
-  /// validity (start < end, duration consistency) and the absolute
-  /// daily schedule window. Itinerary generation, candidate retrieval,
-  /// recommendation and all other modules keep full validation because
-  /// the default is false.
+  /// coordinates), operating hours (an explicit project rule, evaluated
+  /// on the itinerary day date), and basic per-stop time validity
+  /// (end after start, duration == end − start — midnight-aware).
+  /// With the default `false` the FULL generation-time validation applies
+  /// unchanged for every other module.
   Future<ItineraryValidationResult> validateResultingDay({
     required List<ItineraryStop> dayStops,
     required DateTime dayDate,
@@ -204,7 +206,17 @@ class ItineraryValidator {
       final endMin = _toMinutes(stop.endTime);
       final duration = stop.durationMinutes;
 
-      if (endMin <= startMin || duration != endMin - startMin) {
+      // Basic time validity. In customization mode this is compared with
+      // real DateTime arithmetic so a traveler's late/long visit is
+      // checked only against itself (end after start, consistent
+      // duration) — never against the day's other stops or window.
+      final invalidOrder = customizationMode
+          ? !stop.endTime.isAfter(stop.startTime)
+          : endMin <= startMin;
+      final expectedDuration = customizationMode
+          ? stop.endTime.difference(stop.startTime).inMinutes
+          : endMin - startMin;
+      if (invalidOrder || duration != expectedDuration) {
         issues.add(ItineraryValidationIssue(
           code: ItineraryValidationCodes.visitDurationInvalid,
           message:
@@ -217,7 +229,11 @@ class ItineraryValidator {
 
       visitTotal += duration;
 
-      if (startMin < window.startMinutes || endMin > window.endMinutes) {
+      // The daily exploration window is a GENERATION constraint. Manual
+      // Edit Stop customization may schedule outside it (Rule: exploration
+      // window = IGNORE in customization mode).
+      if (!customizationMode &&
+          (startMin < window.startMinutes || endMin > window.endMinutes)) {
         issues.add(ItineraryValidationIssue(
           code: ItineraryValidationCodes.dayWindowExceeded,
           message: 'This change makes $dayLabel exceed the available schedule. '

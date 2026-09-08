@@ -83,6 +83,28 @@ class _Step3AddPlaceBody extends StatelessWidget {
     );
   }
 
+  /// Shows a confirmation dialog before removing a must‑visit place.
+  Future<void> _confirmRemoveMustVisit(
+      BuildContext context,
+      String placeId,
+      Step3AddPlaceVM vm,
+      ) async {
+    final confirmed = await showConfirmationDialog(
+      context: context,
+      title: 'Remove must‑visit?',
+      message: 'Are you sure you want to remove this place from your must‑visit list?',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Cancel',
+      confirmColor: AppColors.dangerBg,
+      icon: Icons.delete_outline_rounded,
+      iconBgColor: AppColors.dangerBg,
+      iconColor: AppColors.dangerBg,
+    );
+    if (confirmed == true) {
+      vm.removeMustVisit(placeId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<Step3AddPlaceVM>();
@@ -142,7 +164,7 @@ class _Step3AddPlaceBody extends StatelessWidget {
                     const SizedBox(height: 14),
                     _SelectedChips(
                       selectedEntries: vm.mustVisitEntries,
-                      onRemove: vm.removeMustVisit,
+                      onRemove: (placeId) => _confirmRemoveMustVisit(context, placeId, vm),
                     ),
                     const SizedBox(height: 14),
                     _SearchBar(onChanged: vm.searchPlaces),
@@ -470,7 +492,6 @@ class _HotspotBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-
     );
   }
 }

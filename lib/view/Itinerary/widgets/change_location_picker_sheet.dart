@@ -15,9 +15,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/config/api_keys.dart';
+import '../../../core/config/itinerary_constants.dart';
+import '../../../core/services/database_manager.dart';
 import '../../../core/services/google_maps_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/business_logic/itinerary_service/change_location_service.dart';
+import '../../../model/business_logic/itinerary_service/custom_place_service.dart';
+import '../../../model/business_logic/itinerary_service/place_candidate_validation.dart';
+import '../../../model/entities/coordinates.dart';
 import '../../../model/entities/itinerary_stop.dart';
 import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/change_location_vm.dart';
@@ -27,15 +32,23 @@ class ChangeLocationPickerSheet extends StatefulWidget {
   /// The stop currently being replaced (provides itineraryId + stopId).
   final ItineraryStop stop;
 
-  /// In-memory place IDs already scheduled on the temporary itinerary —
-  /// duplicates are hard-filtered BEFORE the AI sees any candidate.
+  /// STABLE place ids already scheduled on the WHOLE temporary itinerary —
+  /// duplicates are hard-filtered BEFORE anything is displayed.
   final Set<String> scheduledPlaceIds;
 
-  /// Trip date of the stop's day (opening-hours/date filtering).
+  /// Trip date of the stop's day — opening-hours are evaluated against
+  /// THIS date (never the device date).
   final DateTime tripDate;
 
   final List<String> interests;
   final String explorationTime;
+
+  /// Owner of the bookmarks source ('' = hide the bookmarks section).
+  final String userId;
+
+  /// The existing stops of the SELECTED day (day context for candidate
+  /// range/geography and logging).
+  final List<ExistingStopContext> existingDayStops;
 
   /// Final deterministic validation + replacement. Return a traveler-facing
   /// Problem message on failure, or null on success.
@@ -49,6 +62,8 @@ class ChangeLocationPickerSheet extends StatefulWidget {
     required this.interests,
     required this.explorationTime,
     required this.onUsePlace,
+    this.userId = '',
+    this.existingDayStops = const [],
   });
 
   @override
@@ -65,10 +80,23 @@ class _ChangeLocationPickerSheetState extends State<ChangeLocationPickerSheet> {
   bool _isSearching = false;
   String? _searchError;
 
+  List<Place> _bookmarks = [];
+  bool _isLoadingBookmarks = false;
+
   @override
   void initState() {
     super.initState();
+    debugPrint('[EDIT_DAY_CONTEXT] change-place-sheet '
+        'date=${widget.tripDate.toIso8601String().substring(0, 10)} '
+        'currentStop=${widget.stop.placeId} '
+        'dayStops=${widget.existingDayStops.length} '
+        'itineraryUsed=${widget.scheduledPlaceIds.length}');
     _vm = ChangeLocationViewModel(stop: widget.stop);
+    _loadRecommendations();
+    _loadBookmarks();
+  }
+
+  void _loadRecommendations() {
     _vm.loadPreviewRecommendations(
       scheduledPlaceIds: widget.scheduledPlaceIds,
       tripDate: widget.tripDate,
@@ -76,6 +104,120 @@ class _ChangeLocationPickerSheetState extends State<ChangeLocationPickerSheet> {
       interests: widget.interests,
       explorationTime: widget.explorationTime,
     );
+  }
+
+  /// Geographic centre of the SELECTED day: centroid of the day's stops,
+  /// falling back to the current stop's own coordinates.
+  Coordinates? get _dayCenter {
+    double lat = 0, lng = 0;
+    var n = 0;
+    for (final s in widget.existingDayStops) {
+      final p = s.place;
+      if (p.placeLatitude == 0 && p.placeLongitude == 0) continue;
+      lat += p.placeLatitude;
+      lng += p.placeLongitude;
+      n++;
+    }
+    if (n > 0) return Coordinates(latitude: lat / n, longitude: lng / n);
+    final cur = widget.stop.place;
+    if (cur != null &&
+        !(cur.placeLatitude == 0 && cur.placeLongitude == 0)) {
+      return cur.coordinates;
+    }
+    return null;
+  }
+
+  /// Run a fresh candidate list through the SAME central pipeline used by
+  /// Add Place / recommendations / bookmarks. Invalid candidates never
+  /// reach the UI.
+  List<Place> _validateCandidates(List<Place> raw, String stage) {
+    var invalid = 0, duplicates = 0, closed = 0;
+    final valid = <Place>[];
+    final seen = <String>{};
+    for (final place in raw) {
+      if (!seen.add(place.placeId)) continue;
+      final result = PlaceCandidateValidation.validate(
+        place,
+        stage: stage,
+        dayDate: widget.tripDate,
+        usedPlaceIds: widget.scheduledPlaceIds,
+        dayCenter: _dayCenter,
+        maxRadiusKm: ItineraryConstants.maxSearchRadiusKm,
+      );
+      if (result.isValid) {
+        valid.add(place);
+      } else {
+        switch (result.code) {
+          case CandidateIssueCode.duplicate:
+            duplicates++;
+            debugPrint('[EDIT_DUPLICATE] $stage filtered ${place.placeId} '
+                '— already scheduled in this itinerary');
+            break;
+          case CandidateIssueCode.openingHours:
+            closed++;
+            break;
+          default:
+            invalid++;
+            break;
+        }
+      }
+    }
+    debugPrint('[EDIT_SEARCH_FILTER] stage=$stage raw=${raw.length} '
+        'invalid=$invalid duplicate=$duplicates closed=$closed '
+        'valid=${valid.length}');
+    return valid;
+  }
+
+  /// Load the traveler's bookmarks and validate every one against the
+  /// CURRENT itinerary day. Invalid-for-this-day bookmarks are filtered
+  /// from this selection UI ONLY — never deleted from the database.
+  Future<void> _loadBookmarks() async {
+    if (widget.userId.isEmpty) {
+      _bookmarks = [];
+      return;
+    }
+    setState(() => _isLoadingBookmarks = true);
+    try {
+      final dtos = await DatabaseManager()
+          .bookmarkRepository
+          .getBookmarksWithPlaces(widget.userId);
+      debugPrint('[EDIT_BOOKMARK] loaded=${dtos.length} '
+          'dayDate=${widget.tripDate.toIso8601String().substring(0, 10)}');
+      final valid = _validateCandidates(
+          dtos.map((d) => d.place).toList(), 'BOOKMARK');
+      debugPrint('[EDIT_BOOKMARK_VALIDATE] kept=${valid.length} '
+          'filtered=${dtos.length - valid.length} (bookmarks themselves '
+          'are NOT deleted)');
+      if (!mounted) return;
+      setState(() => _bookmarks = valid);
+    } catch (e) {
+      debugPrint('[EDIT_BOOKMARK] load failed: $e');
+      if (!mounted) return;
+      setState(() => _bookmarks = []);
+    } finally {
+      if (mounted) setState(() => _isLoadingBookmarks = false);
+    }
+  }
+
+  /// Pull-to-refresh: actually reload recommendations (service search),
+  /// bookmarks and the last search — never a plain setState.
+  Future<void> _refreshAll() async {
+    debugPrint('[EDIT_REFRESH] START change-place sheet '
+        'date=${widget.tripDate.toIso8601String().substring(0, 10)}');
+    _loadRecommendations();
+    await _loadBookmarks();
+    final q = _queryController.text.trim();
+    if (q.isNotEmpty) {
+      await _search(q);
+    } else if (!mounted) {
+      return;
+    } else {
+      setState(() {
+        _results = [];
+        _searchError = null;
+      });
+    }
+    debugPrint('[EDIT_REFRESH] COMPLETE');
   }
 
   @override
@@ -86,9 +228,12 @@ class _ChangeLocationPickerSheetState extends State<ChangeLocationPickerSheet> {
   }
 
   /// Opens the EXISTING ViewPlaceDetailScreen in replacement mode for the
-  /// tapped place (AI recommendation or manual search result). Both paths
-  /// share the same final validation via [widget.onUsePlace].
+  /// tapped place (AI recommendation, bookmark or manual search result).
+  /// ALL paths share the same final validation via [widget.onUsePlace].
   Future<void> _openPlaceDetail(Place place) async {
+    debugPrint('[EDIT_CHANGE_PLACE] picked ${place.placeId}'
+        '(${place.placeName}) for stop ${widget.stop.placeId} on '
+        '${widget.tripDate.toIso8601String().substring(0, 10)}');
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -108,6 +253,9 @@ class _ChangeLocationPickerSheetState extends State<ChangeLocationPickerSheet> {
 
   Future<void> _search(String query) async {
     final trimmed = query.trim();
+    debugPrint('[EDIT_SEARCH_QUERY] date='
+        '${widget.tripDate.toIso8601String().substring(0, 10)} '
+        'query="$trimmed"');
     if (trimmed.isEmpty) {
       setState(() {
         _results = [];
@@ -122,19 +270,33 @@ class _ChangeLocationPickerSheetState extends State<ChangeLocationPickerSheet> {
     });
 
     try {
-      final results = await _mapsService.searchTextPlaces(query: trimmed);
+      debugPrint('[EDIT_SEARCH] started — service text search');
+      final center = _dayCenter;
+      final raw = await _mapsService.searchTextPlaces(
+        query: trimmed,
+        latitude: center?.latitude,
+        longitude: center?.longitude,
+      );
+      if (!mounted) return;
+      debugPrint('[EDIT_SEARCH_RESULT] raw=${raw.length}');
+
+      final results = _validateCandidates(raw, 'SEARCH');
       if (!mounted) return;
       setState(() {
         _results = results;
         if (results.isEmpty) {
-          _searchError = 'No places found. Try a different search.';
+          _searchError = raw.isEmpty
+              ? 'No places found. Try a different search.'
+              : 'No valid places were found for this day.';
         }
       });
-    } catch (_) {
+      debugPrint('[EDIT_SEARCH] completed — valid=${results.length}');
+    } catch (e) {
+      debugPrint('[EDIT_SEARCH] ERROR: $e');
       if (!mounted) return;
       setState(() {
         _results = [];
-        _searchError = 'Could not search places. Check your connection.';
+        _searchError = 'Search could not be completed. Please try again.';
       });
     } finally {
       if (mounted) setState(() => _isSearching = false);
@@ -151,31 +313,36 @@ class _ChangeLocationPickerSheetState extends State<ChangeLocationPickerSheet> {
           top: 16,
           bottom: MediaQuery.of(context).viewInsets.bottom + 16,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.moduleBorder,
-                  borderRadius: BorderRadius.circular(2),
+        child: RefreshIndicator(
+          onRefresh: _refreshAll,
+          color: AppColors.accent,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.moduleBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Change Location',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.ink,
-              ),
-            ),
-            const SizedBox(height: 16),
+                const SizedBox(height: 16),
+                const Text(
+                  'Change Location',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 16),
 
             // ── AI recommendations / problem state ──
             ListenableBuilder(
@@ -230,6 +397,9 @@ class _ChangeLocationPickerSheetState extends State<ChangeLocationPickerSheet> {
                 return _buildRecommendations();
               },
             ),
+
+            // ── Bookmarks (validated for THIS day; never deleted) ──
+            _buildBookmarksSection(),
 
             // ── Manual search (existing behavior) ──
             const Text(
@@ -323,8 +493,79 @@ class _ChangeLocationPickerSheetState extends State<ChangeLocationPickerSheet> {
                 ),
               ),
           ],
+          ),
         ),
       ),
+      ),
+    );
+  }
+
+  /// Bookmarks validated through the SAME central candidate pipeline as
+  /// search / recommendations. Filtered entries stay untouched in the
+  /// database — they are only hidden from this selection UI.
+  Widget _buildBookmarksSection() {
+    if (widget.userId.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        const Row(
+          children: [
+            Icon(Icons.bookmark_border, size: 14, color: AppColors.accent),
+            SizedBox(width: 6),
+            Text(
+              'YOUR SAVED PLACES (VALID FOR THIS DAY)',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: AppColors.inkFaint,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (_isLoadingBookmarks)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          )
+        else if (_bookmarks.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'No saved places are valid for this day.',
+              style: TextStyle(fontSize: 13, color: AppColors.inkFaint),
+            ),
+          )
+        else
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.3,
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: const ClampingScrollPhysics(),
+              itemCount: _bookmarks.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final place = _bookmarks[index];
+                return _ManualResultTile(
+                  place: place,
+                  onTap: () => _openPlaceDetail(place),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 

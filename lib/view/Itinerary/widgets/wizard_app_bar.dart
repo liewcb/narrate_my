@@ -1,127 +1,157 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_theme.dart'; // adjust import to your new theme file
+import 'package:provider/provider.dart';
+import '../../../core/theme/colors.dart';
+import '../../../model/business_logic/shared_services/trip_draft_notifier.dart';
+import '../../Itinerary/my_itineraries_screen.dart';
 
-/// App bar with a back button, step indicator, and optional actions.
 class WizardAppBar extends StatelessWidget implements PreferredSizeWidget {
   final int step;
   final int totalSteps;
-  final VoidCallback? onBackPressed;
-  final List<Widget>? actions;
+  final bool showHomeButton;
 
   const WizardAppBar({
     super.key,
     required this.step,
-    this.totalSteps = 5, // Default to 5
-    this.onBackPressed,
-    this.actions,
+    this.totalSteps = 5,
+    this.showHomeButton = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.bg.withOpacity(0.9),
-      // SafeArea automatically pushes the content down below the phone's notch/status bar
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          // Adjust vertical padding here for visual breathing room (16px looks very clean)
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Row(
-            children: [
-              // 1. LEFT SIDE: Back Button
-              SizedBox(
-                width: 32, // Fixed width to balance the right side
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: AppColors.ink),
-                  onPressed: onBackPressed ?? () => Navigator.maybePop(context),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(), // Removes default wide tap margins
-                  alignment: Alignment.centerLeft,
-                ),
-              ),
-
-              const Spacer(),
-
-              // 2. CENTER: Step Indicator
-              Text(
-                'Step $step of $totalSteps',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
-                  color: AppColors.inkFaint,
-                ),
-              ),
-
-              const Spacer(),
-
-              // 3. RIGHT SIDE: Actions or Empty Space (must balance the left side)
-              if (actions != null && actions!.isNotEmpty)
-                Row(children: actions!)
-              else
-                const SizedBox(width: 32), // Exact same width as the back button so text is dead-center
-            ],
-          ),
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      leading: Row(
+        children: [
+          if (step > 1)
+            IconButton(
+              icon: Icon(Icons.arrow_back, color: AppColors.brandCharcoal),
+              onPressed: () => Navigator.pop(context),
+            ),
+          if (step == 1)
+            IconButton(
+              icon: const Icon(Icons.close, color: AppColors.brandCharcoal),
+              onPressed: () => _showExitConfirmation(context),
+            ),
+        ],
+      ),
+      title: Text(
+        'Step $step of $totalSteps',
+        style: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppColors.outline,
+          letterSpacing: 1.2,
         ),
+      ),
+      centerTitle: true,
+      actions: [
+        if (showHomeButton)
+          IconButton(
+            icon: const Icon(Icons.home_outlined, color: AppColors.brandCharcoal),
+            onPressed: () => _navigateToHome(context),
+            tooltip: 'My Itineraries',
+          ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+
+  void _showExitConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Exit trip builder?'),
+        content: const Text(
+          'Your trip progress will be lost if you leave now.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Continue Planning'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MyItinerariesScreen(),
+                ),
+              );
+            },
+            child: const Text('Exit', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToHome(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Go to My Itineraries?'),
+        content: const Text(
+          'Your current trip progress will be saved if you have reached Step 2 or later.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Stay Here'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Save current draft before navigating
+              final draft = context.read<TripDraftNotifier>().draft;
+              context.read<TripDraftNotifier>().updateDraft(draft);
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MyItinerariesScreen(),
+                ),
+              );
+            },
+            child: const Text('Go Home'),
+          ),
+        ],
       ),
     );
   }
 
   @override
-  // Standard toolbar height + extra breathing room
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight + 20);
+  Size get preferredSize => const Size.fromHeight(56);
 }
 
-/// Progress bar with active/inactive dots.
+// ─── WizardProgressBar ──────────────────────────────────────────
+
+/// A progress indicator showing which step of the wizard the user is on.
 class WizardProgressBar extends StatelessWidget {
-  final int activeSteps;
-  final int totalSteps;
+  final int activeSteps; // Number of completed steps (1-5)
 
   const WizardProgressBar({
     super.key,
     required this.activeSteps,
-    this.totalSteps = 5,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 12,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            height: 2,
-            width: double.infinity,
-            color: AppColors.moduleBorder.withOpacity(0.6),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(5, (index) {
+        final isActive = index < activeSteps;
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: 32,
+          height: 4,
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.brandGreen : AppColors.outlineLight,
+            borderRadius: BorderRadius.circular(2),
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            // Automatically generates the exact number of dots you need
-            children: List.generate(totalSteps, (i) {
-              final active = i < activeSteps;
-              return Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: active ? AppColors.primary : AppColors.bg,
-                  border: Border.all(
-                    color: active ? AppColors.primary : AppColors.moduleBorder,
-                    width: 2,
-                  ),
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.bg, width: 2),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
+        );
+      }),
     );
   }
 }

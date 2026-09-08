@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/routes/app_routes.dart';
 import '../../core/theme/colors.dart';
 import '../../model/entities/destination.dart';
 import '../../viewmodel/Itinerary/destination_choice_vm.dart';
 import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
+import 'my_itineraries_screen.dart';
 import 'trip_customization_screen.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 
@@ -97,20 +99,15 @@ class _Step1WhereToBody extends StatelessWidget {
             ),
           ),
           _StickyFooter(
-            count: selected.length,
-            label: 'Continue to Trip Dates',
+            selectedCount: selected.length,
             onContinue: () {
               try {
                 final notifier = context.read<TripDraftNotifier>();
                 final currentDraft = notifier.draft;
-
-                // Merge new destinations into existing draft instead of replacing it entirely
                 final updatedDraft = currentDraft.copyWith(
                   destinations: vm.selectedDestinations,
                 );
-
                 notifier.updateDraft(updatedDraft);
-
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -127,6 +124,18 @@ class _Step1WhereToBody extends StatelessWidget {
                     ),
                   );
               }
+            },
+            onSkip: () {
+              // Skip destination selection and continue to customization
+              final notifier = context.read<TripDraftNotifier>();
+              final currentDraft = notifier.draft;
+              // Optionally clear destinations or keep existing ones – here we keep them
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TripCustomizationScreen(),
+                ),
+              );
             },
           ),
         ],
@@ -425,19 +434,20 @@ class _PopularGrid extends StatelessWidget {
 }
 
 class _StickyFooter extends StatelessWidget {
-  final int count;
-  final String label;
+  final int selectedCount;
   final VoidCallback onContinue;
+  final VoidCallback onSkip;
 
   const _StickyFooter({
-    required this.count,
-    required this.label,
+    required this.selectedCount,
     required this.onContinue,
+    required this.onSkip,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isEnabled = count > 0;
+    final bool hasSelection = selectedCount > 0;
+    final String placeLabel = selectedCount == 1 ? 'Place' : 'Places';
 
     return Positioned(
       bottom: 0,
@@ -445,43 +455,52 @@ class _StickyFooter extends StatelessWidget {
       right: 0,
       child: Container(
         padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 32,
-          bottom: MediaQuery.of(context).padding.bottom + 24,
+          left: 24,
+          right: 24,
+          top: 16,
+          bottom: MediaQuery.of(context).padding.bottom + 16,
         ),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.creamBg.withOpacity(0.0),
-              AppColors.creamBg.withOpacity(1.0),
-            ],
-            stops: const [0.0, 0.7],
-          ),
+          color: AppColors.creamBg.withOpacity(0.95),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A000000),
+              offset: Offset(0, -4),
+              blurRadius: 16,
+            ),
+          ],
         ),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.brandTerracotta,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 56),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-            elevation: 4,
-            shadowColor: AppColors.brandTerracotta.withOpacity(0.3),
-          ),
-          onPressed: isEnabled ? onContinue : null,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$label ($count Places)',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.arrow_forward, size: 20),
-            ],
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (hasSelection)
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brandTerracotta,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 56),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                onPressed: onContinue,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continue with $selectedCount $placeLabel',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward, size: 20),
+                  ],
+                ),
+              )
+          ],
         ),
       ),
     );

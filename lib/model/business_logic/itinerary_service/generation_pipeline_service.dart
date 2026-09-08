@@ -114,8 +114,8 @@ class ItineraryResult {
     List<String> unretrievableMustVisits = const [],
   }) {
     assert(
-      status != null || travelerMessage != null,
-      'Either a status or a traveler-safe message is required.',
+    status != null || travelerMessage != null,
+    'Either a status or a traveler-safe message is required.',
     );
     return ItineraryResult(
       success: false,
@@ -251,7 +251,7 @@ class ItineraryGenerationPipeline {
         // a slow network can never push the AI stage out of its window.
         candidatePool = await _candidateRetrieval
             .retrieveCandidates(request: request,
-            )
+        )
             .timeout(remainingPreprocessing());
       } on TimeoutException {
         debugPrint('[DART PREPROCESSING] status=TIMEOUT (retrieval)');
@@ -301,10 +301,10 @@ class ItineraryGenerationPipeline {
           request: request,
           alreadySeenIds: registry.placeIds,
           radiusMultiplier: ItineraryConstants.expansionMultiplier,
-            )
+        )
             .timeout(
-              remainingPreprocessing(),
-              onTimeout: () => const CandidatePool(attractions: [], food: []),
+          remainingPreprocessing(),
+          onTimeout: () => const CandidatePool(attractions: [], food: []),
         );
 
         final seen = Set<String>.of(registry.placeIds);
@@ -356,7 +356,7 @@ class ItineraryGenerationPipeline {
           requestedMustVisitIds: request.mustVisitPlaceIds,
           alreadyRetrievedIds: registry.placeIds,
           mustVisitNames: request.mustVisitPlaceIds, // ids may be names
-              searchCenter: request.primaryCoordinates,
+          searchCenter: request.primaryCoordinates,
           destinationName: request.destinationNames.isNotEmpty
               ? request.destinationNames.first
               : null,
@@ -482,10 +482,10 @@ class ItineraryGenerationPipeline {
           request: request,
           alreadySeenIds: registry.placeIds,
           radiusMultiplier: ItineraryConstants.expansionMultiplier,
-            )
+        )
             .timeout(
-              remainingPreprocessing(),
-              onTimeout: () => const CandidatePool(attractions: [], food: []),
+          remainingPreprocessing(),
+          onTimeout: () => const CandidatePool(attractions: [], food: []),
         );
 
         final seen = Set<String>.of(registry.placeIds);
@@ -715,7 +715,7 @@ class ItineraryGenerationPipeline {
         plan: aiAttempt.plan!,
         request: request,
         knownIds: aiCandidateIds,
-              scored: scored,
+        scored: scored,
         mustVisitIds: effectiveMustVisitIds,
         placeIdToDestination: placeIdToDestination,
       )
@@ -1024,15 +1024,15 @@ class ItineraryGenerationPipeline {
   /// Maps one validation issue to its traveler-facing status. Issues that do
   /// not carry traveler-relevant information return null.
   ItineraryGenerationStatus? _constraintIssueStatus(
-    AiValidationIssue issue,
-    Set<String> mustVisitIds,
-  ) {
+      AiValidationIssue issue,
+      Set<String> mustVisitIds,
+      ) {
     switch (issue.type) {
       case 'must_visit':
         return ItineraryGenerationStatus.mustVisitUnavailable;
       case 'destination_allocation':
-        // Only a must-visit outside its planned destination is traveler
-        // facing; generic allocation drift is repaired silently.
+      // Only a must-visit outside its planned destination is traveler
+      // facing; generic allocation drift is repaired silently.
         final pid = issue.placeId;
         if (pid != null && mustVisitIds.contains(pid)) {
           return ItineraryGenerationStatus.mustVisitOutsideDestination;
@@ -1041,8 +1041,8 @@ class ItineraryGenerationPipeline {
       case 'route_jump':
         return ItineraryGenerationStatus.travelDistanceTooLong;
       case 'window':
-        // Scheduled outside the allowed time window — closest traveler
-        // semantic is an opening-hours/time-window conflict.
+      // Scheduled outside the allowed time window — closest traveler
+      // semantic is an opening-hours/time-window conflict.
         return ItineraryGenerationStatus.openingHoursConflict;
       default:
         return null;
@@ -1134,21 +1134,21 @@ class ItineraryGenerationPipeline {
     PlannerRecommendation outcome;
     try {
       outcome = await _aiService.generatePlannerRecommendation(
-      prompt,
-      deadline: deadline,
-    )
+        prompt,
+        deadline: deadline,
+      )
           .timeout(remaining);
     } on TimeoutException {
       return (
-        plan: null,
-        status: 'AI_TIMEOUT',
-        attempts: <ProviderAiAttempt>[],
+      plan: null,
+      status: 'AI_TIMEOUT',
+      attempts: <ProviderAiAttempt>[],
       );
     } catch (_) {
       return (
-        plan: null,
-        status: 'AI_PROVIDER_ERROR',
-        attempts: <ProviderAiAttempt>[],
+      plan: null,
+      status: 'AI_PROVIDER_ERROR',
+      attempts: <ProviderAiAttempt>[],
       );
     }
 
@@ -1224,11 +1224,11 @@ class ItineraryGenerationPipeline {
     }
     final ranked = List<ScoredAttraction>.of(scored)
       ..sort((a, b) => b.score.compareTo(a.score));
-      for (var d = 0; d < lists.length; d++) {
-        if (lists[d].any(_isFoodScored)) continue;
+    for (var d = 0; d < lists.length; d++) {
+      if (lists[d].any(_isFoodScored)) continue;
       final food = ranked.where(
-        (s) =>
-            _isFoodScored(s) &&
+            (s) =>
+        _isFoodScored(s) &&
             !used.contains(s.place.placeId) &&
             placeIdToDestination[s.place.placeId] == destinations[d],
       );
@@ -1238,8 +1238,8 @@ class ItineraryGenerationPipeline {
     for (var d = 0; d < lists.length; d += 2) {
       if (request.interests.isEmpty || lists[d].length >= target - 1) continue;
       final support = ranked.where(
-        (s) =>
-            !_isFoodScored(s) &&
+            (s) =>
+        !_isFoodScored(s) &&
             s.matchedInterest == 'Unknown' &&
             !used.contains(s.place.placeId) &&
             placeIdToDestination[s.place.placeId] == destinations[d],
@@ -1248,8 +1248,8 @@ class ItineraryGenerationPipeline {
     }
     final oneBased =
         plan.isNotEmpty &&
-        !plan.any((d) => d.dayIndex == 0) &&
-        plan.any((d) => d.dayIndex == request.totalDays);
+            !plan.any((d) => d.dayIndex == 0) &&
+            plan.any((d) => d.dayIndex == request.totalDays);
     final preferred = <int, List<String>>{};
     for (final day in plan) {
       final index = day.dayIndex - (oneBased ? 1 : 0);
@@ -1262,10 +1262,10 @@ class ItineraryGenerationPipeline {
         if (lists[d].length >= target) continue;
         final pool = ranked
             .where((s) =>
-                  !used.contains(s.place.placeId) &&
-                  placeIdToDestination[s.place.placeId] == destinations[d] &&
-                  !_isFoodScored(s),
-            )
+        !used.contains(s.place.placeId) &&
+            placeIdToDestination[s.place.placeId] == destinations[d] &&
+            !_isFoodScored(s),
+        )
             .toList();
         pool.sort((a, b) {
           final primaryA = a.matchedInterest != 'Unknown';
@@ -1291,18 +1291,18 @@ class ItineraryGenerationPipeline {
     return [
       for (var d = 0; d < lists.length; d++)
         AiCompactPlanDay(
-        dayIndex: d,
+          dayIndex: d,
           // Mandatory stops and meals go first so window trimming protects them.
           placeIds: [
             ...lists[d].where((s) => must.contains(s.place.placeId)),
             ...lists[d].where(
-              (s) => !must.contains(s.place.placeId) && _isFoodScored(s),
+                  (s) => !must.contains(s.place.placeId) && _isFoodScored(s),
             ),
             ..._orderByProximity(
               lists[d]
                   .where(
                     (s) => !must.contains(s.place.placeId) && !_isFoodScored(s),
-                  )
+              )
                   .toList(),
             ),
           ].map((s) => s.place.placeId).toList(),
@@ -1459,14 +1459,14 @@ class ItineraryGenerationPipeline {
         request: request,
         scored: scored,
         knownIds: scored.map((s) => s.place.placeId)
-              .toSet(),
+            .toSet(),
         mustVisitIds: mustVisitIds,
         placeIdToDestination: {
           for (final s in scored)
             s.place.placeId: _destinationForPlace(request, s.place),
         },
       ) ??
-      const [];
+          const [];
 
   /// Greedy nearest-neighbour ordering: start from the first place, then
   /// repeatedly pick the still-unplaced attraction closest to the last one.
@@ -1548,27 +1548,27 @@ class ItineraryGenerationPipeline {
     final target = ItineraryConstants.planningPoolSize(request.totalDays, pace: request.pace);
     for (final entry in allocation.entries) {
       final pool =
-          scored
-              .where((s) => _destinationForPlace(request, s.place) == entry.key)
-              .toList()
+      scored
+          .where((s) => _destinationForPlace(request, s.place) == entry.key)
+          .toList()
         ..sort((a, b) => b.score.compareTo(a.score));
       final quota = (target * entry.value / request.totalDays).ceil();
       for (final s in pool.where(_isFoodScored).take(entry.value * 2)) {
         add(s);
       }
       for (final s
-          in pool
-              .where((s) => !_isFoodScored(s) && s.matchedInterest == 'Unknown')
-              .take(entry.value)) {
+      in pool
+          .where((s) => !_isFoodScored(s) && s.matchedInterest == 'Unknown')
+          .take(entry.value)) {
         add(s);
       }
       final primary = pool.where((s) => !_isFoodScored(s) &&
           s.matchedInterest != 'Unknown' && !selected.containsKey(s.place.placeId)).toList();
       while (primary.isNotEmpty && selected.values.where((s) =>
-          _destinationForPlace(request, s.place) == entry.key).length < quota) {
+      _destinationForPlace(request, s.place) == entry.key).length < quota) {
         primary.sort((a, b) {
           int count(ScoredAttraction candidate) => selected.values.where((s) =>
-              _destinationForPlace(request, s.place) == entry.key &&
+          _destinationForPlace(request, s.place) == entry.key &&
               CandidateDiversity.groupFor(s.place.types) ==
                   CandidateDiversity.groupFor(candidate.place.types)).length;
           final difference = count(a).compareTo(count(b));
@@ -1578,10 +1578,10 @@ class ItineraryGenerationPipeline {
       }
       for (final s in pool) {
         if (selected.values
-                .where(
-                  (s) => _destinationForPlace(request, s.place) == entry.key,
-                )
-                .length >=
+            .where(
+              (s) => _destinationForPlace(request, s.place) == entry.key,
+        )
+            .length >=
             quota) {
           break;
         }
@@ -1709,8 +1709,8 @@ class ItineraryGenerationPipeline {
       Coordinates? coord,
       DateTime startDate,
       DateTime endDate,
-    Duration budget,
-  ) async {
+      Duration budget,
+      ) async {
     try {
       if (coord != null && budget > Duration.zero) {
         return await _weather.getDailyForecast(
@@ -1718,12 +1718,12 @@ class ItineraryGenerationPipeline {
           longitude: coord.longitude,
           startDate: startDate,
           endDate: endDate,
-            )
+        )
             .timeout(
-              budget < const Duration(seconds: 2)
-                  ? budget
-                  : const Duration(seconds: 2),
-            );
+          budget < const Duration(seconds: 2)
+              ? budget
+              : const Duration(seconds: 2),
+        );
       }
     } catch (e) {
       debugPrint('[WEATHER] Fetch failed: $e');
