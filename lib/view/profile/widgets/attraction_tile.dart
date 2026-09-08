@@ -12,21 +12,28 @@ import '../../../core/theme/app_theme.dart';
 /// `pubspec.yaml`); falls back to a tinted-gradient background with a
 /// [kAttractionCategoryIcons] icon for any category without a photo yet.
 class AttractionTile extends StatelessWidget {
+  /// The translated text shown on the tile.
   final String label;
+
+  /// The stable English option value (e.g. `'Heritage'`) used to look up
+  /// the tile's photo/icon — kept separate from [label] so the lookup still
+  /// works once [label] is a translated string in a non-English language.
+  final String value;
   final bool selected;
   final VoidCallback onTap;
 
   const AttractionTile({
     super.key,
     required this.label,
+    required this.value,
     required this.selected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final imageAsset = kAttractionCategoryImages[label];
-    final icon = kAttractionCategoryIcons[label] ?? Icons.place;
+    final imageAsset = kAttractionCategoryImages[value];
+    final icon = kAttractionCategoryIcons[value] ?? Icons.place;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -152,6 +159,7 @@ class AttractionTileGrid extends StatelessWidget {
         final option = options[i];
         return AttractionTile(
           label: optionLabel(option),
+          value: option,
           selected: selected.contains(option),
           onTap: () => onToggle(option),
         );
