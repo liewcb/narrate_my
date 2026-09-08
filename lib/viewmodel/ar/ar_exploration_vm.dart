@@ -39,6 +39,7 @@ class ARExplorationViewModel extends ChangeNotifier {
   // --- Diagnostics for the debug HUD ---
   double? userLat;
   double? userLng;
+  double? userAltitude;
   int rawFetchedCount = 0;
   List<ARMarker> allComputedMarkers = [];
 
@@ -115,6 +116,7 @@ class ARExplorationViewModel extends ChangeNotifier {
     devicePitchDegrees = scene.devicePitchDegrees;
     userLat = scene.userLat;
     userLng = scene.userLng;
+    userAltitude = scene.userAltitude;
     rawFetchedCount = scene.rawFetchedCount;
     allComputedMarkers = scene.allComputedMarkers;
     notifyListeners();
