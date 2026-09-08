@@ -110,7 +110,7 @@ void main() {
         final location = _FakeLocationService();
         final viewModel = NearbyRecommendationVm(
           repository,
-          arSiteRepository: _FakeArSiteRepository(),
+          _FakeArSiteRepository(),
           locationService: location,
           permissionService: _GrantedPermissionService(),
         );

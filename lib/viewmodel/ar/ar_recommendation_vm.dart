@@ -2,10 +2,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/localization/app_localizations.dart';
 import '../../model/business_logic/shared_services/location_service.dart';
-import '../../model/data_sources/remote/ar_recommendation_remote_data_source.dart';
 import '../../model/entities/ar_object.dart';
 import '../../model/entities/ar_recommendation.dart';
-import '../../model/repositories/adapters/recommendation/ar_recommendation_repository_adapter.dart';
 import '../../model/repositories/interfaces/recommendation/ar_recommendation_repository.dart';
 
 class ARRecommendationVm extends ChangeNotifier {
@@ -13,16 +11,11 @@ class ARRecommendationVm extends ChangeNotifier {
   final LocationService _locationService;
   final List<String> _cameraMarkerIds;
 
-  ARRecommendationVm({
-    ARRecommendationRepository? repository,
+  ARRecommendationVm(
+    this._repository, {
     LocationService? locationService,
     List<String> cameraMarkerIds = const [],
-  }) : _repository =
-           repository ??
-           ARRecommendationRepositoryAdapter(
-             ARRecommendationRemoteDataSource(),
-           ),
-       _locationService = locationService ?? LocationService(),
+  }) : _locationService = locationService ?? LocationService(),
        _cameraMarkerIds = List.unmodifiable(cameraMarkerIds);
 
   bool _isVisible = false;

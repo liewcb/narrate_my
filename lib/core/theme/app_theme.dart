@@ -200,23 +200,10 @@ class AppTheme {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// ADDED FROM itinerary_theme_tokens.dart (merged)
+// Itinerary theme tokens
 // ──────────────────────────────────────────────────────────────────────
-//
-// RESTORED (2nd time) — these four classes were dropped by an earlier
-// commit (a Module 5 edit built from a stale local copy of this file,
-// made before this content was merged in). The first restore attempt
-// also failed to make it into the commit (most likely because the file
-// was open in the IDE and got overwritten before `git add` ran).
-// Restored verbatim from Joel's commit 91627d8; nothing here was
-// authored by Module 5, just put back.
-//
-// IMPORTANT: close this file's editor tab in Android Studio BEFORE
-// running `git add` / `git commit`, so the IDE doesn't silently
-// overwrite this on-disk change with a stale in-memory copy again.
 
-/// Itinerary screens' text styles, expressed with the current theme's
-/// palette and Nunito typeface.
+/// Text styles shared by itinerary screens.
 class AppTextStyles {
   AppTextStyles._();
 
@@ -258,7 +245,7 @@ class AppTextStyles {
   );
 }
 
-/// Corner radius tokens used by itinerary screens.
+/// Corner radius tokens shared by itinerary screens.
 class AppRadius {
   AppRadius._();
 
@@ -267,7 +254,7 @@ class AppRadius {
   static const double pill = 999.0;
 }
 
-/// Spacing tokens used by itinerary screens (mapped to the theme grid).
+/// Spacing tokens shared by itinerary screens.
 class AppSpacing {
   AppSpacing._();
 
@@ -279,7 +266,7 @@ class AppSpacing {
   static const double pillPaddingY = 8.0;
 }
 
-/// Alias token for soft shadows used on cards.
+/// Soft shadow color shared by cards.
 class AppShadows {
   AppShadows._();
 

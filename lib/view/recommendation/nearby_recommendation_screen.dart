@@ -8,7 +8,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/localization/locale_vm.dart';
 import '../../core/services/map_marker_layout.dart';
-import '../../model/data_sources/remote/recommendation_data_source.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/recommendation.dart';
@@ -27,11 +26,9 @@ class NearbyRecommendationScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) {
-        final dataSource = RecommendationRemoteDataSource();
-        final repository = RecommendationRepositoryAdapter(dataSource);
         return NearbyRecommendationVm(
-          repository,
-          arSiteRepository: SupabaseARSiteRepositoryAdapter(),
+          RecommendationRepositoryAdapter(),
+          SupabaseARSiteRepositoryAdapter(),
         )..loadRecommendations();
       },
       child: _NearbyRecommendationMap(onOpenAr: onOpenAr),

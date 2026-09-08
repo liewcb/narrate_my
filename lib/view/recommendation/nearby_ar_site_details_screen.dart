@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,11 +9,11 @@ import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/google_maps_directions_button.dart';
 import '../../core/widgets/place_image.dart';
-import '../../model/data_sources/remote/ar_site_place_remote_data_source.dart';
 import '../../model/entities/ar_site.dart';
 import '../../model/entities/coordinates.dart';
-import '../../model/entities/place.dart';
+import '../../model/repositories/adapters/ar_exploration/ar_site_place_repository_adapter.dart';
 import '../../viewmodel/bookmark_vm.dart';
+import '../../viewmodel/recommendation/nearby_ar_site_details_vm.dart';
 import '../profile/auth/login_screen.dart';
 
 Future<void> showNearbyArSiteDetails(
@@ -32,8 +34,14 @@ Future<void> showNearbyArSiteDetails(
     backgroundColor: Colors.transparent,
     builder: (_) => FractionallySizedBox(
       heightFactor: 0.82,
-      child: ChangeNotifierProvider(
-        create: (_) => BookmarkVm(),
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => BookmarkVm()),
+          ChangeNotifierProvider(
+            create: (_) =>
+                NearbyArSiteDetailsVm(SupabaseARSitePlaceRepositoryAdapter()),
+          ),
+        ],
         child: _NearbyArSiteDetailsScreen(
           site: site,
           userLocation: userLocation,
@@ -62,36 +70,24 @@ class _NearbyArSiteDetailsScreen extends StatefulWidget {
 
 class _NearbyArSiteDetailsScreenState
     extends State<_NearbyArSiteDetailsScreen> {
-  final ARSitePlaceRemoteDataSource _placeSource =
-      ARSitePlaceRemoteDataSource();
-  Place? _place;
-  bool _isLoadingPlace = true;
-
   @override
   void initState() {
     super.initState();
-    _loadPlace();
+    unawaited(_loadPlace());
   }
 
   Future<void> _loadPlace() async {
-    try {
-      final place = await _placeSource.resolvePlace(widget.site);
-      if (!mounted) return;
-      setState(() {
-        _place = place;
-        _isLoadingPlace = false;
-      });
-      if (place != null) {
-        await context.read<BookmarkVm>().load(place.placeId);
-      }
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _isLoadingPlace = false);
+    final detailsViewModel = context.read<NearbyArSiteDetailsVm>();
+    await detailsViewModel.load(widget.site);
+    if (!mounted) return;
+    final place = detailsViewModel.place;
+    if (place != null) {
+      await context.read<BookmarkVm>().load(place.placeId);
     }
   }
 
   Future<void> _handleBookmark(BookmarkVm viewModel) async {
-    final place = _place;
+    final place = context.read<NearbyArSiteDetailsVm>().place;
     if (place == null) return;
     final result = await viewModel.toggleBookmark(
       place,
@@ -135,9 +131,11 @@ class _NearbyArSiteDetailsScreenState
   Widget build(BuildContext context) {
     context.watch<LocaleVm>();
     final bookmarkViewModel = context.watch<BookmarkVm>();
-    final address = widget.site.address ?? _place?.placeAddress;
+    final detailsViewModel = context.watch<NearbyArSiteDetailsVm>();
+    final place = detailsViewModel.place;
+    final address = widget.site.address ?? place?.placeAddress;
     final googlePlaceId =
-        _place?.placeId ??
+        place?.placeId ??
         (widget.site.googlePlaceIds.isEmpty
             ? null
             : widget.site.googlePlaceIds.first);
@@ -204,7 +202,7 @@ class _NearbyArSiteDetailsScreenState
             const SizedBox(height: 20),
             AspectRatio(
               aspectRatio: 16 / 8.5,
-              child: _isLoadingPlace
+              child: detailsViewModel.isLoading
                   ? Container(
                       decoration: BoxDecoration(
                         color: AppColors.moduleBorder.withValues(alpha: 0.35),
@@ -214,7 +212,7 @@ class _NearbyArSiteDetailsScreenState
                       child: const CircularProgressIndicator(),
                     )
                   : PlaceImage(
-                      imageUrl: _place?.placeImageUrl,
+                      imageUrl: place?.placeImageUrl,
                       borderRadius: BorderRadius.circular(16),
                     ),
             ),
@@ -239,10 +237,10 @@ class _NearbyArSiteDetailsScreenState
             _ArBookmarkButton(
               isBookmarked: bookmarkViewModel.isBookmarked,
               isLoading:
-                  _isLoadingPlace ||
+                  detailsViewModel.isLoading ||
                   bookmarkViewModel.isChecking ||
                   bookmarkViewModel.isSaving,
-              isAvailable: _place != null,
+              isAvailable: place != null,
               onPressed: () => _handleBookmark(bookmarkViewModel),
             ),
             if (bookmarkViewModel.statusMessage != null) ...[
