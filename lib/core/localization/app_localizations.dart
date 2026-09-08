@@ -195,7 +195,7 @@ class AppLocalizations {
     'ui.bookmarks': 'Bookmarks',
     'ui.guidance': 'Guidance',
     'ui.guidanceSubtitle': 'Step-by-step walkthroughs for each part of the app.',
-    'ui.arGuide': 'Gui',
+    'ui.arGuide': 'AR Guide',
     'ui.arGuideExplorationTitle': 'Explore in AR',
     'ui.arGuideExplorationBody':
     'Point your camera around a heritage site to discover markers on '
