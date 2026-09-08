@@ -211,6 +211,32 @@ class AppLocalizations {
     'ui.arGuideBack': 'Back',
     'ui.arGuideDone': 'Done',
     'ui.arGuideSkip': 'Skip',
+    'ui.nearbyGuide': 'Nearby Recommendation Guide',
+    'ui.nearbyGuideMapTitle': 'Find Nearby Attractions',
+    'ui.nearbyGuideMapBody':
+    'Open Nearby to see personalized recommendations in blue and AR-enabled '
+        'attractions in red. The badges show the visible range and '
+        'recommendation count.',
+    'ui.nearbyGuideDetailsTitle': 'View Place Details',
+    'ui.nearbyGuideDetailsBody':
+    'Tap any marker to view its photo, address, Google Maps directions, and '
+        'whether AR is available.',
+    'ui.nearbyGuideActionsTitle': 'Explore Available Actions',
+    'ui.nearbyGuideActionsBody':
+    'Scroll down to open an available AR experience or bookmark the '
+        'attraction for later.',
+    'ui.nearbyGuideArTitle': 'Visit the AR Activation Area',
+    'ui.nearbyGuideArBody':
+    'AR unlocks only when you are within the attraction’s activation area. '
+        'Follow Google Maps directions to get there.',
+    'ui.nearbyGuideLoginTitle': 'Log In to Save Places',
+    'ui.nearbyGuideLoginBody':
+    'Guests can explore nearby places, but you must log in before adding an '
+        'attraction to Bookmarks.',
+    'ui.nearbyGuideBookmarksTitle': 'Find Saved Attractions',
+    'ui.nearbyGuideBookmarksBody':
+    'After logging in, open Profile and select Bookmarks to view or revisit '
+        'your saved attractions.',
     'ui.changePassword': 'Change Password',
     'ui.currentPassword': 'Current Password',
     'ui.newPassword': 'New Password',
@@ -564,6 +590,19 @@ class AppLocalizations {
     'ui.arGuideBack': '上一步',
     'ui.arGuideDone': '完成',
     'ui.arGuideSkip': '跳过',
+    'ui.nearbyGuide': '附近推荐指南',
+    'ui.nearbyGuideMapTitle': '发现附近景点',
+    'ui.nearbyGuideMapBody': '打开“附近”查看蓝色的个性化推荐和红色的 AR 景点。顶部标签会显示可见范围和推荐数量。',
+    'ui.nearbyGuideDetailsTitle': '查看景点详情',
+    'ui.nearbyGuideDetailsBody': '点击任意地图标记，查看照片、地址、Google 地图路线以及 AR 是否可用。',
+    'ui.nearbyGuideActionsTitle': '使用景点功能',
+    'ui.nearbyGuideActionsBody': '向下滚动以打开可用的 AR 体验，或收藏景点以便稍后查看。',
+    'ui.nearbyGuideArTitle': '前往 AR 启用区域',
+    'ui.nearbyGuideArBody': '只有进入景点的 AR 启用范围后才能打开 AR。您可以使用 Google 地图导航前往。',
+    'ui.nearbyGuideLoginTitle': '登录后收藏景点',
+    'ui.nearbyGuideLoginBody': '访客可以浏览附近景点，但必须登录后才能将景点加入收藏夹。',
+    'ui.nearbyGuideBookmarksTitle': '查找已收藏景点',
+    'ui.nearbyGuideBookmarksBody': '登录后，打开“个人资料”并选择“收藏夹”，即可查看或再次访问已收藏的景点。',
     'ui.changePassword': '更改密码',
     'ui.currentPassword': '当前密码',
     'ui.newPassword': '新密码',
@@ -917,6 +956,32 @@ class AppLocalizations {
     'ui.arGuideBack': 'Kembali',
     'ui.arGuideDone': 'Selesai',
     'ui.arGuideSkip': 'Langkau',
+    'ui.nearbyGuide': 'Panduan Cadangan Berdekatan',
+    'ui.nearbyGuideMapTitle': 'Cari Tarikan Berdekatan',
+    'ui.nearbyGuideMapBody':
+    'Buka Berdekatan untuk melihat cadangan peribadi berwarna biru dan '
+        'tarikan AR berwarna merah. Lencana menunjukkan julat yang kelihatan '
+        'dan bilangan cadangan.',
+    'ui.nearbyGuideDetailsTitle': 'Lihat Butiran Tempat',
+    'ui.nearbyGuideDetailsBody':
+    'Ketik mana-mana penanda untuk melihat foto, alamat, arah Google Maps '
+        'dan sama ada AR tersedia.',
+    'ui.nearbyGuideActionsTitle': 'Gunakan Tindakan Tersedia',
+    'ui.nearbyGuideActionsBody':
+    'Tatal ke bawah untuk membuka pengalaman AR yang tersedia atau menanda '
+        'tarikan untuk dilihat kemudian.',
+    'ui.nearbyGuideArTitle': 'Pergi ke Kawasan Pengaktifan AR',
+    'ui.nearbyGuideArBody':
+    'AR hanya dibuka apabila anda berada dalam kawasan pengaktifan tarikan. '
+        'Ikuti arah Google Maps untuk ke sana.',
+    'ui.nearbyGuideLoginTitle': 'Log Masuk untuk Menyimpan Tempat',
+    'ui.nearbyGuideLoginBody':
+    'Tetamu boleh meneroka tempat berdekatan, tetapi anda mesti log masuk '
+        'sebelum menambah tarikan pada Penanda Halaman.',
+    'ui.nearbyGuideBookmarksTitle': 'Cari Tarikan yang Disimpan',
+    'ui.nearbyGuideBookmarksBody':
+    'Selepas log masuk, buka Profil dan pilih Penanda Halaman untuk melihat '
+        'atau melawat semula tarikan yang disimpan.',
     'ui.changePassword': 'Tukar Kata Laluan',
     'ui.currentPassword': 'Kata Laluan Semasa',
     'ui.newPassword': 'Kata Laluan Baharu',
@@ -1306,6 +1371,32 @@ class AppLocalizations {
     'ui.arGuideBack': 'Atrás',
     'ui.arGuideDone': 'Listo',
     'ui.arGuideSkip': 'Omitir',
+    'ui.nearbyGuide': 'Guía de Recomendaciones Cercanas',
+    'ui.nearbyGuideMapTitle': 'Encuentra Atracciones Cercanas',
+    'ui.nearbyGuideMapBody':
+    'Abre Cercanas para ver recomendaciones personalizadas en azul y '
+        'atracciones con RA en rojo. Las etiquetas muestran el alcance '
+        'visible y la cantidad de recomendaciones.',
+    'ui.nearbyGuideDetailsTitle': 'Consulta los Detalles',
+    'ui.nearbyGuideDetailsBody':
+    'Toca cualquier marcador para ver su foto, dirección, indicaciones de '
+        'Google Maps y si la RA está disponible.',
+    'ui.nearbyGuideActionsTitle': 'Usa las Acciones Disponibles',
+    'ui.nearbyGuideActionsBody':
+    'Desplázate hacia abajo para abrir una experiencia de RA disponible o '
+        'guardar la atracción para más tarde.',
+    'ui.nearbyGuideArTitle': 'Visita la Zona de Activación de RA',
+    'ui.nearbyGuideArBody':
+    'La RA solo se desbloquea dentro de la zona de activación de la '
+        'atracción. Sigue las indicaciones de Google Maps para llegar.',
+    'ui.nearbyGuideLoginTitle': 'Inicia Sesión para Guardar',
+    'ui.nearbyGuideLoginBody':
+    'Los invitados pueden explorar lugares cercanos, pero deben iniciar '
+        'sesión antes de añadir una atracción a Marcadores.',
+    'ui.nearbyGuideBookmarksTitle': 'Encuentra Atracciones Guardadas',
+    'ui.nearbyGuideBookmarksBody':
+    'Después de iniciar sesión, abre Perfil y selecciona Marcadores para ver '
+        'o volver a visitar tus atracciones guardadas.',
     'ui.changePassword': 'Cambiar Contraseña',
     'ui.currentPassword': 'Contraseña Actual',
     'ui.newPassword': 'Nueva Contraseña',
@@ -1684,6 +1775,32 @@ class AppLocalizations {
     'ui.arGuideBack': 'पीछे',
     'ui.arGuideDone': 'हो गया',
     'ui.arGuideSkip': 'छोड़ें',
+    'ui.nearbyGuide': 'आस-पास सुझाव गाइड',
+    'ui.nearbyGuideMapTitle': 'आस-पास के आकर्षण खोजें',
+    'ui.nearbyGuideMapBody':
+    'नीले रंग में व्यक्तिगत सुझाव और लाल रंग में AR वाले आकर्षण देखने के '
+        'लिए आस-पास खोलें। ऊपर के बैज दिखाई देने वाली दूरी और सुझावों की '
+        'संख्या बताते हैं।',
+    'ui.nearbyGuideDetailsTitle': 'स्थान का विवरण देखें',
+    'ui.nearbyGuideDetailsBody':
+    'फ़ोटो, पता, Google Maps दिशा-निर्देश और AR की उपलब्धता देखने के लिए '
+        'किसी भी मार्कर पर टैप करें।',
+    'ui.nearbyGuideActionsTitle': 'उपलब्ध सुविधाएँ इस्तेमाल करें',
+    'ui.nearbyGuideActionsBody':
+    'उपलब्ध AR अनुभव खोलने या आकर्षण को बाद के लिए बुकमार्क करने हेतु नीचे '
+        'स्क्रॉल करें।',
+    'ui.nearbyGuideArTitle': 'AR सक्रियण क्षेत्र पर जाएँ',
+    'ui.nearbyGuideArBody':
+    'AR तभी खुलेगा जब आप आकर्षण के सक्रियण क्षेत्र के अंदर हों। वहाँ पहुँचने '
+        'के लिए Google Maps के दिशा-निर्देशों का उपयोग करें।',
+    'ui.nearbyGuideLoginTitle': 'स्थान सहेजने के लिए लॉग इन करें',
+    'ui.nearbyGuideLoginBody':
+    'मेहमान आस-पास के स्थान देख सकते हैं, लेकिन आकर्षण को बुकमार्क में जोड़ने '
+        'से पहले लॉग इन करना आवश्यक है।',
+    'ui.nearbyGuideBookmarksTitle': 'सहेजे गए आकर्षण खोजें',
+    'ui.nearbyGuideBookmarksBody':
+    'लॉग इन करने के बाद प्रोफ़ाइल खोलें और अपने सहेजे गए आकर्षण देखने या फिर '
+        'से जाने के लिए बुकमार्क चुनें।',
     'ui.changePassword': 'पासवर्ड बदलें',
     'ui.currentPassword': 'वर्तमान पासवर्ड',
     'ui.newPassword': 'नया पासवर्ड',
