@@ -24,6 +24,7 @@ class ARRecommendationVm extends ChangeNotifier {
   String? _expandedAttractionId;
   ARMarker? _currentMarker;
   List<ARRecommendation> _recommendations = const [];
+  String? _recommendationsLanguageCode;
 
   bool get isVisible => _isVisible;
   bool get isLoading => _isLoading;
@@ -37,7 +38,10 @@ class ARRecommendationVm extends ChangeNotifier {
     _isVisible = true;
     _errorMessage = null;
     notifyListeners();
-    if (_recommendations.isEmpty) await _load(marker);
+    if (_recommendations.isEmpty ||
+        _recommendationsLanguageCode != AppLocalizations.currentCode) {
+      await _load(marker);
+    }
   }
 
   void close() {
@@ -58,6 +62,16 @@ class ARRecommendationVm extends ChangeNotifier {
     if (marker != null) await _load(marker);
   }
 
+  Future<void> refreshForCurrentLanguage() async {
+    final marker = _currentMarker;
+    if (marker == null ||
+        _isLoading ||
+        _recommendationsLanguageCode == AppLocalizations.currentCode) {
+      return;
+    }
+    await _load(marker);
+  }
+
   Future<void> _load(ARMarker marker) async {
     _isLoading = true;
     _errorMessage = null;
@@ -65,6 +79,8 @@ class ARRecommendationVm extends ChangeNotifier {
 
     var latitude = marker.latitude;
     var longitude = marker.longitude;
+    final languageCode = AppLocalizations.currentCode;
+    _recommendationsLanguageCode = languageCode;
     try {
       final position = await _locationService.getCurrentPosition().timeout(
         const Duration(seconds: 20),
@@ -84,6 +100,7 @@ class ARRecommendationVm extends ChangeNotifier {
         latitude: latitude,
         longitude: longitude,
         excludedMarkerIds: exclusions,
+        languageCode: languageCode,
       );
       if (_recommendations.isEmpty) {
         _errorMessage = AppLocalizations.t('ar.noFollowUpAttractions');

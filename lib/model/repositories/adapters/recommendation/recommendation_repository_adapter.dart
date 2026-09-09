@@ -29,6 +29,7 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
   Future<List<Recommendation>> getNearbyRecommendations({
     required double latitude,
     required double longitude,
+    required String languageCode,
     bool forceRefresh = false,
   }) async {
     String? cacheIdentity;
@@ -44,6 +45,7 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
             cacheIdentity: cacheIdentity,
             latitude: latitude,
             longitude: longitude,
+            languageCode: languageCode,
           );
     RecommendationCacheEntry? cached;
     if (cacheKey != null) {
@@ -62,6 +64,7 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
       final dtos = await _remoteDataSource.getNearbyRecommendations(
         latitude: latitude,
         longitude: longitude,
+        languageCode: languageCode,
       );
 
       final origin = Coordinates(latitude: latitude, longitude: longitude);
@@ -118,12 +121,14 @@ class RecommendationRepositoryAdapter implements RecommendationRepository {
     required String cacheIdentity,
     required double latitude,
     required double longitude,
+    required String languageCode,
   }) {
     // The phone cache is intentionally more precise than the shared server
     // bucket so distances do not remain stale after the tourist moves.
     final latitudeBucket = latitude.toStringAsFixed(3);
     final longitudeBucket = longitude.toStringAsFixed(3);
-    return 'nearby:v3:$cacheIdentity:$latitudeBucket:$longitudeBucket';
+    return 'nearby:v4:$languageCode:$cacheIdentity:'
+        '$latitudeBucket:$longitudeBucket';
   }
 
   Future<Recommendation?> _resolveRecommendation(

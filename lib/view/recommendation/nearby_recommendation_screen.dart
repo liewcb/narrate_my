@@ -54,11 +54,28 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
   String? _lastCameraSignature;
   maps.BitmapDescriptor? _recommendationMarker;
   maps.BitmapDescriptor? _arAvailableMarker;
+  String? _lastLanguageCode;
 
   @override
   void initState() {
     super.initState();
     _loadMarkerIcons();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    context.watch<LocaleVm>();
+    final languageCode = AppLocalizations.currentCode;
+    final previousLanguageCode = _lastLanguageCode;
+    _lastLanguageCode = languageCode;
+    if (previousLanguageCode != null && previousLanguageCode != languageCode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.read<NearbyRecommendationVm>().refreshForLanguageChange();
+        }
+      });
+    }
   }
 
   Future<void> _loadMarkerIcons() async {
@@ -81,7 +98,6 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<LocaleVm>();
     final viewModel = context.watch<NearbyRecommendationVm>();
     final location = viewModel.currentLocation;
 

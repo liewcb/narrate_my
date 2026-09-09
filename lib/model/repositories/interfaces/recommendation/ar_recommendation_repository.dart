@@ -7,5 +7,6 @@ abstract class ARRecommendationRepository {
     required double latitude,
     required double longitude,
     required List<String> excludedMarkerIds,
+    required String languageCode,
   });
 }

@@ -108,6 +108,7 @@ class NearbyRecommendationVm extends ChangeNotifier {
       _recommendations = await _repository.getNearbyRecommendations(
         latitude: location.latitude,
         longitude: location.longitude,
+        languageCode: AppLocalizations.currentCode,
         forceRefresh: forceRefresh,
       );
       // The movement threshold is always measured from the position that
@@ -168,6 +169,14 @@ class NearbyRecommendationVm extends ChangeNotifier {
 
   Future<void> refreshRecommendations() =>
       loadRecommendations(forceRefresh: true);
+
+  /// Re-fetches text after the profile language changes while the persistent
+  /// Nearby tab remains mounted. Language-specific phone/server caches may
+  /// still satisfy this request without another Gemini call.
+  Future<void> refreshForLanguageChange() => _loadRecommendations(
+    forceRefresh: false,
+    locationOverride: _currentLocation,
+  );
 
   void _startLocationMonitoring() {
     if (_positionSubscription != null || _isDisposed) return;

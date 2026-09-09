@@ -26,6 +26,9 @@ class ARRecommendationOverlay extends StatelessWidget {
     final vm = context.watch<ARRecommendationVm>();
     context.watch<LocaleVm>();
     if (!vm.isVisible) return const SizedBox.shrink();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) vm.refreshForCurrentLanguage();
+    });
 
     return Positioned.fill(
       child: Material(
@@ -241,9 +244,7 @@ class _ARRecommendationCardState extends State<_ARRecommendationCard> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(AppLocalizations.t('recommendation.loginToBookmarkTitle')),
-        content: Text(
-          AppLocalizations.t('recommendation.loginToBookmarkBody'),
-        ),
+        content: Text(AppLocalizations.t('recommendation.loginToBookmarkBody')),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -332,7 +333,7 @@ class _ARRecommendationCardState extends State<_ARRecommendationCard> {
                         const SizedBox(height: 4),
                         Text(
                           '${recommendation.category}  •  '
-                          '${recommendation.travelSummary}',
+                          '${_localizedTravelSummary(recommendation)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -432,7 +433,7 @@ class _ExpandedRecommendation extends StatelessWidget {
                       ? Icons.directions_walk_rounded
                       : Icons.directions_car_outlined,
                   label: AppLocalizations.t('recommendation.estTravelLabel'),
-                  value: recommendation.travelSummary,
+                  value: _localizedTravelSummary(recommendation),
                 ),
               ),
             ],
@@ -526,6 +527,16 @@ class _ExpandedRecommendation extends StatelessWidget {
       ),
     );
   }
+}
+
+String _localizedTravelSummary(ARRecommendation recommendation) {
+  final key = recommendation.isWalkable
+      ? 'recommendation.walkTravelValue'
+      : 'recommendation.estTravelValue';
+  final minutes = recommendation.isWalkable
+      ? recommendation.estimatedWalkMinutes
+      : recommendation.estimatedDriveMinutes;
+  return AppLocalizations.t(key).replaceFirst('{minutes}', '$minutes');
 }
 
 class _Metric extends StatelessWidget {

@@ -17,6 +17,7 @@ class ARRecommendationRemoteDataSource {
     required double latitude,
     required double longitude,
     required List<String> excludedMarkerIds,
+    required String languageCode,
   }) async {
     try {
       final token = _client.auth.currentSession?.accessToken;
@@ -29,6 +30,7 @@ class ARRecommendationRemoteDataSource {
               'latitude': latitude,
               'longitude': longitude,
               'excluded_marker_ids': excludedMarkerIds,
+              'language_code': languageCode,
             },
             headers: token == null ? null : {'Authorization': 'Bearer $token'},
           )
