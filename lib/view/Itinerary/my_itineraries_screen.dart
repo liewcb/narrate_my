@@ -47,6 +47,7 @@ class _ItinerariesView extends StatelessWidget {
     final filteredTrips = vm.filteredTrips;
 
     return Scaffold(
+
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bg,

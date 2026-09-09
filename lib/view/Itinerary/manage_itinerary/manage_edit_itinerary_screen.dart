@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
@@ -11,7 +12,7 @@ import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/add_place_to_day_vm.dart';
 
 // ═══════════════════════════════════════════════════════════════════════
-//  DATA MODELS
+//  DATA MODELS (unchanged)
 // ═══════════════════════════════════════════════════════════════════════
 
 class DayPlan {
@@ -70,6 +71,41 @@ class WizardPlace {
     this.startTime,
     this.endTime,
   });
+
+  /// Create a copy with new times or place details.
+  WizardPlace copyWith({
+    String? placeId,
+    String? name,
+    String? type,
+    IconData? typeIcon,
+    double? rating,
+    String? imageUrl,
+    String? travelTime,
+    IconData? travelIcon,
+    String? duration,
+    String? location,
+    double? latitude,
+    double? longitude,
+    DateTime? startTime,
+    DateTime? endTime,
+  }) {
+    return WizardPlace(
+      placeId: placeId ?? this.placeId,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      typeIcon: typeIcon ?? this.typeIcon,
+      rating: rating ?? this.rating,
+      imageUrl: imageUrl ?? this.imageUrl,
+      travelTime: travelTime ?? this.travelTime,
+      travelIcon: travelIcon ?? this.travelIcon,
+      duration: duration ?? this.duration,
+      location: location ?? this.location,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+    );
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -98,17 +134,8 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
   late List<DayPlan> _initialDaysCopy;
   GoogleMapController? _mapController;
 
-  /// Index (0-based) of the currently active day section. It follows the
-  /// traveler's scroll position (scroll listener) and is updated when a day
-  /// chip is tapped. Single source of truth for day navigation.
   int _selectedDayIndex = 0;
-
-  /// Preserved from the caller: the day the traveler was reviewing before
-  /// editing. Used as the initially active day in the selector.
   late int _initialDayIndex;
-
-  /// Key of the sticky day selector — used to compute the "active line" when
-  /// detecting the currently visible day during scrolling.
   final GlobalKey _daySelectorKey = GlobalKey();
 
   @override
@@ -140,9 +167,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
 
   // ─── Scroll → active day detection ─────────────────────────
 
-  /// Updates the active day indicator as the traveler scrolls. This listener
-  /// ONLY updates UI state — it never triggers a scroll, so there is no
-  /// scroll loop (tap → _scrollToDay → animation → listener updates state).
   void _handleScroll() {
     if (_editedDays.isEmpty) return;
     final detected = _detectActiveDay();
@@ -154,13 +178,8 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     }
   }
 
-  /// Determines which day section is currently visible by reading each day's
-  /// ACTUAL RenderBox position (GlobalKey context) rather than a fixed pixel
-  /// offset — this stays correct when days have different heights.
   int _detectActiveDay() {
     if (_editedDays.isEmpty) return 0;
-
-    // The "active line" is the bottom edge of the sticky day selector.
     double activeLineY = MediaQuery.of(context).size.height;
     final selectorCtx = _daySelectorKey.currentContext;
     if (selectorCtx != null) {
@@ -169,7 +188,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
         activeLineY = box.localToGlobal(Offset.zero).dy + box.size.height;
       }
     }
-
     int detected = 0;
     for (int i = 0; i < _dayKeys.length; i++) {
       final ctx = _dayKeys[i].currentContext;
@@ -177,16 +195,11 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
       final box = ctx.findRenderObject() as RenderBox?;
       if (box == null) continue;
       final top = box.localToGlobal(Offset.zero).dy;
-      // The last day whose section top has reached the active line is the
-      // one currently being viewed.
       if (top <= activeLineY) detected = i;
     }
     return detected;
   }
 
-  /// Scrolls the page so [dayIndex] is pinned near the top of the visible
-  /// area. Uses the ACTUAL day section context (GlobalKey) so each day's
-  /// differing height is handled automatically — no hardcoded offsets.
   Future<void> _scrollToDay(int dayIndex) async {
     if (dayIndex < 0 || dayIndex >= _editedDays.length) return;
     final ctx = _dayKeys[dayIndex].currentContext;
@@ -204,8 +217,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     _scrollToDay(index);
   }
 
-  /// Recompute the active day after a layout change (add/remove/reorder/
-  /// reset) so the selector and map stay in sync.
   void _resyncAfterLayoutChange() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _handleScroll();
@@ -216,9 +227,7 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     if (_mapController == null || _editedDays.isEmpty) return;
     if (dayIndex < 0 || dayIndex >= _editedDays.length) return;
     final places = _editedDays[dayIndex].places;
-
     if (places.isEmpty) return;
-
     if (places.length == 1) {
       _mapController!.animateCamera(
         CameraUpdate.newLatLngZoom(
@@ -228,19 +237,16 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
       );
       return;
     }
-
     double minLat = places.first.latitude;
     double maxLat = places.first.latitude;
     double minLng = places.first.longitude;
     double maxLng = places.first.longitude;
-
     for (var p in places) {
       if (p.latitude < minLat) minLat = p.latitude;
       if (p.latitude > maxLat) maxLat = p.latitude;
       if (p.longitude < minLng) minLng = p.longitude;
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
-
     _mapController!.animateCamera(
       CameraUpdate.newLatLngBounds(
         LatLngBounds(
@@ -255,7 +261,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
   Set<Marker> _buildMarkersForDay(int dayIndex) {
     final places = _editedDays[dayIndex].places;
     final markers = <Marker>{};
-
     for (int i = 0; i < places.length; i++) {
       final p = places[i];
       markers.add(
@@ -278,7 +283,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
   Set<Polyline> _buildPolylinesForDay(int dayIndex) {
     final places = _editedDays[dayIndex].places;
     if (places.length < 2) return {};
-
     return {
       Polyline(
         polylineId: PolylineId('route_day_${dayIndex + 1}'),
@@ -315,11 +319,11 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     Navigator.pop(context, _editedDays);
   }
 
+  // ─── Show Add Place Sheet ────────────────────────────────
+
   void _showAddPlaceSheet(int dayIndex) {
     final day = _editedDays[dayIndex];
     final existingStops = day.places.map(_toStopForContext).toList();
-    // Cross-day duplicate guard: a place may not appear twice anywhere in
-    // the itinerary (global uniqueness rule).
     final allDayPlaceIds = <String>{
       for (final d in _editedDays)
         for (final p in d.places) p.placeId,
@@ -360,9 +364,49 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     );
   }
 
-  /// Converts a [WizardPlace] into an [AddPlaceExistingStop] so the Add
-  /// Place validator can validate against the ACTUAL scheduled times of the
-  /// existing stops (not a rebuilt approximation).
+  // ─── Edit Stop Sheet ───────────────────────────────────────
+
+  /// Opens a bottom sheet to edit an existing stop's details (time, duration, location).
+  void _showEditStopSheet(int dayIndex, int stopIndex) {
+    final day = _editedDays[dayIndex];
+    final place = day.places[stopIndex];
+
+    final existingStops = day.places.map(_toStopForContext).toList();
+    final allDayPlaceIds = <String>{
+      for (final d in _editedDays)
+        for (final p in d.places) p.placeId,
+    };
+
+    showModalBottomSheet<WizardPlace?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+      ),
+      builder: (ctx) => _EditStopSheet(
+        dayNumber: day.dayNumber,
+        dayDate: day.date,
+        currentPlace: place,
+        existingStops: existingStops,
+        allDayPlaceIds: allDayPlaceIds,
+        defaultTravelIcon: place.travelIcon,
+        onSave: (updatedPlace) {
+          setState(() {
+            day.places[stopIndex] = updatedPlace;
+          });
+          if (dayIndex == _selectedDayIndex) {
+            _fitMapBoundsForDay(dayIndex);
+          }
+          _resyncAfterLayoutChange();
+          Navigator.pop(ctx, updatedPlace);
+        },
+      ),
+    );
+  }
+
+  // ─── Helper: convert WizardPlace → AddPlaceExistingStop ──
+
   AddPlaceExistingStop _toStopForContext(WizardPlace w) {
     final duration = _parseDurationMinutes(w.duration);
     final baseDate = DateTime(2000, 1, 1);
@@ -396,7 +440,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
         : value;
   }
 
-  /// Formats a day date as "12 Aug".
   String _formatDate(DateTime d) {
     const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -405,7 +448,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     return '${d.day} ${months[d.month - 1]}';
   }
 
-  /// Formats a date range as "12 Aug – 15 Aug".
   String _formatDateRange(DateTime first, DateTime last) {
     final a = _formatDate(first);
     final b = _formatDate(last);
@@ -413,14 +455,13 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  //  BUILD — single vertically scrollable page
+  //  BUILD
   // ═══════════════════════════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-
       appBar: AppBar(
         backgroundColor: AppColors.bg,
         elevation: 0,
@@ -435,12 +476,10 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
         ),
         centerTitle: false,
       ),
-
       body: _editedDays.isEmpty
           ? _buildEmptyItinerary()
           : Column(
         children: [
-          // Sticky day selector (navigation control, not a TabBarView).
           _buildDaySelector(),
           Expanded(
             child: SingleChildScrollView(
@@ -451,7 +490,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Itinerary hero (once, represents the WHOLE trip).
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.screenMargin,
@@ -467,10 +505,8 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.componentGap),
-                  // Selected-day interactive map (single map widget).
                   _buildSelectedDayMap(),
                   const SizedBox(height: AppSpacing.sectionGap),
-                  // All day sections in one vertical list.
                   for (var i = 0; i < _editedDays.length; i++) ...[
                     _buildDaySection(i),
                     if (i < _editedDays.length - 1)
@@ -536,7 +572,7 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     );
   }
 
-  // ─── Itinerary hero (whole trip) ───────────────────────────
+  // ─── Itinerary hero ────────────────────────────────────────
 
   Widget _buildItineraryHero({
     required int totalDays,
@@ -544,8 +580,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     required DateTime firstDate,
     required DateTime lastDate,
   }) {
-    // Reuse the first available place photo as the hero backdrop when one
-    // exists; otherwise fall back to a themed gradient.
     String? heroImage;
     for (final day in _editedDays) {
       for (final p in day.places) {
@@ -556,7 +590,6 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
       }
       if (heroImage != null) break;
     }
-
     final dateLabel = _formatDateRange(firstDate, lastDate);
 
     return Container(
@@ -645,7 +678,7 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     );
   }
 
-  // ─── Selected-day interactive map (single map widget) ──────
+  // ─── Map ────────────────────────────────────────────────────
 
   Widget _buildSelectedDayMap() {
     final dayIndex = _selectedDayIndex;
@@ -683,7 +716,7 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
           polylines: _buildPolylinesForDay(dayIndex),
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<OneSequenceGestureRecognizer>(
-              () => EagerGestureRecognizer(),
+                  () => EagerGestureRecognizer(),
             ),
           },
           scrollGesturesEnabled: true,
@@ -701,7 +734,7 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     );
   }
 
-  // ─── Day section (GlobalKey) ───────────────────────────────
+  // ─── Day section ───────────────────────────────────────────
 
   Widget _buildDaySection(int index) {
     final day = _editedDays[index];
@@ -755,7 +788,7 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     );
   }
 
-  // ─── Modified: Day place list with timeline and editable items ──
+  // ─── Day place list with editable items ──────────────────
 
   Widget _buildDayPlaceList(int dayIndex) {
     final places = _editedDays[dayIndex].places;
@@ -781,10 +814,8 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
       },
       itemBuilder: (context, index) {
         final place = places[index];
-        // Determine transit time from previous stop (if any)
         String? transitTime;
         if (index > 0) {
-          // Use the travelTime from the previous place
           transitTime = places[index - 1].travelTime.isNotEmpty
               ? places[index - 1].travelTime
               : null;
@@ -807,13 +838,7 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
               }
               _resyncAfterLayoutChange();
             },
-            onEdit: () {
-              // TODO: Open edit bottom sheet or screen for this stop.
-              // For now, show a snackbar as a placeholder.
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Edit stop not implemented yet.')),
-              );
-            },
+            onEdit: () => _showEditStopSheet(dayIndex, index),
           ),
         );
       },
@@ -855,7 +880,7 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     );
   }
 
-  // ─── Empty itinerary (only when _editedDays.isEmpty) ────────
+  // ─── Empty itinerary ──────────────────────────────────────
 
   Widget _buildEmptyItinerary() {
     return Center(
@@ -886,7 +911,7 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
     );
   }
 
-  // ─── Sticky footer ─────────────────────────────────────────
+  // ─── Sticky footer ────────────────────────────────────────
 
   Widget _buildStickyFooter() {
     return Container(
@@ -929,11 +954,9 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  ADD PLACE TO DAY SHEET
+//  ADD PLACE TO DAY SHEET (unchanged)
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Returned by the Add Place sheet: the selected place converted to
-/// [WizardPlace] and the insertion position in the day's list.
 class AddPlaceInsertResult {
   final WizardPlace place;
   final int insertionIndex;
@@ -1017,7 +1040,6 @@ class _AddPlaceToDaySheetState extends State<_AddPlaceToDaySheet> {
                   style: AppTextStyles.pageTitle.copyWith(fontSize: 20),
                 ),
                 const SizedBox(height: 16),
-                // Search field
                 TextField(
                   controller: _searchController,
                   textInputAction: TextInputAction.search,
@@ -1091,7 +1113,6 @@ class _AddPlaceToDaySheetState extends State<_AddPlaceToDaySheet> {
                 const SizedBox(height: 12),
                 if (_vm.selectedPlace != null) _buildValidationResult(),
                 const SizedBox(height: 12),
-                // Add button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -1189,7 +1210,8 @@ class _AddPlaceToDaySheetState extends State<_AddPlaceToDaySheet> {
         child: Row(
           children: [
             SizedBox(
-              width: 16, height: 16,
+              width: 16,
+              height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: 12),
@@ -1258,9 +1280,6 @@ class _AddPlaceToDaySheetState extends State<_AddPlaceToDaySheet> {
     final validation = _vm.validation;
     if (place == null || validation == null || !validation.isValid) return;
 
-    // Defensive re-validation immediately before insertion (FAIL 10): the
-    // itinerary may have changed while the sheet was open. Only a still-valid
-    // result is inserted.
     final stillValid = await _vm.revalidateBeforeInsert();
     if (!mounted) return;
     if (!stillValid) {
@@ -1336,7 +1355,563 @@ class _AddPlaceToDaySheetState extends State<_AddPlaceToDaySheet> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  NEW: Editable Stop Item (with image, timeline, drag, edit, remove)
+//  NEW: EDIT STOP SHEET
+// ═══════════════════════════════════════════════════════════════════════
+
+class _EditStopSheet extends StatefulWidget {
+  final int dayNumber;
+  final DateTime dayDate;
+  final WizardPlace currentPlace;
+  final List<AddPlaceExistingStop> existingStops;
+  final Set<String> allDayPlaceIds;
+  final IconData defaultTravelIcon;
+  final ValueChanged<WizardPlace> onSave;
+
+  const _EditStopSheet({
+    required this.dayNumber,
+    required this.dayDate,
+    required this.currentPlace,
+    required this.existingStops,
+    required this.allDayPlaceIds,
+    required this.defaultTravelIcon,
+    required this.onSave,
+  });
+
+  @override
+  State<_EditStopSheet> createState() => _EditStopSheetState();
+}
+
+class _EditStopSheetState extends State<_EditStopSheet> {
+  late AddPlaceToDayVM _vm;
+  final TextEditingController _searchController = TextEditingController();
+  TimeOfDay? _startTime;
+  TimeOfDay? _endTime;
+  int _durationMinutes = 90;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize times from current place
+    final current = widget.currentPlace;
+    final start = current.startTime;
+    final end = current.endTime;
+    if (start != null) {
+      _startTime = TimeOfDay(hour: start.hour, minute: start.minute);
+    }
+    if (end != null) {
+      _endTime = TimeOfDay(hour: end.hour, minute: end.minute);
+    }
+    _durationMinutes = _parseDurationMinutes(current.duration);
+
+    _vm = AddPlaceToDayVM(
+      dayIndex: widget.dayNumber,
+      dayDate: widget.dayDate,
+      existingDayStops: widget.existingStops,
+      allDayPlaceIds: widget.allDayPlaceIds,
+    );
+    // Pre-select the current place in the VM so we can validate it
+    _vm.validateCandidate(
+      Place(
+        placeId: current.placeId,
+        placeName: current.name,
+        placeAddress: current.location,
+        placeLatitude: current.latitude,
+        placeLongitude: current.longitude,
+        placeRating: current.rating,
+        placeTypes: const [],
+        visitDurationMinutes: _durationMinutes,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _vm.dispose();
+    super.dispose();
+  }
+
+  int _parseDurationMinutes(String? duration) {
+    if (duration == null) return 90;
+    final match = RegExp(r'\d+').firstMatch(duration);
+    if (match == null) return 90;
+    final value = int.parse(match.group(0)!);
+    return duration.toLowerCase().contains('hr') ||
+        duration.toLowerCase().contains('hour')
+        ? value * 60
+        : value;
+  }
+
+  Future<void> _selectTime(bool isStart) async {
+    final initial = isStart ? _startTime : _endTime;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial ?? const TimeOfDay(hour: 9, minute: 0),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isStart) {
+          _startTime = picked;
+        } else {
+          _endTime = picked;
+        }
+        // Re-validate with new times
+        _validateCurrentPlace();
+      });
+    }
+  }
+
+  Future<void> _validateCurrentPlace() async {
+    final place = widget.currentPlace;
+    final baseDate = widget.dayDate;
+    final start = _startTime != null
+        ? DateTime(baseDate.year, baseDate.month, baseDate.day,
+        _startTime!.hour, _startTime!.minute)
+        : null;
+    final end = _endTime != null
+        ? DateTime(baseDate.year, baseDate.month, baseDate.day,
+        _endTime!.hour, _endTime!.minute)
+        : null;
+
+    // Update the validation in the VM
+    final candidate = Place(
+      placeId: place.placeId,
+      placeName: place.name,
+      placeAddress: place.location,
+      placeLatitude: place.latitude,
+      placeLongitude: place.longitude,
+      placeRating: place.rating,
+      placeTypes: const [],
+      visitDurationMinutes: _durationMinutes,
+    );
+    await _vm.validateCandidate(candidate);
+  }
+
+  void _onSave() {
+    final validation = _vm.validation;
+    if (validation == null || !validation.isValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid times – please adjust.')),
+      );
+      return;
+    }
+
+    final current = widget.currentPlace;
+    final baseDate = widget.dayDate;
+    final start = _startTime != null
+        ? DateTime(baseDate.year, baseDate.month, baseDate.day,
+        _startTime!.hour, _startTime!.minute)
+        : null;
+    final end = _endTime != null
+        ? DateTime(baseDate.year, baseDate.month, baseDate.day,
+        _endTime!.hour, _endTime!.minute)
+        : null;
+
+    final updated = current.copyWith(
+      startTime: start,
+      endTime: end,
+      duration: '${_durationMinutes} min',
+    );
+    widget.onSave(updated);
+  }
+
+  Future<void> _searchNewPlace() async {
+    final query = _searchController.text.trim();
+    if (query.isEmpty) return;
+    setState(() => _isLoading = true);
+    try {
+      // ✅ Correct: set query and call search() without args
+      _vm.query = query;
+      await _vm.search();
+
+      final selected = await showModalBottomSheet<Place>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: AppColors.bg,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+        ),
+        builder: (ctx) => _SearchResultSheet(
+          vm: _vm,
+          currentPlaceId: widget.currentPlace.placeId,
+          onSelect: (place) {
+            Navigator.pop(ctx, place);
+          },
+        ),
+      );
+      if (selected != null && mounted) {
+        // Replace the current place with the selected one
+        final newPlace = WizardPlace(
+          placeId: selected.placeId,
+          name: selected.placeName,
+          type: selected.placeCategory ?? 'Attraction',
+          typeIcon: Icons.place,
+          rating: selected.placeRating,
+          imageUrl: selected.placePhotoRef != null
+              ? 'https://maps.googleapis.com/maps/api/place/photo'
+              '?maxwidth=400&photoreference=${selected.placePhotoRef}'
+              '&key=${ApiKeys.googleMapsApiKey}'
+              : null,
+          travelTime: '0 min',
+          travelIcon: widget.defaultTravelIcon,
+          duration: '${_durationMinutes} min',
+          location: selected.placeAddress,
+          latitude: selected.placeLatitude,
+          longitude: selected.placeLongitude,
+          startTime: widget.currentPlace.startTime,
+          endTime: widget.currentPlace.endTime,
+        );
+        // Update the current place and re-validate
+        _vm.validateCandidate(selected);
+        // The onSave will be called with the new place
+        widget.onSave(newPlace);
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      // ignore
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) {
+        final validation = _vm.validation;
+        final isValid = validation != null && validation.isValid;
+        final error = validation != null && !validation.isValid
+            ? validation.errorMessage
+            : null;
+
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.moduleBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Edit Stop - Day ${widget.dayNumber}',
+                  style: AppTextStyles.pageTitle.copyWith(fontSize: 20),
+                ),
+                const SizedBox(height: 16),
+                // Current place (non-editable for now, but we'll allow search)
+                Row(
+                  children: [
+                    const Icon(Icons.place, color: AppColors.accent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        widget.currentPlace.name,
+                        style: AppTextStyles.bodyLg.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.search, size: 20),
+                      onPressed: _searchNewPlace,
+                      tooltip: 'Change location',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Start time
+                Row(
+                  children: [
+                    const Icon(Icons.access_time, color: AppColors.inkFaint),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => _selectTime(true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(color: AppColors.moduleBorder),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Start Time',
+                                  style: TextStyle(fontWeight: FontWeight.w500)),
+                              Text(
+                                _startTime != null
+                                    ? _startTime!.format(context)
+                                    : 'Select',
+                                style: TextStyle(
+                                  color: _startTime != null
+                                      ? AppColors.ink
+                                      : AppColors.inkFaint,
+                                ),
+                              ),
+                              const Icon(Icons.arrow_drop_down,
+                                  color: AppColors.inkFaint),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // End time
+                Row(
+                  children: [
+                    const Icon(Icons.access_time, color: AppColors.inkFaint),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => _selectTime(false),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(color: AppColors.moduleBorder),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('End Time',
+                                  style: TextStyle(fontWeight: FontWeight.w500)),
+                              Text(
+                                _endTime != null
+                                    ? _endTime!.format(context)
+                                    : 'Select',
+                                style: TextStyle(
+                                  color: _endTime != null
+                                      ? AppColors.ink
+                                      : AppColors.inkFaint,
+                                ),
+                              ),
+                              const Icon(Icons.arrow_drop_down,
+                                  color: AppColors.inkFaint),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Duration (read-only for now, derived from times)
+                Row(
+                  children: [
+                    const Icon(Icons.timer, color: AppColors.inkFaint),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Duration',
+                                style: TextStyle(fontWeight: FontWeight.w500)),
+                            Text(
+                              '$_durationMinutes min',
+                              style: const TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (error != null)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, size: 16, color: AppColors.error),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            error,
+                            style: const TextStyle(fontSize: 12, color: AppColors.error),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (isValid)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle, size: 16, color: AppColors.green),
+                        const SizedBox(width: 8),
+                        const Text('Valid schedule',
+                            style: TextStyle(fontSize: 12, color: AppColors.green)),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: isValid ? _onSave : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                      isValid ? AppColors.accent : AppColors.surface2,
+                      foregroundColor:
+                      isValid ? Colors.white : AppColors.inkFaint,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Save Changes',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─── Search Result Sheet (for changing location) ─────────────
+
+class _SearchResultSheet extends StatefulWidget {
+  final AddPlaceToDayVM vm;
+  final String currentPlaceId;
+  final ValueChanged<Place> onSelect;
+
+  const _SearchResultSheet({
+    required this.vm,
+    required this.currentPlaceId,
+    required this.onSelect,
+  });
+
+  @override
+  State<_SearchResultSheet> createState() => _SearchResultSheetState();
+}
+
+class _SearchResultSheetState extends State<_SearchResultSheet> {
+  @override
+  void initState() {
+    super.initState();
+    // Trigger search if query is empty to show recommendations
+    if (widget.vm.query.isEmpty) {
+      widget.vm.search();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.vm,
+      builder: (context, _) {
+        final results = widget.vm.results;
+        final isSearching = widget.vm.isSearching;
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.moduleBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Search Results',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                if (isSearching)
+                  const Center(child: CircularProgressIndicator())
+                else if (results.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Text('No results found. Try a different search.'),
+                  )
+                else
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: results.length,
+                      itemBuilder: (ctx, idx) {
+                        final place = results[idx];
+                        if (place.placeId == widget.currentPlaceId) return const SizedBox.shrink();
+                        return ListTile(
+                          leading: Icon(
+                            place.placeTypes.contains('restaurant')
+                                ? Icons.restaurant
+                                : Icons.place,
+                            color: AppColors.accent,
+                          ),
+                          title: Text(place.placeName),
+                          subtitle: Text(place.placeCategory ?? ''),
+                          onTap: () => widget.onSelect(place),
+                        );
+                      },
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  EDItABLE STOP ITEM (with Edit button now functional)
 // ═══════════════════════════════════════════════════════════════════════
 
 class _EditableStopItem extends StatelessWidget {
@@ -1362,7 +1937,6 @@ class _EditableStopItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Transit indicator above the stop (if not first)
         if (!isFirst && transitTime != null) ...[
           Padding(
             padding: const EdgeInsets.only(left: 20, bottom: 4),
@@ -1378,11 +1952,9 @@ class _EditableStopItem extends StatelessWidget {
             ),
           ),
         ],
-        // Stop row: timeline dot + content
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Timeline column
             Column(
               children: [
                 Container(
@@ -1406,8 +1978,6 @@ class _EditableStopItem extends StatelessWidget {
               ],
             ),
             const SizedBox(width: 12),
-
-            // Content card (with drag handle, image, details, remove button)
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(10),
@@ -1420,7 +1990,6 @@ class _EditableStopItem extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    // Thumbnail image (same size as final screen)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
@@ -1434,12 +2003,11 @@ class _EditableStopItem extends StatelessWidget {
                           errorBuilder: (_, __, ___) =>
                           const Icon(Icons.image_not_supported),
                         )
-                            : const Center(child: Text('📍', style: TextStyle(fontSize: 24))),
+                            : const Center(
+                            child: Text('📍', style: TextStyle(fontSize: 24))),
                       ),
                     ),
                     const SizedBox(width: 12),
-
-                    // Details
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1459,27 +2027,32 @@ class _EditableStopItem extends StatelessWidget {
                               color: AppColors.inkFaint,
                             ),
                           ),
+                          if (place.startTime != null && place.endTime != null)
+                            Text(
+                              '${DateFormat('HH:mm').format(place.startTime!)} – '
+                                  '${DateFormat('HH:mm').format(place.endTime!)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.inkFaint,
+                              ),
+                            ),
                         ],
                       ),
                     ),
-
-                    // Action buttons: drag handle, edit, remove
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Drag handle (reorder)
                         ReorderableDragStartListener(
                           index: index,
                           child: const Icon(Icons.drag_handle, color: AppColors.inkFaint),
                         ),
                         const SizedBox(width: 4),
-                        // Edit button
                         GestureDetector(
                           onTap: onEdit,
-                          child: const Icon(Icons.edit_outlined, size: 18, color: AppColors.inkSoft),
+                          child: const Icon(Icons.edit_outlined,
+                              size: 18, color: AppColors.inkSoft),
                         ),
                         const SizedBox(width: 4),
-                        // Remove button
                         GestureDetector(
                           onTap: onRemove,
                           child: const Icon(Icons.close, size: 18, color: AppColors.error),
