@@ -25,6 +25,11 @@ class UnderlineField extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final bool enabled;
   final TextCapitalization textCapitalization;
+  // Added 8 Sep at Foo's request ("fix the maximum length for name, or
+  // else the length can be a very long paragraph") — optional so every
+  // other caller of this shared field is unaffected; null means
+  // unlimited, same as before.
+  final int? maxLength;
 
   const UnderlineField({
     super.key,
@@ -38,6 +43,7 @@ class UnderlineField extends StatefulWidget {
     this.onChanged,
     this.enabled = true,
     this.textCapitalization = TextCapitalization.none,
+    this.maxLength,
   });
 
   @override
@@ -72,6 +78,14 @@ class _UnderlineFieldState extends State<UnderlineField> {
       onChanged: widget.onChanged,
       enabled: widget.enabled,
       textCapitalization: widget.textCapitalization,
+      maxLength: widget.maxLength,
+      // Hides the default "12/100" counter row below the field — this
+      // field's height is shared by every form on the design canvas, and
+      // a stray counter only on the fields that pass `maxLength` would
+      // make those forms visually inconsistent with the rest.
+      buildCounter: widget.maxLength == null
+          ? null
+          : (context, {required currentLength, required isFocused, maxLength}) => null,
       style: const TextStyle(fontSize: 15.5, color: AppColors.ink),
       decoration: InputDecoration(
         labelText: widget.label.toUpperCase(),
