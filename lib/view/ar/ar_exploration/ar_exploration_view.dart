@@ -97,13 +97,16 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
     _lastRouteCurrent = isCurrent;
     if (!_hasInitialized || !changed || _manualTransition) return;
 
-    if (!isCurrent) {
-      context.read<ARExplorationViewModel>().pause();
-      if (mounted) setState(() => _cameraActive = false);
-    } else if (widget.isActive) {
-      context.read<ARExplorationViewModel>().resume();
-      if (mounted) setState(() => _cameraActive = true);
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!isCurrent) {
+        context.read<ARExplorationViewModel>().pause();
+        setState(() => _cameraActive = false);
+      } else if (widget.isActive) {
+        context.read<ARExplorationViewModel>().resume();
+        setState(() => _cameraActive = true);
+      }
+    });
   }
 
   @override
@@ -136,20 +139,28 @@ class _ARExplorationScaffoldState extends State<_ARExplorationScaffold> {
   }
 
   void _activate() {
-    final vm = context.read<ARExplorationViewModel>();
-    if (!_hasInitialized) {
-      _hasInitialized = true;
-      vm.init();
-    } else {
-      vm.resume();
-    }
-    setState(() => _cameraActive = true);
+    _cameraActive = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final vm = context.read<ARExplorationViewModel>();
+      if (!_hasInitialized) {
+        _hasInitialized = true;
+        vm.init();
+      } else {
+        vm.resume();
+      }
+      setState(() {});
+    });
   }
 
   void _deactivate() {
     if (!_hasInitialized) return; // never started — nothing to stop
-    context.read<ARExplorationViewModel>().pause();
-    setState(() => _cameraActive = false);
+    _cameraActive = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ARExplorationViewModel>().pause();
+      setState(() {});
+    });
   }
 
   @override

@@ -123,7 +123,11 @@ class _ARCameraViewState extends State<ARCameraView>
         .then((_) async {
       final previous = _controller;
       _controller = null;
-      if (mounted && !_disposed) setState(() {});
+      if (mounted && !_disposed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_disposed) setState(() {});
+        });
+      }
       await previous?.dispose();
 
       if (!_shouldOpen || generation != _generation) {
