@@ -239,10 +239,21 @@ class _PreferencesViewState extends State<_PreferencesView> {
   /// One-directional by design: un-ticking Halal does NOT remove "No Pork"
   /// again, since the tourist may have selected it for an unrelated reason
   /// and silently removing it would be a bigger surprise than leaving it.
+  ///
+  /// Added at Foo's request (9 Sep, "since the halal will lead to no pork,
+  /// then the food and cuisine also can let to vegetarian"): the same idea
+  /// applied to Food & Cuisine — choosing "Vegetarian" here pre-selects the
+  /// matching "Vegetarian-Friendly" cuisine chip below, instead of leaving
+  /// the tourist to separately notice and tick it themselves. Same
+  /// one-directional rule as Halal/No Pork: un-ticking Vegetarian does NOT
+  /// remove "Vegetarian-Friendly" again.
   void _toggleDietary(String value) {
     _toggle(_dietary, value);
     if (value == 'Halal' && _dietary.contains('Halal')) {
       _dietaryRestrictions.add('No Pork');
+    }
+    if (value == 'Vegetarian' && _dietary.contains('Vegetarian')) {
+      _food.add('Vegetarian-Friendly');
     }
   }
 }
