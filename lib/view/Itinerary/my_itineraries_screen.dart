@@ -181,7 +181,7 @@ class _ItinerariesView extends StatelessWidget {
                       child: SizedBox(
                         width: double.infinity,
                         child: Text(
-                          "Failed to load trips: ${vm.error}",
+                          "${vm.error}",
                           style: GoogleFonts.nunito(
                             fontSize: 16,
                             color: AppColors.error,

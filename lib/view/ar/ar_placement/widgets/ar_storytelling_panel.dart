@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/localization/locale_vm.dart';
 import '../../../../model/entities/ar_placement.dart';
@@ -15,6 +16,11 @@ class ARStorytellingPanel extends StatelessWidget {
     context.watch<LocaleVm>();
     const accentOrange = Color(0xFFD67D4A);
     final topPadding = MediaQuery.of(context).padding.top + 70;
+    final isAssistantOpen = context.select<GlobalAiAssistantController, bool>(
+      (c) => c.isAssistantOpen,
+    );
+    final isCovered =
+        isAssistantOpen || !(ModalRoute.of(context)?.isCurrent ?? true);
 
     return Selector<ARPlacementViewModel, ({
       bool isPlaced,
@@ -45,7 +51,7 @@ class ARStorytellingPanel extends StatelessWidget {
         final isPaused = data.playbackState == StoryPlaybackState.paused;
         final isCompleted = data.playbackState == StoryPlaybackState.completed;
         final bool hasModelAsset = data.model3dPath != null && data.model3dPath!.trim().isNotEmpty;
-        final bool show3DModel = hasModelAsset && data.show3d && (isPlaying || isPaused || isCompleted);
+        final bool show3DModel = !isCovered && hasModelAsset && data.show3d && (isPlaying || isPaused || isCompleted);
 
         final String actionLabel = isPlaying
             ? AppLocalizations.t('ar.actionPause')

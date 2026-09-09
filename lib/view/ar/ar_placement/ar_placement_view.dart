@@ -95,13 +95,16 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
 
   void _onAssistantChanged() {
     if (!mounted) return;
-    final vm = context.read<ARPlacementViewModel>();
-    if (_assistantController?.isAssistantOpen == true) {
-      vm.pauseStorytelling();
-      vm.pauseARSession();
-    } else {
-      vm.resumeARSession();
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final vm = context.read<ARPlacementViewModel>();
+      if (_assistantController?.isAssistantOpen == true) {
+        vm.pauseStorytelling();
+        vm.pauseARSession();
+      } else {
+        vm.resumeARSession();
+      }
+    });
   }
 
   @override
@@ -152,6 +155,12 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
     final hasStarted = context.select<ARPlacementViewModel, bool>(
       (m) => m.hasStartedStorytelling,
     );
+    final isAssistantOpen = context.select<GlobalAiAssistantController, bool>(
+      (c) => c.isAssistantOpen,
+    );
+    final isCovered =
+        isAssistantOpen || !(ModalRoute.of(context)?.isCurrent ?? true);
+
     return PopScope(
       canPop: !hasStarted,
       onPopInvokedWithResult: (didPop, result) {
@@ -166,11 +175,19 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. Base Layer: ARCore Native Surface
-            ARView(
-              onARViewCreated: vm.onARViewCreated,
-              planeDetectionConfig: PlaneDetectionConfig.horizontal,
+            // 1. Base Layer: ARCore Native Surface (hidden when covered to eliminate Android SurfaceView punch-through / flickering)
+            Visibility(
+              visible: !isCovered,
+              maintainState: true,
+              child: ARView(
+                onARViewCreated: vm.onARViewCreated,
+                planeDetectionConfig: PlaneDetectionConfig.horizontal,
+              ),
             ),
+
+            // Anti-Flicker Shield: When assistant is open or covered, render solid backdrop so native surfaces cannot bleed through
+            if (isCovered)
+              const ColoredBox(color: Color(0xFF0D1414)),
 
             // 1.5 AR Performance Shield: When 3D Model is active, occlude background AR surface to save GPU
             Selector<ARPlacementViewModel, bool>(
@@ -178,7 +195,7 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
               builder: (context, show3d, child) {
                 return IgnorePointer(
                   child: AnimatedOpacity(
-                    opacity: show3d ? 0.82 : 0.0,
+                    opacity: show3d && !isCovered ? 0.82 : 0.0,
                     duration: const Duration(milliseconds: 250),
                     child: const ColoredBox(color: Color(0xFF0D1414)),
                   ),
