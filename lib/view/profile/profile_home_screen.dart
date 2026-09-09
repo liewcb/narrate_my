@@ -136,6 +136,22 @@ class _ProfileHomeView extends StatelessWidget {
   // request) — it doesn't belong next to Logout. See
   // `personal_info_screen.dart`'s "Danger Zone" section.
 
+  // BUG FIX (8 Sep, Foo: "the name will not refresh when the user edit,
+  // until i refresh"): `PersonalInfoScreen` owns its own `PersonalInfoVm`
+  // instance (a separate `profile` object entirely from this screen's
+  // `ProfileVm`), so a saved name/username/avatar/phone change there never
+  // touched this screen's `vm.profile` — the old value just kept showing
+  // until something else (like a manual pull-to-refresh) called
+  // `vm.load()` again. Awaiting the push and reloading on return picks up
+  // whatever changed, no matter which action on that screen (or its
+  // sub-screens — Set Password, Change Password) caused it.
+  Future<void> _openPersonalInfo(BuildContext context, ProfileVm vm) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PersonalInfoScreen()),
+    );
+    if (context.mounted) await vm.load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<ProfileVm>();
@@ -189,9 +205,7 @@ class _ProfileHomeView extends StatelessWidget {
               _SectionTile(
                 icon: Icons.badge_outlined,
                 label: AppLocalizations.t('ui.personalInfo'),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PersonalInfoScreen()),
-                ),
+                onTap: () => _openPersonalInfo(context, vm),
               ),
               _SectionTile(
                 icon: Icons.tune,

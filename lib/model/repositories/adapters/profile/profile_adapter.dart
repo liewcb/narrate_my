@@ -443,7 +443,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     final userId = _requireUserId();
     try {
       final dto = await _profileDataSource.fetchProfileRow(userId);
-      final user = _authDataSource.currentUser;
+      final user = Supabase.instance.client.auth.currentUser;
       return dto.toEntity(
         phone: _normalizePhone(user?.phone),
         hasGoogleLinked:
@@ -463,7 +463,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
         userId,
         fullName: fullName,
       );
-      final user = _authDataSource.currentUser;
+      final user = Supabase.instance.client.auth.currentUser;
       return dto.toEntity(
         phone: _normalizePhone(user?.phone),
         hasGoogleLinked:
@@ -739,7 +739,7 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
 
   Future<Profile> _reloadAfterWrite(String userId) async {
     final dto = await _profileDataSource.fetchProfileRow(userId);
-    final user = _authDataSource.currentUser;
+    final user = Supabase.instance.client.auth.currentUser;
     return dto.toEntity(
       phone: _normalizePhone(user?.phone),
       hasGoogleLinked: user?.identities?.any((i) => i.provider == 'google') ?? false,

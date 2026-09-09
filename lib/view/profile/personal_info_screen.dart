@@ -337,6 +337,12 @@ class _PersonalInfoViewState extends State<_PersonalInfoView>
                               label: AppLocalizations.t('ui.fullName'),
                               controller: _fullNameController,
                               errorText: vm.fieldError == 'fullName' ? vm.errorMessage : null,
+                              // BUG FIX (8 Sep, Foo: "fix the maximum
+                              // length for name, or else the length can
+                              // be a very long paragraph") — caps typing
+                              // itself, so there's nothing left to
+                              // validate on Save.
+                              maxLength: 100,
                             ),
                             const SizedBox(height: 24),
                             ListTile(
