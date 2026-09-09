@@ -6,7 +6,10 @@ import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../core/config/api_keys.dart';
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/custom_place_service.dart';
@@ -239,10 +242,10 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     try {
       return await showConfirmationDialog(
         context: context,
-        title: 'Discard unsaved changes?',
-        message: 'Your edits have not been saved. Tap Review & Save to keep them, or discard them to leave.',
-        confirmLabel: 'Discard changes',
-        cancelLabel: 'Keep editing',
+        title: AppLocalizations.t('itinerary.edit.discardTitle'),
+        message: AppLocalizations.t('itinerary.edit.discardMessage'),
+        confirmLabel: AppLocalizations.t('itinerary.edit.discardConfirm'),
+        cancelLabel: AppLocalizations.t('itinerary.edit.keepEditing'),
         confirmColor: AppColors.error,
       ) == true;
     } finally {
@@ -351,14 +354,18 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              '${result.addedPlaceName} added to Day ${_vm.dayNumber}.',
+              AppLocalizations.t('itinerary.edit.placeAddedToDay')
+                  .replaceAll('{place}', result.addedPlaceName)
+                  .replaceAll('{n}', '${_vm.dayNumber}'),
               style: GoogleFonts.nunito(color: AppColors.surface),
             ),
             duration: const Duration(seconds: 2),
           ),
         );
     } else {
-      _showProblem(_vm.error ?? 'This place cannot fit into Day ${_vm.dayNumber}.');
+      _showProblem(_vm.error ??
+          AppLocalizations.t('itinerary.edit.placeCannotFitDay')
+              .replaceAll('{n}', '${_vm.dayNumber}'));
     }
   }
 
@@ -404,7 +411,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             _fitMapBounds();
             return null;
           }
-          return _vm.error ?? 'This place cannot fit into your remaining schedule.';
+          return _vm.error ?? AppLocalizations.t('itinerary.edit.placeCannotFitSchedule');
         },
       ),
     );
@@ -432,19 +439,20 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     final stop = _vm.stops[index];
 
     if (stop.isMustVisit) {
-      _showProblem('Cannot remove a must-visit place');
+      _showProblem(AppLocalizations.t('itinerary.edit.cannotRemoveMustVisit'));
       return;
     }
     if (_vm.stops.length <= 1) {
-      _showProblem('Cannot remove the last stop from a day');
+      _showProblem(AppLocalizations.t('itinerary.edit.cannotRemoveLastStop'));
       return;
     }
 
     final confirmed = await showConfirmationDialog(
       context: context,
-      title: 'Remove Place?',
-      message: 'Are you sure you want to remove this place from Day ${_vm.dayNumber}?',
-      confirmLabel: 'Remove',
+      title: AppLocalizations.t('itinerary.edit.removePlaceTitle'),
+      message: AppLocalizations.t('itinerary.edit.removePlaceMessage')
+          .replaceAll('{n}', '${_vm.dayNumber}'),
+      confirmLabel: AppLocalizations.t('itinerary.edit.remove'),
     );
     if (confirmed != true || !mounted) return;
 
@@ -455,10 +463,10 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       if (ok) {
         _fitMapBounds();
       } else {
-        _showProblem(_vm.error ?? 'Unable to remove this place. Please try again.');
+        _showProblem(_vm.error ?? AppLocalizations.t('itinerary.edit.removeFailed'));
       }
     } catch (_) {
-      if (mounted) _showProblem('Unable to remove this place. Please try again.');
+      if (mounted) _showProblem(AppLocalizations.t('itinerary.edit.removeFailed'));
     } finally {
       if (mounted) setState(() => _removing = false);
     }
@@ -505,7 +513,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                     ),
                     const SizedBox(height: AppSpacing.cardPadding),
                     Text(
-                      'Adjust Visit Schedule',
+                      AppLocalizations.t('itinerary.edit.adjustSchedule'),
                       style: GoogleFonts.nunito(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -546,7 +554,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                               child: Column(
                                 children: [
                                   Text(
-                                    'START TIME',
+                                    AppLocalizations.t('itinerary.edit.startTime'),
                                     style: GoogleFonts.nunito(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -593,7 +601,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                               child: Column(
                                 children: [
                                   Text(
-                                    'END TIME',
+                                    AppLocalizations.t('itinerary.edit.endTime'),
                                     style: GoogleFonts.nunito(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -638,7 +646,10 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            isValid ? 'Total duration: $durationStr' : 'End time must be after start time',
+                            isValid
+                                ? AppLocalizations.t('itinerary.edit.totalDuration')
+                                    .replaceAll('{duration}', durationStr)
+                                : AppLocalizations.t('itinerary.edit.endBeforeStart'),
                             style: GoogleFonts.nunito(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -655,14 +666,14 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(sheetContext),
-                            child: const Text('Cancel'),
+                            child: Text(AppLocalizations.t('ui.cancel')),
                           ),
                         ),
                         const SizedBox(width: AppSpacing.componentGap),
                         Expanded(
                           child: ElevatedButton(
                             onPressed: isValid ? () => Navigator.pop(sheetContext, [currentStart, currentEnd]) : null,
-                            child: const Text('Apply'),
+                            child: Text(AppLocalizations.t('itinerary.edit.apply')),
                           ),
                         ),
                       ],
@@ -682,10 +693,11 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         _fitMapBounds();
         final conflict = _vm.getStopConflict(index);
         if (conflict != null) {
-          _showProblem('Time updated. Conflict detected: $conflict');
+          _showProblem(AppLocalizations.t('itinerary.edit.timeUpdatedConflict')
+              .replaceAll('{conflict}', conflict));
         }
       } else {
-        _showProblem(_vm.error ?? 'Unable to update time.');
+        _showProblem(_vm.error ?? AppLocalizations.t('itinerary.edit.timeUpdateFailed'));
       }
     }
   }
@@ -694,6 +706,10 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Itinerary module previously never watched LocaleVm — see
+    // itinerary-localization-audit.md. This makes the whole screen respond
+    // to a language change instead of staying stuck in English.
+    context.watch<LocaleVm>();
     return ListenableBuilder(
       listenable: _selectedDayIndex >= 0 ? _vm : Listenable.merge([]),
       builder: (context, _) {
@@ -710,7 +726,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           body: _totalDays == 0
               ? Center(
             child: Text(
-              'No itinerary days available.',
+              AppLocalizations.t('itinerary.edit.noDaysAvailable'),
               style: AppTextStyles.bodyLg,
             ),
           )
@@ -766,7 +782,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         onPressed: _handleBack,
       ),
       title: Text(
-        'Edit Itinerary',
+        AppLocalizations.t('itinerary.detail.editItinerary'),
         style: AppTextStyles.pageTitle,
       ),
     );
@@ -790,17 +806,17 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       bgColor = Colors.orange.shade100;
       fgColor = Colors.deepOrange.shade900;
       icon = Icons.history;
-      statusLabel = 'Past';
+      statusLabel = AppLocalizations.t('itinerary.status.past');
     } else if (startDay.isAfter(nowDay)) {
       bgColor = Colors.yellow.shade400;
       fgColor = Colors.red.shade800;
       icon = Icons.event_available;
-      statusLabel = 'Upcoming';
+      statusLabel = AppLocalizations.t('itinerary.status.upcoming');
     } else {
       bgColor = Colors.green.shade600;
       fgColor = Colors.white;
       icon = Icons.play_circle_outline;
-      statusLabel = 'Ongoing';
+      statusLabel = AppLocalizations.t('itinerary.status.ongoing');
     }
 
     return Column(
@@ -811,7 +827,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           children: [
             Expanded(
               child: Text(
-                widget.title.isEmpty ? 'My Trip' : widget.title,
+                widget.title.isEmpty ? AppLocalizations.t('itinerary.edit.myTripFallback') : widget.title,
                 style: GoogleFonts.nunito(
                   fontSize: 20, // Smaller than typical 24/28 pageTitle
                   fontWeight: FontWeight.bold,
@@ -847,7 +863,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
         ),
         const SizedBox(height: 4.0),
         Text(
-          '$_totalDays Days • ${DateFormat('d MMM').format(widget.tripStartDate)} – ${DateFormat('d MMM').format(endDate)}',
+          '${AppLocalizations.t('itinerary.detail.daysBadge').replaceAll('{n}', '$_totalDays')} • '
+          '${DateFormat('d MMM').format(widget.tripStartDate)} – ${DateFormat('d MMM').format(endDate)}',
           style: GoogleFonts.nunito(
             fontSize: 13,
             color: AppColors.inkFaint,
@@ -888,7 +905,9 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               ),
               child: Center(
                 child: Text(
-                  isAllDays ? 'All Days' : 'Day $index',
+                  isAllDays
+                      ? AppLocalizations.t('itinerary.edit.allDays')
+                      : AppLocalizations.t('itinerary.detail.dayLabel').replaceAll('{n}', '$index'),
                   style: GoogleFonts.nunito(
                     fontSize: 13,
                     fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
@@ -920,7 +939,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Day ${_vm.dayNumber} Schedule',
+                AppLocalizations.t('itinerary.edit.daySchedule')
+                    .replaceAll('{n}', '${_vm.dayNumber}'),
                 style: GoogleFonts.nunito(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -934,7 +954,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                   borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
                 child: Text(
-                  '${_vm.stops.length} stops',
+                  AppLocalizations.t('itinerary.edit.stopsCount').replaceAll('{n}', '${_vm.stops.length}'),
                   style: GoogleFonts.nunito(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -955,7 +975,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Reorder, edit or add places to your day.',
+            AppLocalizations.t('itinerary.edit.reorderHint'),
             style: AppTextStyles.labelSm,
           ),
         ],
@@ -980,7 +1000,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'All Days Overview',
+                AppLocalizations.t('itinerary.edit.allDaysOverview'),
                 style: GoogleFonts.nunito(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -989,7 +1009,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                '${days.length} Days Trip • Select any day to edit stops and reorder.',
+                '${AppLocalizations.t('itinerary.edit.daysTripSuffix').replaceAll('{n}', '${days.length}')} • '
+                '${AppLocalizations.t('itinerary.edit.selectAnyDayHint')}',
                 style: AppTextStyles.labelSm,
               ),
             ],
@@ -1022,7 +1043,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Day ${dayIndex + 1} · ${dateFmt.format(day.date)}',
+                '${AppLocalizations.t('itinerary.detail.dayLabel').replaceAll('{n}', '${dayIndex + 1}')} · ${dateFmt.format(day.date)}',
                 style: GoogleFonts.nunito(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -1039,7 +1060,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                 ),
                 onPressed: () => _selectDay(dayIndex),
                 child: Text(
-                  'Edit Day ${dayIndex + 1}',
+                  AppLocalizations.t('itinerary.edit.editDay').replaceAll('{n}', '${dayIndex + 1}'),
                   style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ),
@@ -1047,7 +1068,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '${day.stops.length} stops planned',
+            AppLocalizations.t('itinerary.edit.stopsPlanned').replaceAll('{n}', '${day.stops.length}'),
             style: GoogleFonts.nunito(fontSize: 13, color: AppColors.inkFaint),
           ),
           if (day.stops.isNotEmpty) ...[
@@ -1078,7 +1099,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      '+${day.stops.length - 4} more',
+                      AppLocalizations.t('itinerary.edit.moreStops')
+                          .replaceAll('{n}', '${day.stops.length - 4}'),
                       style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.teal),
                     ),
                   ),
@@ -1196,7 +1218,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'STOPS',
+              AppLocalizations.t('itinerary.edit.stops'),
               style: AppTextStyles.sectionLabel,
             ),
             if (hasAnyConflict)
@@ -1213,7 +1235,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                     const Icon(Icons.warning_amber_rounded, size: 12, color: Color(0xFFE65100)),
                     const SizedBox(width: 4),
                     Text(
-                      'Conflicts Detected',
+                      AppLocalizations.t('itinerary.edit.conflictsDetected'),
                       style: GoogleFonts.nunito(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
@@ -1288,7 +1310,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                 const Icon(Icons.add_location_alt_rounded, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
                 Text(
-                  'Add Place',
+                  AppLocalizations.t('itinerary.edit.addPlace'),
                   style: GoogleFonts.nunito(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
@@ -1345,7 +1367,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'Review & Save Day ${_vm.dayNumber}',
+                AppLocalizations.t('itinerary.edit.reviewSaveDay').replaceAll('{n}', '${_vm.dayNumber}'),
                 style: GoogleFonts.nunito(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -1367,7 +1389,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
 
   String _friendlyValidationError(String msg) {
     return msg.contains('exploration time')
-        ? 'Schedule exceeds available day time.'
+        ? AppLocalizations.t('itinerary.edit.scheduleExceeds')
         : msg;
   }
 }
@@ -1591,7 +1613,7 @@ class _StopItem extends StatelessWidget {
                                   Row(
                                     children: [
                                       Text(
-                                        'View details',
+                                        AppLocalizations.t('itinerary.edit.viewDetails'),
                                         style: GoogleFonts.nunito(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,
@@ -1684,9 +1706,10 @@ class _StopItem extends StatelessWidget {
                                   Expanded(
                                     child: Text(
                                       isUnscheduled
-                                          ? 'Unscheduled • Tap to schedule'
+                                          ? AppLocalizations.t('itinerary.edit.unscheduledTapToSchedule')
                                           : (conflict != null
-                                              ? '$startTimeStr – $endTimeStr (Conflict)'
+                                              ? AppLocalizations.t('itinerary.edit.timeRangeConflict')
+                                                  .replaceAll('{range}', '$startTimeStr – $endTimeStr')
                                               : '$startTimeStr – $endTimeStr'),
                                       style: GoogleFonts.nunito(
                                         fontSize: 12,
@@ -1719,7 +1742,7 @@ class _StopItem extends StatelessWidget {
 
                         _ActionButton(
                           icon: Icons.swap_horiz_rounded,
-                          tooltip: 'Replace Place',
+                          tooltip: AppLocalizations.t('itinerary.edit.replacePlace'),
                           onTap: onReplace,
                           color: AppColors.inkSoft,
                           bgColor: AppColors.surface2,
@@ -1727,7 +1750,7 @@ class _StopItem extends StatelessWidget {
                         const SizedBox(width: 6),
                         _ActionButton(
                           icon: Icons.delete_outline_rounded,
-                          tooltip: 'Delete Place',
+                          tooltip: AppLocalizations.t('itinerary.edit.deletePlace'),
                           onTap: onDelete,
                           color: AppColors.error,
                           bgColor: AppColors.error.withOpacity(0.1),
@@ -1797,12 +1820,20 @@ class _StopItem extends StatelessWidget {
     final cat = place.category ?? '';
     if (cat.isNotEmpty) return cat;
     final types = place.types.map((t) => t.toLowerCase()).toSet();
-    if (types.contains('night_club') || types.contains('bar')) return 'Nightlife';
-    if (types.contains('restaurant') || types.contains('food')) return 'Restaurant';
-    if (types.contains('cafe') || types.contains('bakery')) return 'Cafe';
-    if (types.contains('park') || types.contains('natural_feature')) return 'Nature';
-    if (types.contains('museum')) return 'Museum';
-    return 'Landmark';
+    if (types.contains('night_club') || types.contains('bar')) {
+      return AppLocalizations.t('itinerary.edit.categoryNightlife');
+    }
+    if (types.contains('restaurant') || types.contains('food')) {
+      return AppLocalizations.t('itinerary.edit.categoryRestaurant');
+    }
+    if (types.contains('cafe') || types.contains('bakery')) {
+      return AppLocalizations.t('itinerary.edit.categoryCafe');
+    }
+    if (types.contains('park') || types.contains('natural_feature')) {
+      return AppLocalizations.t('itinerary.edit.categoryNature');
+    }
+    if (types.contains('museum')) return AppLocalizations.t('itinerary.edit.categoryMuseum');
+    return AppLocalizations.t('itinerary.edit.categoryLandmark');
   }
 
   String _fmt(DateTime t) {

@@ -1,7 +1,10 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import './add_place_screen.dart';
+import '../../core/localization/app_localizations.dart';
+import '../../core/localization/locale_vm.dart';
 import '../../core/theme/colors.dart';
 
 class StopData {
@@ -282,12 +285,12 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Itinerary?'),
-        content: const Text('This action cannot be undone.'),
+        title: Text(AppLocalizations.t('itinerary.detail.deleteTitle')),
+        content: Text(AppLocalizations.t('itinerary.detail.deleteConfirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.t('ui.cancel')),
           ),
           TextButton(
             onPressed: () {
@@ -296,7 +299,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
               Navigator.pop(context); // go back to list
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            child: Text(AppLocalizations.t('itinerary.detail.delete')),
           ),
         ],
       ),
@@ -305,6 +308,11 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Itinerary module previously never watched LocaleVm — see
+    // itinerary-localization-audit.md. This makes the screen (and its
+    // sub-widgets below, which are all rebuilt from here) respond to a
+    // language change instead of staying stuck in English.
+    context.watch<LocaleVm>();
     return Scaffold(
       backgroundColor: AppColors.creamBg,
       body: FutureBuilder<ItineraryData>(
@@ -320,11 +328,12 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
                 children: [
                   const Icon(Icons.error_outline, size: 48, color: Colors.red),
                   const SizedBox(height: 16),
-                  Text('Error loading itinerary: ${snapshot.error}'),
+                  Text(AppLocalizations.t('itinerary.detail.errorLoading')
+                      .replaceAll('{error}', '${snapshot.error}')),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => setState(() {}),
-                    child: const Text('Retry'),
+                    child: Text(AppLocalizations.t('itinerary.detail.retry')),
                   ),
                 ],
               ),
@@ -493,7 +502,7 @@ class _HeroSection extends StatelessWidget {
                             children: [
                               ListTile(
                                 leading: const Icon(Icons.edit),
-                                title: const Text('Edit Itinerary'),
+                                title: Text(AppLocalizations.t('itinerary.detail.editItinerary')),
                                 onTap: () {
                                   Navigator.pop(context);
                                   // Navigate to edit
@@ -501,7 +510,7 @@ class _HeroSection extends StatelessWidget {
                               ),
                               ListTile(
                                 leading: const Icon(Icons.share),
-                                title: const Text('Share'),
+                                title: Text(AppLocalizations.t('itinerary.detail.share')),
                                 onTap: () {
                                   Navigator.pop(context);
                                   // Share
@@ -509,7 +518,10 @@ class _HeroSection extends StatelessWidget {
                               ),
                               ListTile(
                                 leading: const Icon(Icons.delete, color: Colors.red),
-                                title: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                title: Text(
+                                  AppLocalizations.t('itinerary.detail.delete'),
+                                  style: const TextStyle(color: Colors.red),
+                                ),
                                 onTap: () {
                                   Navigator.pop(context);
                                   // Show delete confirmation
@@ -537,7 +549,11 @@ class _HeroSection extends StatelessWidget {
                   children: [
                     _badge(status, statusColor, Colors.white),
                     const SizedBox(width: 8),
-                    _badge('$days Days', AppColors.terracotta, Colors.white),
+                    _badge(
+                      AppLocalizations.t('itinerary.detail.daysBadge').replaceAll('{n}', days),
+                      AppColors.terracotta,
+                      Colors.white,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -556,7 +572,8 @@ class _HeroSection extends StatelessWidget {
                     const Icon(Icons.calendar_today, size: 16, color: Colors.white70),
                     const SizedBox(width: 6),
                     Text(
-                      '$dateRange â€¢ $places places',
+                      '$dateRange • '
+                      '${AppLocalizations.t('itinerary.detail.placesCount').replaceAll('{n}', places)}',
                       style: const TextStyle(fontSize: 13, color: Colors.white70),
                     ),
                   ],
@@ -612,12 +629,12 @@ class _HeroSection extends StatelessWidget {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Itinerary?'),
-        content: const Text('This action cannot be undone.'),
+        title: Text(AppLocalizations.t('itinerary.detail.deleteTitle')),
+        content: Text(AppLocalizations.t('itinerary.detail.deleteConfirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.t('ui.cancel')),
           ),
           TextButton(
             onPressed: () {
@@ -626,7 +643,7 @@ class _HeroSection extends StatelessWidget {
               Navigator.pop(context);
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            child: Text(AppLocalizations.t('itinerary.detail.delete')),
           ),
         ],
       ),
@@ -659,11 +676,11 @@ class _StatsBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _statItem('$places', 'Places'),
+          _statItem('$places', AppLocalizations.t('itinerary.detail.places')),
           Container(width: 1, height: 32, color: AppColors.outlineLight),
-          _statItem(transit, 'Transit'),
+          _statItem(transit, AppLocalizations.t('itinerary.detail.transit')),
           Container(width: 1, height: 32, color: AppColors.outlineLight),
-          _statItem('$cities', 'Cities'),
+          _statItem('$cities', AppLocalizations.t('itinerary.detail.cities')),
         ],
       ),
     );
@@ -740,7 +757,8 @@ class _DayPillsDelegate extends SliverPersistentHeaderDelegate {
                       ),
                     ),
                     child: Text(
-                      'Day ${day.dayNumber}${index == 0 ? ' â€¢ ${day.date}' : ''}',
+                      '${AppLocalizations.t('itinerary.detail.dayLabel').replaceAll('{n}', '${day.dayNumber}')}'
+                      '${index == 0 ? ' • ${day.date}' : ''}',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -805,7 +823,8 @@ class _DayCard extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          'Day ${day.dayNumber}',
+                          AppLocalizations.t('itinerary.detail.dayLabel')
+                              .replaceAll('{n}', '${day.dayNumber}'),
                           style: GoogleFonts.playfairDisplay(
                             fontSize: 24,
                             fontWeight: FontWeight.w700,
@@ -820,9 +839,9 @@ class _DayCard extends StatelessWidget {
                               color: AppColors.pineGreen,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Text(
-                              'Selected',
-                              style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                            child: Text(
+                              AppLocalizations.t('itinerary.detail.selected'),
+                              style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ],
@@ -879,7 +898,8 @@ class _DayCard extends StatelessWidget {
                     const Icon(Icons.add, size: 16, color: AppColors.mutedText),
                     const SizedBox(width: 6),
                     Text(
-                      'Add a place to Day ${day.dayNumber}',
+                      AppLocalizations.t('itinerary.detail.addPlaceToDay')
+                          .replaceAll('{n}', '${day.dayNumber}'),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,

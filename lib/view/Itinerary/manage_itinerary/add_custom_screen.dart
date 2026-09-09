@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/config/api_keys.dart';
+import '../../../core/localization/app_localizations.dart';
+import '../../../core/localization/locale_vm.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../model/business_logic/itinerary_service/custom_place_service.dart';
@@ -79,6 +82,10 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Itinerary module previously never watched LocaleVm — see
+    // itinerary-localization-audit.md. This makes the screen respond to a
+    // language change instead of staying stuck in English.
+    context.watch<LocaleVm>();
     return ListenableBuilder(
       listenable: _viewModel,
       builder: (context, _) {
@@ -87,15 +94,15 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
           return Scaffold(
             backgroundColor: AppColors.bg,
             appBar: _buildAppBar(),
-            body: const Center(
+            body: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
                   Text(
-                    'Loading itinerary...',
-                    style: TextStyle(color: AppColors.inkFaint),
+                    AppLocalizations.t('itinerary.addCustom.loading'),
+                    style: const TextStyle(color: AppColors.inkFaint),
                   ),
                 ],
               ),
@@ -173,9 +180,9 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
           onPressed: () => Navigator.maybePop(context),
         ),
       ),
-      title: const Text(
-        "Add a Place",
-        style: TextStyle(
+      title: Text(
+        AppLocalizations.t('itinerary.addCustom.title'),
+        style: const TextStyle(
           fontFamily: 'Inter', fontSize: 20, fontWeight: FontWeight.w600,
           color: AppColors.ink, letterSpacing: -0.5,
         ),
@@ -241,7 +248,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
           _viewModel.searchPlaces();
         },
         decoration: InputDecoration(
-          hintText: "Search for a place...",
+          hintText: AppLocalizations.t('itinerary.addCustom.searchHint'),
           hintStyle: const TextStyle(color: AppColors.inkFaint),
           prefixIcon: const Icon(Icons.search, color: AppColors.inkFaint),
           suffixIcon: _searchController.text.isNotEmpty
@@ -271,11 +278,11 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 4.0, bottom: 12.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, bottom: 12.0),
           child: Text(
-            "SEARCH NEARBY TODAY'S STOPS",
-            style: TextStyle(
+            AppLocalizations.t('itinerary.addCustom.searchNearby'),
+            style: const TextStyle(
               fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
               letterSpacing: 1.2, color: AppColors.inkFaint,
             ),
@@ -298,12 +305,14 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                     fontSize: 13, color: AppColors.ink, fontWeight: FontWeight.w500,
                   ),
                   avatar: const Icon(Icons.near_me_outlined, size: 14, color: AppColors.green),
-                  label: Text('Near $placeName'),
+                  label: Text(AppLocalizations.t('itinerary.addCustom.nearPlace').replaceAll('{place}', placeName)),
                   onPressed: () {
+                    final nearQuery =
+                        AppLocalizations.t('itinerary.addCustom.nearPlace').replaceAll('{place}', placeName);
                     // 1. Update the search UI
-                    _searchController.text = 'Near $placeName';
+                    _searchController.text = nearQuery;
                     // 2. Pass it to the ViewModel
-                    _viewModel.query = 'Near $placeName';
+                    _viewModel.query = nearQuery;
                     // 3. Trigger the search immediately
                     _viewModel.searchPlaces();
                   },
@@ -319,37 +328,37 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
   Widget _buildSearchResults() {
     final vm = _viewModel;
     if (vm.isSearching) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
         child: Center(
           child: Column(
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 12),
-              Text('Searching...',
-                  style: TextStyle(color: AppColors.inkFaint)),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 12),
+              Text(AppLocalizations.t('itinerary.manageEdit.searching'),
+                  style: const TextStyle(color: AppColors.inkFaint)),
             ],
           ),
         ),
       );
     }
     if (vm.searchResults.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
         child: Text(
-          'No places found. Try a different search.',
-          style: TextStyle(color: AppColors.inkFaint, fontSize: 14),
+          AppLocalizations.t('itinerary.addCustom.noPlacesFound'),
+          style: const TextStyle(color: AppColors.inkFaint, fontSize: 14),
         ),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 4.0, bottom: 12.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, bottom: 12.0),
           child: Text(
-            "SEARCH RESULTS",
-            style: TextStyle(
+            AppLocalizations.t('itinerary.addCustom.searchResults'),
+            style: const TextStyle(
               fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
               letterSpacing: 1.2, color: AppColors.inkFaint,
             ),
@@ -366,11 +375,11 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 4.0, bottom: 12.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, bottom: 12.0),
           child: Text(
-            "SAVED BOOKMARKS",
-            style: TextStyle(
+            AppLocalizations.t('itinerary.addCustom.savedBookmarks'),
+            style: const TextStyle(
               fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
               letterSpacing: 1.2, color: AppColors.inkFaint,
             ),
@@ -392,13 +401,13 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
             ),
           )
         else if (vm.bookmarks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
                 child: Text(
-                  'No bookmarks yet.\nSearch above to find places to visit!',
+                  AppLocalizations.t('itinerary.addCustom.noBookmarksYet'),
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: AppColors.inkSoft, height: 1.5),
+                  style: const TextStyle(fontSize: 14, color: AppColors.inkSoft, height: 1.5),
                 ),
               ),
             )
@@ -418,7 +427,8 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                 '?maxwidth=200&photoreference=${place.photoReference!.trim()}'
                 '&key=${ApiKeys.googleMapsApiKey}'
             : null);
-    final subtitle = place.placeCategory ?? (place.types.isNotEmpty ? place.types.first : 'Place');
+    final subtitle = place.placeCategory ??
+        (place.types.isNotEmpty ? place.types.first : AppLocalizations.t('itinerary.common.place'));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -504,7 +514,8 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                 '?maxwidth=400&photoreference=${place.photoReference!.trim()}'
                 '&key=${ApiKeys.googleMapsApiKey}'
             : null);
-    final primaryType = place.placeCategory ?? (place.types.isNotEmpty ? place.types.first : 'Attraction');
+    final primaryType = place.placeCategory ??
+        (place.types.isNotEmpty ? place.types.first : AppLocalizations.t('itinerary.manageEdit.attractionFallback'));
     final prox = vm.proximity;
 
     return Container(
@@ -631,16 +642,16 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
           ],
           if (vm.isPlanning) ...[
             const SizedBox(height: 12),
-            const Row(
+            Row(
               children: [
-                SizedBox(
+                const SizedBox(
                   width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                SizedBox(width: 12),
+                const SizedBox(width: 12),
                 Text(
-                  'Checking travel time and schedule...',
-                  style: TextStyle(fontSize: 13, color: AppColors.inkSoft),
+                  AppLocalizations.t('itinerary.addCustom.checkingTravelTime'),
+                  style: const TextStyle(fontSize: 13, color: AppColors.inkSoft),
                 ),
               ],
             ),
@@ -693,8 +704,8 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                 Expanded(
                   child: Text(
                     hasUnscheduled
-                        ? 'Place added! Daytime hours are full, so time is left open for you to schedule.'
-                        : 'Place can be added to your itinerary.',
+                        ? AppLocalizations.t('itinerary.addCustom.placeAddedUnscheduled')
+                        : AppLocalizations.t('itinerary.addCustom.placeCanBeAdded'),
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -706,11 +717,11 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
             ),
           ),
         ],
-        const Padding(
-          padding: EdgeInsets.only(left: 4.0, bottom: 8.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
           child: Text(
-            "PROPOSED SCHEDULE",
-            style: TextStyle(
+            AppLocalizations.t('itinerary.addCustom.proposedSchedule'),
+            style: const TextStyle(
               fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
               letterSpacing: 1.2, color: AppColors.inkFaint,
             ),
@@ -751,7 +762,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                                 color: AppColors.inkFaint),
                             const SizedBox(width: 4),
                             Text(
-                              '$travel min travel',
+                              AppLocalizations.t('itinerary.addCustom.minTravel').replaceAll('{n}', '$travel'),
                               style: const TextStyle(
                                   fontSize: 11, color: AppColors.inkFaint),
                             ),
@@ -808,9 +819,9 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                               color: AppColors.accent,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Text(
-                              'NEW',
-                              style: TextStyle(
+                            child: Text(
+                              AppLocalizations.t('itinerary.addCustom.newBadge'),
+                              style: const TextStyle(
                                 fontSize: 9, fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
@@ -864,9 +875,9 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                       ),
                     ),
                     onPressed: () => Navigator.maybePop(context),
-                    child: const Text(
-                      "Cancel",
-                      style: TextStyle(
+                    child: Text(
+                      AppLocalizations.t('ui.cancel'),
+                      style: const TextStyle(
                         fontFamily: 'Inter', fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
@@ -889,8 +900,10 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                     onPressed: canAdd && !vm.isSaving ? () => _onAdd() : null,
                     child: Text(
                       vm.isSaving
-                          ? 'Saving...'
-                          : (vm.isPlanning ? 'Planning...' : 'Add to Itinerary'),
+                          ? AppLocalizations.t('itinerary.addCustom.saving')
+                          : (vm.isPlanning
+                              ? AppLocalizations.t('itinerary.addCustom.planning')
+                              : AppLocalizations.t('itinerary.addCustom.addToItinerary')),
                       style: const TextStyle(
                         fontFamily: 'Inter', fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -921,7 +934,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
             content: Text(
               vm.planError ??
                   vm.planResult?.message ??
-                  "We couldn't plan this place right now. Please try again.",
+                  AppLocalizations.t('itinerary.addCustom.planFailed'),
             ),
           ),
         );
@@ -929,16 +942,20 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     }
 
     final isPreview = widget.dayStops != null;
-    final placeName = vm.selectedPlace?.placeName ?? 'This place';
+    final placeName = vm.selectedPlace?.placeName ?? AppLocalizations.t('itinerary.addCustom.thisPlaceFallback');
 
     final confirmed = await showConfirmationDialog(
       context: context,
-      title: 'Add this place?',
+      title: AppLocalizations.t('itinerary.addCustom.addPlaceTitle'),
       message: isPreview
-          ? '$placeName will be added to Day ${vm.dayIndex} of your itinerary preview. Changes become permanent only when you save.'
-          : '$placeName will be added to Day ${vm.dayIndex} of your itinerary.',
-      confirmLabel: 'Confirm',
-      cancelLabel: 'Cancel',
+          ? AppLocalizations.t('itinerary.addCustom.addPlacePreviewMessage')
+              .replaceAll('{place}', placeName)
+              .replaceAll('{n}', '${vm.dayIndex}')
+          : AppLocalizations.t('itinerary.addCustom.addPlaceMessage')
+              .replaceAll('{place}', placeName)
+              .replaceAll('{n}', '${vm.dayIndex}'),
+      confirmLabel: AppLocalizations.t('itinerary.addCustom.confirm'),
+      cancelLabel: AppLocalizations.t('ui.cancel'),
       confirmColor: AppColors.primary,
       icon: Icons.add_location_alt_outlined,
       iconBgColor: AppColors.primary.withOpacity(0.12),
@@ -956,7 +973,11 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
-              content: Text('Added $placeName to Day ${vm.dayIndex}.'),
+              content: Text(
+                AppLocalizations.t('itinerary.addCustom.addedToDay')
+                    .replaceAll('{place}', placeName)
+                    .replaceAll('{n}', '${vm.dayIndex}'),
+              ),
               backgroundColor: AppColors.primary,
             ),
           );
@@ -964,9 +985,9 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
       } else {
         await showConfirmationDialog(
           context: context,
-          title: 'Cannot Add Place',
-          message: vm.planError ?? 'Failed to add place to itinerary.',
-          confirmLabel: 'OK',
+          title: AppLocalizations.t('itinerary.addCustom.cannotAddPlaceTitle'),
+          message: vm.planError ?? AppLocalizations.t('itinerary.addCustom.failedToAddPlace'),
+          confirmLabel: AppLocalizations.t('itinerary.addCustom.ok'),
           cancelLabel: '',
           icon: Icons.error_outline_rounded,
           iconColor: AppColors.error,
@@ -982,26 +1003,26 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 4.0, bottom: 12.0),
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, bottom: 12.0),
           child: Text(
-            "RECOMMENDED FOR THIS DAY",
-            style: TextStyle(
+            AppLocalizations.t('itinerary.addCustom.recommendedForDay'),
+            style: const TextStyle(
               fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.bold,
               letterSpacing: 1.2, color: AppColors.inkFaint,
             ),
           ),
         ),
         if (vm.isLoadingRecommendations) // Assuming you add this to VM
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
             child: Center(
               child: Column(
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 12),
-                  Text('Analyzing schedule for recommendations...',
-                      style: TextStyle(color: AppColors.inkFaint)),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(AppLocalizations.t('itinerary.addCustom.analyzingSchedule'),
+                      style: const TextStyle(color: AppColors.inkFaint)),
                 ],
               ),
             ),
@@ -1017,11 +1038,11 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
             ),
           )
         else if (vm.recommendations.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 24),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
               child: Text(
-                'No specific recommendations available for this schedule.',
-                style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+                AppLocalizations.t('itinerary.addCustom.noRecommendations'),
+                style: const TextStyle(fontSize: 14, color: AppColors.inkFaint),
               ),
             )
           else
