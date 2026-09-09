@@ -118,15 +118,34 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
   /// provider's claims onto `auth.users.user_metadata`; this lifts the two
   /// useful ones onto the `profiles` row.
   ///
-  /// Only fills a column that is currently EMPTY, so it never overwrites a
-  /// name the tourist edited or a photo they uploaded — which also makes
-  /// it safe to run on every Google sign-in rather than only the first.
+  /// By default only fills a column that is currently EMPTY, so an ordinary
+  /// Google sign-in never overwrites a name the tourist edited or a photo
+  /// they uploaded — which also makes it safe to run on every sign-in
+  /// rather than only the first.
+  ///
+  /// [forceAvatarOverwrite] opts out of that "empty-only" rule for the
+  /// avatar column specifically. BUG FIX (Foo, 9 Sep: "the google link
+  /// does not changes the bucket profile picture, which mean i use a
+  /// registered gmail account unlink and link with new account"): this
+  /// method used to never even run for [linkGoogleAccount] — a Google
+  /// identity manually linked from Profile never had its avatar pulled at
+  /// all. Even calling it with the default empty-only rule wouldn't have
+  /// been enough for THIS report, since unlinking and relinking a
+  /// different Google account leaves the old avatar already sitting in
+  /// the `avatarIsEmpty` check, so it would still never update to the new
+  /// account's photo. Manually (re-)linking Google is a deliberate,
+  /// one-off action the tourist just took — unlike a routine sign-in — so
+  /// [linkGoogleAccount] passes `forceAvatarOverwrite: true` to make the
+  /// picture actually follow whichever Google account is linked right
+  /// now. The name column keeps the original empty-only behaviour either
+  /// way, since overwriting a name the tourist typed themselves has no
+  /// equivalent "they just asked for this" justification.
   ///
   /// Best-effort by design: wrapped so a failure here can never turn a
-  /// perfectly good sign-in into GoogleSignInFailure. Google's key names
-  /// differ by provider and have changed over time, so both spellings of
-  /// each are checked.
-  Future<void> _backfillFromGoogleIdentity() async {
+  /// perfectly good sign-in/link into GoogleSignInFailure. Google's key
+  /// names differ by provider and have changed over time, so both
+  /// spellings of each are checked.
+  Future<void> _backfillFromGoogleIdentity({bool forceAvatarOverwrite = false}) async {
     try {
       final user = _authDataSource.currentUser;
       if (user == null) return;
@@ -147,12 +166,13 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
       final dto = await _profileDataSource.fetchProfileRow(user.id);
       final nameIsEmpty = dto.fullName == null || dto.fullName!.trim().isEmpty;
       final avatarIsEmpty = dto.avatarUrl == null || dto.avatarUrl!.trim().isEmpty;
-      if (!nameIsEmpty && !avatarIsEmpty) return;
+      final shouldWriteAvatar = forceAvatarOverwrite || avatarIsEmpty;
+      if (!nameIsEmpty && !shouldWriteAvatar) return;
 
       await _profileDataSource.backfillOAuthProfile(
         user.id,
         fullName: nameIsEmpty ? googleName : null,
-        avatarUrl: avatarIsEmpty ? googleAvatar : null,
+        avatarUrl: shouldWriteAvatar ? googleAvatar : null,
       );
     } catch (e) {
       debugPrint('Google profile backfill skipped: $e');
@@ -653,6 +673,10 @@ class SupabaseProfileRepositoryAdapter implements ProfileRepository {
     }
     try {
       await _authDataSource.linkGoogleAndAwaitUpdate(redirectTo: _googleRedirectUrl);
+      // Pull the newly-linked account's photo into the bucket/profile row —
+      // see _backfillFromGoogleIdentity's doc comment for why this needs
+      // forceAvatarOverwrite specifically here.
+      await _backfillFromGoogleIdentity(forceAvatarOverwrite: true);
     } on AuthException catch (e) {
       // DIAGNOSTIC ("can't add a Google account" report): the most likely
       // cause is that the Supabase project's "Allow manual linking"

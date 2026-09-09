@@ -8,6 +8,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../model/business_logic/profile/messages/password_reset_messages.dart';
 import '../../../model/repositories/adapters/profile/profile_adapter.dart';
 import '../../../viewmodel/profile_viewmodel/reset_password_vm.dart';
+import '../widgets/password_rules_hint.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/underline_field.dart';
 import './login_screen.dart';
@@ -64,7 +65,23 @@ class _ResetPasswordViewState extends State<_ResetPasswordView> {
   final _confirmController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // Live password-strength/match feedback, same as Set Password /
+    // Register's Username tab — see set_password_screen.dart's identical
+    // listeners. Previously missing here, so this field showed no rule
+    // hints while typing and no match indicator, unlike every other
+    // password field in the app.
+    _passwordController.addListener(_onPasswordFieldsChanged);
+    _confirmController.addListener(_onPasswordFieldsChanged);
+  }
+
+  void _onPasswordFieldsChanged() => setState(() {});
+
+  @override
   void dispose() {
+    _passwordController.removeListener(_onPasswordFieldsChanged);
+    _confirmController.removeListener(_onPasswordFieldsChanged);
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
@@ -110,12 +127,17 @@ class _ResetPasswordViewState extends State<_ResetPasswordView> {
                 obscureText: true,
                 errorText: vm.fieldError == 'password' ? vm.errorMessage : null,
               ),
+              PasswordRulesHint(password: _passwordController.text),
               const SizedBox(height: 16),
               UnderlineField(
                 label: AppLocalizations.t('ui.confirmNewPassword'),
                 controller: _confirmController,
                 obscureText: true,
                 errorText: vm.fieldError == 'confirmPassword' ? vm.errorMessage : null,
+              ),
+              PasswordMatchHint(
+                password: _passwordController.text,
+                confirmation: _confirmController.text,
               ),
               // Fallback banner only for errors with no field mapping
               // (e.g. session expired) — see ResetPasswordVm.fieldError's

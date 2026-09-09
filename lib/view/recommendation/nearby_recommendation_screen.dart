@@ -153,7 +153,16 @@ class _NearbyRecommendationMapState extends State<_NearbyRecommendationMap> {
               Positioned(
                 top: MediaQuery.paddingOf(context).top + 72,
                 left: 16,
-                child: const _MapLegend(),
+                // FIXED (9 Sep, Foo: "recommend and ar available languages
+                // does not change"): this was `const _MapLegend()`, which
+                // tells Flutter the widget never changes — so it's cached
+                // forever after the first frame and never rebuilds, even
+                // when the locale changes and this screen's own
+                // `context.watch<LocaleVm>()` triggers a rebuild. Dropping
+                // `const` lets it re-read AppLocalizations.t(...) with the
+                // current locale on every rebuild, same as the header above
+                // it (_MapHeader, which was never const to begin with).
+                child: _MapLegend(),
               ),
             Positioned(
               left: 0,

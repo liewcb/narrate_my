@@ -225,10 +225,25 @@ class OtpVm extends ChangeNotifier {
   /// after tripping at 5, not a permanent lock, so clearing the counter
   /// lets the normal 5-strikes rule apply fresh rather than re-triggering
   /// on every attempt from here on.
+  ///
+  /// BUG FIX (Foo, 9 Sep: "it will show message you can request a new
+  /// code now but the resend code still count downing"): clearing
+  /// [_failedByPhone] flips [showCaptcha] off, but the screen swaps
+  /// straight back to the resend button, and that button's own gate is
+  /// [canResend] — `resendCooldownSeconds <= 0 && !showCaptcha`. The
+  /// cooldown is whatever was left over from the ORIGINAL code send, so a
+  /// tourist who tripped the CAPTCHA partway through that cooldown solved
+  /// it, saw "you can request a new code now", and then hit a still-ticking
+  /// timer — the CAPTCHA solve didn't actually mean what the message said.
+  /// Solving the CAPTCHA now also clears the leftover cooldown, so
+  /// [canResend] is genuinely true the moment this returns, matching the
+  /// message.
   Future<bool> verifyCaptcha(String token) async {
     try {
       await _profileRepository.verifyCaptcha(token);
       _failedByPhone.remove(e164Phone);
+      _cooldownTimer?.cancel();
+      resendCooldownSeconds = 0;
       errorMessage = null;
       notifyListeners();
       return true;
