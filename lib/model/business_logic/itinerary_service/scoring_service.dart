@@ -42,7 +42,6 @@ class ScoredAttraction {
 class ScoringService {
   static const double weightInterest = 0.70;
   static const double weightRating = 0.30;
-
   static const double nonInterestPenalty = 0.0;
 
   static const List<String> _foodTypes = [
