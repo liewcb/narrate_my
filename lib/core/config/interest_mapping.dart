@@ -39,19 +39,15 @@ class InterestMapping {
     ],
     'Shopping & Markets': [
       'shopping_mall',
-      'clothing_store',
       'department_store',
-      'book_store',
-      'jewelry_store',
-      'supermarket', // Replaced 'market'
-      'convenience_store', // Added to catch smaller local markets
+      'market',
+      'tourist_attraction',
     ],
     'Nightlife & Social': [
       'night_club',
+      'bar',
       'casino',
-      'liquor_store',
-      'bar', // Covers 'wine_bar'
-      'movie_theater',
+      'tourist_attraction',
     ],
   };
 

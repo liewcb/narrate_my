@@ -36,6 +36,7 @@ class GlobalAiAssistantController extends ChangeNotifier {
 
   bool get shouldShowButton =>
       !_assistantOpen && !_storytellingActive && !_profileActive;
+  bool get isAssistantOpen => _assistantOpen;
   double get assistantBottomOffset => _arPlacementActive ? 200 : 84;
   AiAttractionContext? get attractionContext => _attractionContext;
   Place? get bookmarkPlace => _bookmarkPlace;

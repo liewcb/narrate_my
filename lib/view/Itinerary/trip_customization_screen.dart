@@ -520,10 +520,9 @@ class _TravelDates extends StatelessWidget {
           ),
         ],
 
-        if (coverage != WeatherCoverage.unknown &&
-            coverage != WeatherCoverage.outOfRange) ...[
+        if (coverage != WeatherCoverage.unknown) ...[
           const SizedBox(height: 8),
-          //_WeatherCoverageBadge(coverage: coverage),
+          _WeatherCoverageBadge(coverage: coverage),
         ],
       ],
     );
@@ -896,58 +895,66 @@ class _DateRangePickerDialogState extends State<_DateRangePickerDialog> {
   }
 }
 
-// class _WeatherCoverageBadge extends StatelessWidget {
-//   final WeatherCoverage coverage;
-//
-//   const _WeatherCoverageBadge({required this.coverage});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     if (coverage == WeatherCoverage.unknown ||
-//         coverage == WeatherCoverage.outOfRange) {
-//       return const SizedBox.shrink();
-//     }
+class _WeatherCoverageBadge extends StatelessWidget {
+  final WeatherCoverage coverage;
 
-    // final (label, color, icon) = switch (coverage) {
-    //   WeatherCoverage.full => (
-    //     'Weather data available for all days',
-    //     AppColors.brandGreen,
-    //     Icons.check_circle_rounded,
-    //   ),
-    //   WeatherCoverage.primaryOnly => (
-    //     'Primary forecast only (${ItineraryValidationService.primaryForecastDays}-day)',
-    //     Colors.orange,
-    //     Icons.info_outline_rounded,
-    //   ),
-    //   _ => ('', AppColors.outline, Icons.help_outline),
-    // };
+  const _WeatherCoverageBadge({required this.coverage});
 
-//     if (label.isEmpty) return const SizedBox.shrink();
-//
-//     return Container(
-//       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-//       decoration: BoxDecoration(
-//         color: color.withOpacity(0.1),
-//         borderRadius: BorderRadius.circular(8),
-//       ),
-//       child: Row(
-//         mainAxisSize: MainAxisSize.min,
-//         children: [
-//           Icon(icon, size: 14, color: color),
-//           const SizedBox(width: 6),
-//           Text(
-//             label,
-//             style: GoogleFonts.inter(
-//               fontSize: 11,
-//               fontWeight: FontWeight.w600,
-//               color: color,
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }
+  @override
+  Widget build(BuildContext context) {
+    if (coverage == WeatherCoverage.unknown) {
+      return const SizedBox.shrink();
+    }
+
+    final (label, color, icon) = switch (coverage) {
+      WeatherCoverage.full => (
+        '16-day live weather forecast active · indoor & outdoor stops will be optimized',
+        AppColors.brandGreen,
+        Icons.wb_sunny_rounded,
+      ),
+      WeatherCoverage.primaryOnly => (
+        '16-day primary weather forecast active · stops will be optimized',
+        Colors.orange.shade700,
+        Icons.cloud_queue_rounded,
+      ),
+      WeatherCoverage.outOfRange => (
+        'Selected dates are beyond the 16-day forecast horizon · standard seasonal climate will be used',
+        Colors.blueGrey.shade600,
+        Icons.calendar_month_outlined,
+      ),
+      _ => ('', AppColors.outline, Icons.help_outline),
+    };
+
+    if (label.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ExplorationTime extends StatelessWidget {
   final String? selected;

@@ -11,6 +11,7 @@ import 'dart:convert';
 
 import '../../../core/config/itinerary_constants.dart';
 import '../../entities/trip_draft.dart';
+import '../../entities/weather.dart';
 import './clustering_service.dart';
 
 /// Structured context for a single candidate place.
@@ -218,6 +219,7 @@ class AiPromptBuilder {
     required List<AiCandidateContext> candidates,
     required List<Cluster> clusters,
     required List<String> mustVisitIds,
+    WeatherForecast? weatherForecast,
   }) {
     final pace = request.pace ?? 'Standard';
     final buffer = StringBuffer();
@@ -226,108 +228,220 @@ class AiPromptBuilder {
     int targetStopsPerDay;
     switch (pace) {
       case 'Slow':
-        targetStopsPerDay = 3;
+        targetStopsPerDay = 4; // Breakfast, Sight, Lunch, Dinner
         break;
       case 'Fast':
-        targetStopsPerDay = 5;
+        targetStopsPerDay = 6; // Breakfast, 2 Sights, Lunch, Sight, Dinner
         break;
       default:
-        targetStopsPerDay = 4; // Standard
+        targetStopsPerDay = 5; // Breakfast, Morning Sight, Lunch, Afternoon Sight, Dinner
     }
-    // Cap at 5 to avoid overcrowding (absolute max)
-    if (targetStopsPerDay > 5) targetStopsPerDay = 5;
-    if (targetStopsPerDay < 2) targetStopsPerDay = 2;
 
     // ── PROMPT HEADER ────────────────────────────────────────────
-    buffer.writeln('You are a travel itinerary planner.');
-    buffer.writeln('Create a multi-day itinerary using ONLY the supplied '
-        'candidates. You SELECT, GROUP and ORDER places. You NEVER calculate '
-        'times, durations or travel minutes — Dart does that deterministically.');
+    buffer.writeln('You are an expert travel itinerary planner.');
+    buffer.writeln('Create a multi-day, balanced itinerary using ONLY the supplied '
+        'candidates. You SELECT, GROUP and ORDER places chronologically for each day. '
+        'You NEVER calculate clock times or durations — Dart does that deterministically.');
     buffer.writeln('');
 
-    // ── RULES ──────────────────────────────────────────────────────
-    buffer.writeln('RULES:');
-    buffer.writeln('- CRITICAL SPEED CONSTRAINT: Plan quickly and concisely. '
-        'Do not over-analyze candidates in your reasoning. Output the JSON '
-        'array immediately once you have selected the places.');
-    buffer.writeln('- Include every MUST-VISIT place exactly once. '
-        'ALL VALIDATED MUST-VISIT PLACES ARE REQUIRED TO APPEAR IN THE '
-        'GENERATED ITINERARY — never omit, replace, duplicate or invent a '
-        'must-visit place.');
+    // ── CORE RULES ────────────────────────────────────────────────
+    buffer.writeln('CORE RULES:');
+    buffer.writeln('- Include every MUST-VISIT place exactly once across the trip.');
     buffer.writeln('- Use only the supplied place IDs. Never invent places or IDs.');
-    buffer.writeln('- A place may appear only once across the whole trip.');
-    buffer.writeln('- Return exactly ${request.totalDays} day(s).');
-    buffer.writeln('- dayIndex is 0-BASED: the first day is 0 and the last '
-        'day is ${request.totalDays - 1}. Never use 1-based day numbers.');
-    buffer.writeln('- Group geographically nearby places (same cluster) together.');
-    buffer.writeln('- Match the traveler interests and travel pace.');
-    buffer.writeln('- Respect the destination day allocation.');
+    buffer.writeln('- CRITICAL: Every place_id MUST appear AT MOST ONCE across the entire multi-day trip. NEVER repeat the same place_id on different days or within the same day.');
+    if (request.totalDays >= 7) {
+      buffer.writeln('- For trips of ${request.totalDays} days, prioritize distinct highlights every day, and ensure EVERY day receives 4-5 active stops. Never leave later days with few stops.');
+    }
+    buffer.writeln('- Return exactly ${request.totalDays} day(s) in the JSON array.');
+    buffer.writeln('- dayIndex is 0-BASED: 0 is the first day, ${request.totalDays - 1} is the last day.');
+    buffer.writeln('- Group geographically nearby places (same cluster) on the same day.');
+    buffer.writeln('- Respect destination day allocation: ${_formatDaySplit(request)}.');
     buffer.writeln('');
 
-    // ── TARGET STOPS PER DAY (explicit) ──────────────────────────
-    buffer.writeln('- TARGET: For a "$pace" pace, you should aim to place '
-        'approximately **$targetStopsPerDay stops per day** (including meals). '
-        'This is a target, not a hard limit – if you have fewer suitable '
-        'candidates for a day, you may place fewer, but do NOT leave days '
-        'very empty when candidates are available.');
-    buffer.writeln('- DISTRIBUTION: Distribute places as evenly as possible '
-        'across all days. Do NOT overload the first few days and leave the '
-        'last days nearly empty. If a day has fewer than $targetStopsPerDay '
-        'places and there are unused candidates from the same destination, '
-        'add the highest-scored ones to fill it up.');
-    buffer.writeln('- STRICT GLOBAL CAP: Do not generate more than 15 total '
-        'places across the itinerary (this already accommodates all days).');
+    // ── DAILY THREE MEALS & STRUCTURE (CRITICAL & STRICTLY MANDATORY) ──
+    buffer.writeln('DAILY THREE MEALS & STRUCTURE (CRITICAL & STRICTLY MANDATORY):');
+    buffer.writeln('EVERY SINGLE DAY MUST INCLUDE THREE DISTINCT MEALS:');
+    buffer.writeln('1. MORNING BREAKFAST & CAFE (09:00 - 10:00): Traditional breakfast spot, cafe, bakery, or local coffee kopitiam.');
+    buffer.writeln('2. MORNING ATTRACTIONS (10:00 - 12:00): 1-2 famous tourist sights, heritage landmarks, or architectural icons.');
+    buffer.writeln('3. MIDDAY LUNCH (12:00 - 13:30 - MANDATORY EVERY DAY): Authentic regional lunch dining restaurant or food street.');
+    buffer.writeln('4. AFTERNOON SIGHTSEEING (13:30 - 17:30): 1-2 top museums, galleries, parks, or cultural spots (must conclude by 17:30!).');
+    buffer.writeln('5. EVENING DINNER (18:00 - 20:00 - MANDATORY EVERY DAY): Savor a delicious evening dinner restaurant (different from lunch!).');
+    buffer.writeln('6. OPTIONAL NIGHTLIFE (20:00 - 21:30): Rooftop cocktail bar or lively night market.');
+    buffer.writeln('NEVER skip breakfast, never skip lunch, and never skip dinner on ANY day!');
+    buffer.writeln('NEVER schedule daytime outdoor parks, nature reserves, or museums into the evening (18:00+). Evening is strictly reserved for Dinner and Nightlife.');
+    buffer.writeln('');
+
+    // ── GEOGRAPHIC EFFICIENCY & NO BACKTRACKING ─────────────────
+    buffer.writeln('GEOGRAPHIC ROUTING & PROXIMITY (CRITICAL):');
+    buffer.writeln('- MINIMIZE TRAVEL TIME: Follow a continuous, logical path through the city (A -> B -> C -> D).');
+    buffer.writeln('- NEVER BACKTRACK: Avoid ping-ponging (e.g. going from Area A to far Area B and back to Area A) unless a specific venue only opens at that time!');
+    buffer.writeln('- Cluster proximity: Each day should explore one cohesive neighborhood or adjacent zones.');
+    buffer.writeln('');
+
+    // ── CATEGORY BALANCE & SIGHTSEEING FOUNDATION ────────────────
+    buffer.writeln('CATEGORY DIVERSITY & BALANCE RULES (MANDATORY):');
+    buffer.writeln('- DIVERSIFY SIGHTSEEING: Mix iconic architecture, nature parks, history, and museums. Ensure places are popular tourist destinations or acclaimed hidden gems! NEVER schedule multiple mosques, temples, or churches on the same day (at most 1 religious site per day)!');
+    buffer.writeln('- THREE MEALS RECOMMENDATIONS: Actively provide Breakfast/Cafe, Midday Lunch, and Evening Dinner options so traveler eats well every day!');
+    buffer.writeln('- NIGHTLIFE TIMING: At most 1 nightlife stop per day, and it MUST ALWAYS be the VERY LAST stop in the evening (18:00+). NEVER in morning or early afternoon.');
+    buffer.writeln('- TRAVEL INTELLIGENCE: Leverage your deep knowledge of Malaysia and local travel to provide a vivid "reason" for each day, highlighting signature local foods to try, cultural context, and optimal pacing.');
+    buffer.writeln('');
+
+    // ── TRAVEL STYLE PERSONALIZATION (STRICTLY ENFORCED) ────────
+    buffer.writeln('TRAVEL STYLE PERSONALIZATION (MANDATORY ALIGNMENT):');
+    buffer.writeln('- Travel Group Type: "${request.travelType ?? 'Solo'}"');
+    final travelType = (request.travelType ?? 'Solo').toLowerCase();
+    if (travelType.contains('family')) {
+      buffer.writeln('  * [FAMILY STYLE]: Prioritize family-friendly, comfortable pacing. Favor interactive museums, theme parks, lush nature parks, safe walkable areas, and welcoming sit-down dining. Strictly avoid adult-only nightclubs.');
+    } else if (travelType.contains('couple')) {
+      buffer.writeln('  * [COUPLE STYLE]: Highlight romantic viewpoints, scenic waterfronts, cozy cafes, sunset photo spots, and ambient rooftop cocktail bars.');
+    } else if (travelType.contains('friend') || travelType.contains('group')) {
+      buffer.writeln('  * [FRIENDS STYLE]: Prioritize vibrant, high-energy spots, bustling night markets, fun group photo landmarks, and lively nightlife / social lounges.');
+    } else {
+      buffer.writeln('  * [SOLO STYLE]: Prioritize authentic cultural exploration, local street food trails, peaceful viewpoints, and walkable neighborhood immersion.');
+    }
+
+    buffer.writeln('- Exploration Window: "${request.exploration ?? 'Standard'}" (${_windowText(request.exploration)})');
+    final exploration = (request.exploration ?? 'Standard').toLowerCase();
+    if (exploration.contains('early')) {
+      buffer.writeln('  * [EARLY BIRD]: Traveler wakes up early. Prioritize morning outdoor sights, sunrise spots, and traditional breakfast before noon.');
+    } else if (exploration.contains('night')) {
+      buffer.writeln('  * [NIGHT OWL]: Traveler starts later (11:00+). Emphasize afternoon cultural discoveries, evening markets, and vibrant nightlife past 19:00.');
+    } else {
+      buffer.writeln('  * [STANDARD TIME]: Balanced day starting at 09:00 through evening 21:00.');
+    }
+
+    buffer.writeln('- Travel Pace: "$pace"');
+    if (pace == 'Slow') {
+      buffer.writeln('  * [SLOW PACE]: 4 stops per day (Breakfast, Morning Sight, Lunch, Evening Dinner). Do not rush. Allow generous time for lingering at cafes, scenic gardens, and relaxed dining.');
+    } else if (pace == 'Fast') {
+      buffer.writeln('  * [FAST PACE]: 5-6 stops per day (Breakfast, 1-2 Morning Sights, Lunch, Afternoon Sight, Evening Dinner, optional Nightlife).');
+    } else {
+      buffer.writeln('  * [STANDARD PACE]: 5 stops per day (Breakfast, Morning Sight, Lunch, Afternoon Sight, Evening Dinner) with comfortable, balanced progression.');
+    }
+
+    buffer.writeln('- Transportation Mode: "${request.transportation}"');
+    final trans = request.transportation.toLowerCase();
+    if (trans.contains('walk')) {
+      buffer.writeln('  * [WALKING]: Group stops in very tight, walkable geographical clusters to minimize foot fatigue.');
+    } else if (trans.contains('transit') || trans.contains('bus') || trans.contains('train')) {
+      buffer.writeln('  * [TRANSIT]: Schedule stops with direct, logical connectivity across the city.');
+    } else {
+      buffer.writeln('  * [DRIVING]: Flexible radius between distinct districts.');
+    }
+
+    buffer.writeln('- Selected Interests: ${request.interests.isEmpty ? 'General sightseeing' : request.interests.join(', ')}');
+    buffer.writeln('  * [INTERESTS ALIGNMENT]: Heavily prioritize candidate places matching these user interests! Ensure the day\'s reason reflects these specific interests.');
+    buffer.writeln('');
+
+    // ── WEATHER FORECAST & ADAPTATION ────────────────────────────
+    if (weatherForecast != null && weatherForecast.daily.isNotEmpty) {
+      buffer.writeln('WEATHER FORECAST & METEOROLOGICAL ADAPTATION (CRITICAL):');
+      for (int d = 0; d < request.totalDays; d++) {
+        if (d < weatherForecast.daily.length) {
+          final w = weatherForecast.daily[d];
+          final cond = w.condition.toLowerCase();
+          final isRainy = cond.contains('rain') ||
+              cond.contains('storm') ||
+              cond.contains('drizzle') ||
+              cond.contains('thunder') ||
+              cond.contains('shower');
+          final tempText = '${w.minTemperature.round()}°C - ${w.maxTemperature.round()}°C';
+          buffer.writeln(
+            '- Day ${d + 1} (${w.date.year}-${w.date.month.toString().padLeft(2, '0')}-${w.date.day.toString().padLeft(2, '0')}): ${w.condition} ($tempText)',
+          );
+          if (isRainy) {
+            buffer.writeln(
+              '  * [RAINY DAY ADAPTATION]: Rainy forecast on Day ${d + 1}! Prioritize indoor cultural attractions, museums, galleries, covered markets, cafes, and shopping malls. Avoid steep open outdoor trails or unsheltered nature parks during peak rain.',
+            );
+          } else {
+            buffer.writeln(
+              '  * [FAIR WEATHER ADAPTATION]: Favorable weather on Day ${d + 1}! Prioritize scenic outdoor viewpoints, tea plantations, iconic architectural photo walks, and open heritage areas.',
+            );
+          }
+        }
+      }
+      buffer.writeln('');
+    } else if (request.startDate != null) {
+      final daysUntilStart =
+          request.startDate!.difference(DateTime.now()).inDays;
+      if (daysUntilStart > 16) {
+        buffer.writeln(
+          'WEATHER CONTEXT: Trip starts in $daysUntilStart days (beyond the 16-day live meteorological window). Apply standard tropical climate planning: balanced indoor air-conditioned stops and shaded/sheltered afternoon options.',
+        );
+        buffer.writeln('');
+      }
+    }
+
+    // ── DAILY STOP TARGET & EVEN DISTRIBUTION ─────────────────────
+    buffer.writeln('DAILY DENSITY & DISTRIBUTION:');
+    buffer.writeln('- TARGET: For "$pace" pace, place approximately **$targetStopsPerDay stops per day** (e.g. morning sight/breakfast, landmark, lunch, afternoon museum/culture, evening nightlife).');
+    buffer.writeln('- EVEN DISTRIBUTION: Distribute stops evenly across ALL ${request.totalDays} day(s).');
+    buffer.writeln('- NEVER leave any day empty or with only 1 stop.');
     buffer.writeln('');
 
     // ── WHAT NOT TO DO ───────────────────────────────────────────
-    buffer.writeln('- Do NOT calculate startTime, endTime, visitMinutes, '
-        'travel minutes, opening hours or distances — Dart computes all of '
-        'those deterministically.');
-    buffer.writeln('- Do NOT include reasons, explanations, comments or any '
-        'text outside the JSON. Output ONLY the JSON shown in OUTPUT.');
-    buffer.writeln('- Return ONLY valid JSON. No markdown, no extra text, '
-        'no fields other than dayIndex and placeIds.');
+    buffer.writeln('OUTPUT CONSTRAINTS:');
+    buffer.writeln('- Do NOT calculate clock times or durations — Dart computes precise times and travel matrices.');
+    buffer.writeln('- Return STRICT JSON ONLY matching the template below.');
     buffer.writeln('');
 
     // ── TRIP DETAILS ─────────────────────────────────────────────
     buffer.writeln('TRIP:');
     buffer.writeln('- destination: ${request.destinationNames.join(', ')}');
-    buffer.writeln('- days: ${request.totalDays}');
+    buffer.writeln('- total_days: ${request.totalDays}');
     buffer.writeln('- day split: ${_formatDaySplit(request)}');
+    buffer.writeln('- travel_type: ${request.travelType ?? 'Solo'}');
     buffer.writeln('- exploration: ${_windowText(request.exploration)}');
     buffer.writeln("- travel pace: $pace");
     buffer.writeln('- transportation: ${request.transportation}');
     buffer.writeln('- interests: '
-        '${request.interests.isEmpty ? 'none' : request.interests.join(', ')}');
+        '${request.interests.isEmpty ? 'General sightseeing' : request.interests.join(', ')}');
     buffer.writeln('- must-visits: '
         '${mustVisitIds.isEmpty ? 'none' : mustVisitIds.join(', ')}');
     buffer.writeln('');
 
     // ── CANDIDATES ──────────────────────────────────────────────
-    // Minimal serialization: only the four fields the model needs for
-    // selection/grouping/ordering. Coordinates, ratings and opening hours
-    // are deterministic Dart concerns and are deliberately omitted.
-    buffer.writeln('CANDIDATES (placeId | name | category | clusterId):');
+    buffer.writeln('CANDIDATES (placeId | name | category | suggested_slot | clusterId):');
     for (final c in candidates) {
+      final hint = _candidateTimeHint(c);
       buffer.writeln(
-        '${c.placeId} | ${c.name} | ${c.category ?? 'attraction'} | '
-            'c${c.clusterId}',
+        '${c.placeId} | ${c.name} | ${c.category ?? 'attraction'} | $hint | c${c.clusterId}',
       );
     }
     buffer.writeln('');
 
     // ── CLUSTERS ─────────────────────────────────────────────────
-    buffer.writeln('CLUSTERS (geographic groups, NOT days):');
+    buffer.writeln('CLUSTERS (geographic groups):');
     for (final cluster in clusters) {
       buffer.writeln('- cluster ${cluster.dayIndex}');
     }
     buffer.writeln('');
 
     // ── OUTPUT TEMPLATE ─────────────────────────────────────────
-    buffer.writeln('OUTPUT (JSON only):');
+    buffer.writeln('OUTPUT (STRICT JSON only):');
     buffer.writeln(_compactJsonTemplate());
 
     return buffer.toString();
+  }
+
+  String _candidateTimeHint(AiCandidateContext c) {
+    final cat = (c.category ?? '').toLowerCase();
+    if (cat.contains('night') || cat.contains('bar') || cat.contains('club')) {
+      return 'Evening Nightlife / Rooftop Bar (18:00+)';
+    }
+    if (cat.contains('cafe') || cat.contains('bakery') || cat.contains('coffee')) {
+      return 'Morning Breakfast / Coffee (09:00-10:30)';
+    }
+    if (cat.contains('food') || cat.contains('restaurant') || cat.contains('dining')) {
+      return 'Midday Lunch (12:00-13:30)';
+    }
+    if (cat.contains('museum') || cat.contains('gallery') || cat.contains('aquarium')) {
+      return 'Afternoon Culture / Indoor (14:00-17:00)';
+    }
+    if (cat.contains('shopping') || cat.contains('mall') || cat.contains('market')) {
+      return 'Afternoon / Evening Shopping & Leisure';
+    }
+    return 'Morning / Afternoon Sightseeing Landmark';
   }
 
   String _compactJsonTemplate() {
@@ -336,7 +450,8 @@ class AiPromptBuilder {
   "days": [
     {
       "dayIndex": 0,
-      "placeIds": ["place_id_1", "place_id_2", "place_id_3"]
+      "placeIds": ["morning_place_id", "landmark_place_id", "lunch_place_id", "afternoon_place_id", "nightlife_place_id"],
+      "reason": "Detailed narrative explaining morning highlights, signature lunch dishes, cultural significance, and evening vibe."
     }
   ]
 }

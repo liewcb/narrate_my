@@ -74,13 +74,50 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
 
   void _updateDays(int index, int change) {
     setState(() {
-      int newDays = widget.destinations[index].days + change;
-      int totalOthers = 0;
-      for (int i = 0; i < widget.destinations.length; i++) {
-        if (i != index) totalOthers += widget.destinations[i].days;
-      }
-      if (newDays >= 0 && (totalOthers + newDays) <= widget.totalPlannedDays) {
-        widget.destinations[index].days = newDays;
+      if (change == 0) return;
+
+      if (change < 0) {
+        // Decreasing days for destinations[index]
+        if (widget.destinations[index].days <= 1) return; // Keep at least 1 day
+
+        widget.destinations[index].days += change; // -1
+
+        // When user reduces destination 1, automatically give the freed day to destination 2
+        // so the total planned days remain balanced and complete!
+        if (widget.destinations.length == 2) {
+          final otherIdx = 1 - index;
+          widget.destinations[otherIdx].days += 1;
+        } else if (_totalAllocated < widget.totalPlannedDays) {
+          final targetIdx = (index == 0) ? 1 : (index + 1) % widget.destinations.length;
+          widget.destinations[targetIdx].days += 1;
+        }
+      } else {
+        // Increasing days for destinations[index]
+        if (_totalAllocated < widget.totalPlannedDays) {
+          widget.destinations[index].days += 1;
+        } else {
+          // Total is already fully allocated. Shift 1 day from another destination with > 1 day
+          int donorIdx = -1;
+          if (widget.destinations.length == 2) {
+            final otherIdx = 1 - index;
+            if (widget.destinations[otherIdx].days > 1) {
+              donorIdx = otherIdx;
+            }
+          } else {
+            for (int i = 0; i < widget.destinations.length; i++) {
+              final checkIdx = (index + 1 + i) % widget.destinations.length;
+              if (checkIdx != index && widget.destinations[checkIdx].days > 1) {
+                donorIdx = checkIdx;
+                break;
+              }
+            }
+          }
+
+          if (donorIdx != -1) {
+            widget.destinations[donorIdx].days -= 1;
+            widget.destinations[index].days += 1;
+          }
+        }
       }
     });
   }
@@ -428,41 +465,51 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              _buildStepperBtn(
-                                icon: Icons.remove,
-                                color: color,
-                                onTap: onRemove,
-                              ),
-                              const SizedBox(width: 10),
-                              Container(
-                                constraints: const BoxConstraints(minWidth: 64),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: color.withOpacity(0.08),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  "$days ${days == 1 ? 'Day' : 'Days'}",
-                                  textAlign: TextAlign.center,
-                                  style: AppTextStyles.labelSm.copyWith(
-                                    fontWeight: FontWeight.w700,
+                          Builder(
+                            builder: (context) {
+                              final canRemove = days > 1;
+                              final canAdd = _totalAllocated < widget.totalPlannedDays ||
+                                  widget.destinations.any((d) => d.id != widget.destinations[index].id && d.days > 1);
+
+                              return Row(
+                                children: [
+                                  _buildStepperBtn(
+                                    icon: Icons.remove,
                                     color: color,
-                                    fontSize: 13,
+                                    enabled: canRemove,
+                                    onTap: canRemove ? onRemove : null,
                                   ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              _buildStepperBtn(
-                                icon: Icons.add,
-                                color: color,
-                                onTap: onAdd,
-                              ),
-                            ],
+                                  const SizedBox(width: 10),
+                                  Container(
+                                    constraints: const BoxConstraints(minWidth: 64),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      "$days ${days == 1 ? 'Day' : 'Days'}",
+                                      textAlign: TextAlign.center,
+                                      style: AppTextStyles.labelSm.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: color,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _buildStepperBtn(
+                                    icon: Icons.add,
+                                    color: color,
+                                    enabled: canAdd,
+                                    onTap: canAdd ? onAdd : null,
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -480,22 +527,30 @@ class _SplitDaysScreenState extends State<SplitDaysScreen> {
   Widget _buildStepperBtn({
     required IconData icon,
     required Color color,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
+    bool enabled = true,
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(20),
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
-            shape: BoxShape.circle,
-            border: Border.all(color: color.withOpacity(0.35), width: 1.2),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 150),
+          opacity: enabled ? 1.0 : 0.3,
+          child: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: color.withOpacity(enabled ? 0.08 : 0.03),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: color.withOpacity(enabled ? 0.35 : 0.15),
+                width: 1.2,
+              ),
+            ),
+            child: Icon(icon, size: 17, color: color),
           ),
-          child: Icon(icon, size: 17, color: color),
         ),
       ),
     );

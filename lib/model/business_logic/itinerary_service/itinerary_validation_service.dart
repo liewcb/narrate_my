@@ -3,10 +3,10 @@
 /// by multiple ViewModels or Use Cases.
 class ItineraryValidationService {
   /// Maximum allowed trip length (inclusive) in days.
-  static const int maxTripDays = 5;
+  static const int maxTripDays = 10;
 
   /// Maximum number of interests a user may select.
-  static const int maxInterests = 3;
+  static const int maxInterests = 5;
 
   // ─── Weather Forecast Limits ───────────────────────────────────────────
 

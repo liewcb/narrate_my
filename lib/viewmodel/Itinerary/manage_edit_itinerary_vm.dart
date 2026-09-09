@@ -1,3 +1,6 @@
+import 'package:narrate_my/model/repositories/interfaces/itinerary/place_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_stop_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_repository.dart';
 // lib/viewmodel/ItineraryModel/manage_edit_itinerary_vm.dart
 //
 // ViewModel for ManageEditItineraryScreen — the day-editor reached after
@@ -13,9 +16,6 @@ import '../../core/services/database_manager.dart';
 import '../../model/entities/itinerary.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
-import '../../model/repositories/adapters/itinerary/itinerary_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary/place_repository_adapter.dart';
 import 'package:narrate_my/view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 
 /// Presentation wrapper for a single stop card in the day editor.
@@ -41,9 +41,9 @@ class ManageEditItineraryViewModel extends ChangeNotifier {
   final String itineraryId;
   final int dayIndex; // 1-based day number
 
-  final ItineraryRepositoryImpl _repository = DatabaseManager().itineraryRepository;
-  final ItineraryStopRepositoryImpl _stopRepo = DatabaseManager().itineraryStopRepository;
-  final PlaceRepositoryAdapter _placeRepo = DatabaseManager().placeRepository;
+  final ItineraryRepository _repository = DatabaseManager().itineraryRepository;
+  final ItineraryStopRepository _stopRepo = DatabaseManager().itineraryStopRepository;
+  final PlaceRepository _placeRepo = DatabaseManager().placeRepository;
 
   // ─── State ──────────────────────────────────────────────────
 

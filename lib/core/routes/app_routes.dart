@@ -15,15 +15,23 @@ import '../widgets/app_bottom_navigation.dart';
 /// The app-wide AI chat entry point is hosted above the root Navigator in
 /// the root AI assistant host, allowing it to remain visible on pushed routes.
 class AppRoutes extends StatefulWidget {
-  const AppRoutes({super.key});
+  final int initialIndex;
+  const AppRoutes({super.key, this.initialIndex = 0});
 
   @override
   State<AppRoutes> createState() => _AppRoutesState();
 }
 
 class _AppRoutesState extends State<AppRoutes> {
-  int _index = 0;
-  final Set<int> _visitedTabs = {0};
+  late int _index;
+  late final Set<int> _visitedTabs;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+    _visitedTabs = {0, widget.initialIndex};
+  }
 
   Widget _buildTabScreen(int tabIndex) {
     if (!_visitedTabs.contains(tabIndex)) {

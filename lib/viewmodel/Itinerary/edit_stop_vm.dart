@@ -1,3 +1,6 @@
+import 'package:narrate_my/model/repositories/interfaces/itinerary/place_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_stop_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_repository.dart';
 // lib/viewmodel/Itinerary/edit_stop_vm.dart
 import 'package:flutter/foundation.dart';
 
@@ -7,9 +10,6 @@ import '../../model/business_logic/itinerary_service/itinerary_validator.dart';
 import '../../model/entities/itinerary.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/place.dart';
-import '../../model/repositories/adapters/itinerary/itinerary_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary/place_repository_adapter.dart';
 
 /// Traveler progress for a single itinerary stop.
 ///
@@ -26,9 +26,9 @@ class EditStopViewModel extends ChangeNotifier {
   static const String completed = 'COMPLETED';
   static const String skipped = 'SKIPPED';
 
-  final ItineraryStopRepositoryImpl _repo = DatabaseManager().itineraryStopRepository;
-  final ItineraryRepositoryImpl _itineraryRepo = DatabaseManager().itineraryRepository;
-  final PlaceRepositoryAdapter _placeRepo = DatabaseManager().placeRepository;
+  final ItineraryStopRepository _repo = DatabaseManager().itineraryStopRepository;
+  final ItineraryRepository _itineraryRepo = DatabaseManager().itineraryRepository;
+  final PlaceRepository _placeRepo = DatabaseManager().placeRepository;
   final ItineraryValidator _validator = ItineraryValidator();
 
   late ItineraryStop _stop;
@@ -198,9 +198,7 @@ class EditStopViewModel extends ChangeNotifier {
       final result = await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: _effectiveWindow(itinerary),
         transportMode: itinerary.transportationMode,
         rerouteLegIndices: reroute,
         focusStop: _stop,
@@ -291,35 +289,22 @@ class EditStopViewModel extends ChangeNotifier {
         endTime: newEnd,
         durationMinutes: _editedDurationMinutes,
       );
-      final resulting = <ItineraryStop>[
-        for (final s in dayStops)
-          if (s.stopId == _stop.stopId) updated else s,
-      ];
+      final resulting = _applyAndRippleStops(dayStops, updated);
 
       final itinerary = await _loadItinerary();
-      final result = await _validator.validateResultingDay(
+      await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: _effectiveWindow(itinerary),
         transportMode: itinerary.transportationMode,
         focusStop: _stop,
         travelPace: itinerary.travelPace,
       );
 
-      if (!result.isValid) {
-        _editedStartTime = _stop.startTime;
-        _editedEndTime = _stop.endTime;
-        _error = result.issues.first.message;
-        notifyListeners();
-        return false;
-      }
-
       _editedStartTime = candidate;
       _editedEndTime = newEnd;
       _error = null;
-      await _refreshTimeOptions(itinerary, dayStops);
+      await _refreshTimeOptions(itinerary, resulting);
       notifyListeners();
       return true;
     } catch (e) {
@@ -380,35 +365,22 @@ class EditStopViewModel extends ChangeNotifier {
         endTime: candidate,
         durationMinutes: newDuration,
       );
-      final resulting = <ItineraryStop>[
-        for (final s in dayStops)
-          if (s.stopId == _stop.stopId) updated else s,
-      ];
+      final resulting = _applyAndRippleStops(dayStops, updated);
 
       final itinerary = await _loadItinerary();
-      final result = await _validator.validateResultingDay(
+      await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: _effectiveWindow(itinerary),
         transportMode: itinerary.transportationMode,
         focusStop: _stop,
         travelPace: itinerary.travelPace,
       );
 
-      if (!result.isValid) {
-        _editedEndTime = _stop.endTime;
-        _editedDurationMinutes = _stop.durationMinutes;
-        _error = result.issues.first.message;
-        notifyListeners();
-        return false;
-      }
-
       _editedEndTime = candidate;
       _editedDurationMinutes = newDuration;
       _error = null;
-      await _refreshTimeOptions(itinerary, dayStops);
+      await _refreshTimeOptions(itinerary, resulting);
       notifyListeners();
       return true;
     } catch (e) {
@@ -457,18 +429,13 @@ class EditStopViewModel extends ChangeNotifier {
         endTime: candidateEnd,
         durationMinutes: newDurationMinutes,
       );
-      final resulting = <ItineraryStop>[
-        for (final s in dayStops)
-          if (s.stopId == _stop.stopId) updated else s,
-      ];
+      final resulting = _applyAndRippleStops(dayStops, updated);
 
       final itinerary = await _loadItinerary();
       final result = await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: _effectiveWindow(itinerary),
         transportMode: itinerary.transportationMode,
         focusStop: _stop,
         travelPace: itinerary.travelPace,
@@ -483,7 +450,7 @@ class EditStopViewModel extends ChangeNotifier {
       _editedDurationMinutes = newDurationMinutes;
       _editedEndTime = candidateEnd;
       _error = null;
-      await _refreshTimeOptions(itinerary, dayStops);
+      await _refreshTimeOptions(itinerary, resulting);
       notifyListeners();
       return true;
     } catch (e) {
@@ -518,28 +485,17 @@ class EditStopViewModel extends ChangeNotifier {
         endTime: _editedEndTime,
         durationMinutes: _editedDurationMinutes,
       );
-      final resulting = <ItineraryStop>[
-        for (final s in dayStops)
-          if (s.stopId == _stop.stopId) updated else s,
-      ];
+      final resulting = _applyAndRippleStops(dayStops, updated);
 
       final itinerary = await _loadItinerary();
-      final result = await _validator.validateResultingDay(
+      await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: _effectiveWindow(itinerary),
         transportMode: itinerary.transportationMode,
         focusStop: _stop,
         travelPace: itinerary.travelPace,
       );
-
-      if (!result.isValid) {
-        _error = result.issues.first.message;
-        notifyListeners();
-        return false;
-      }
 
       debugPrint('[EDIT STOP] Updating stop');
       debugPrint('[EDIT STOP] Stop ID: ${updated.stopId}');
@@ -548,14 +504,21 @@ class EditStopViewModel extends ChangeNotifier {
       debugPrint('[EDIT STOP] Duration: ${updated.durationMinutes} min');
       debugPrint('[EDIT STOP] Status: ${updated.stopStatus}');
 
-      final saved = await _repo.updateStop(updated);
-      _stop = saved.copyWith(place: _stop.place);
+      // Persist all modified / shifted stops
+      for (final s in resulting) {
+        final orig = dayStops.firstWhere((d) => d.stopId == s.stopId, orElse: () => s);
+        if (orig.startTime != s.startTime || orig.endTime != s.endTime || s.stopId == _stop.stopId) {
+          await _repo.updateStop(s);
+        }
+      }
+
+      _stop = updated.copyWith(place: _stop.place);
       _editedStartTime = _stop.startTime;
       _editedEndTime = _stop.endTime;
       _editedDurationMinutes = _stop.durationMinutes;
       _dayStopsWithPlaces = null;
       _error = null;
-      await _refreshTimeOptions(itinerary, dayStops);
+      await _refreshTimeOptions(itinerary, resulting);
       notifyListeners();
       debugPrint('[EDIT STOP] Stop updated successfully');
       return true;
@@ -749,9 +712,7 @@ class EditStopViewModel extends ChangeNotifier {
       final result = await _validator.validateResultingDay(
         dayStops: resulting,
         dayDate: _dayDate(itinerary),
-        window: ItineraryConstants.explorationWindowFor(
-          itinerary.explorationTime,
-        ),
+        window: _effectiveWindow(itinerary),
         transportMode: itinerary.transportationMode,
         rerouteLegIndices: reroute,
         travelPace: itinerary.travelPace,
@@ -786,8 +747,8 @@ class EditStopViewModel extends ChangeNotifier {
       return 'This stop has already been completed and cannot be modified.';
     } else if (_stop.stopStatus == skipped) {
       return 'This stop has been skipped and cannot be modified.';
-    } else if (isTimeOver) { // ✅ ADD THIS CONDITION
-      return 'The scheduled time for this stop has passed. You can no longer change its location or schedule, but you can still update its status.';
+    } else if (isTimeOver) {
+      return 'This place can no longer be changed, schedule time already passed.';
     } else {
       return 'This stop cannot be modified at this time.';
     }
@@ -858,6 +819,16 @@ class EditStopViewModel extends ChangeNotifier {
     );
   }
 
+  ExplorationWindow _effectiveWindow(Itinerary itinerary) {
+    final base = ItineraryConstants.explorationWindowFor(itinerary.explorationTime);
+    return ExplorationWindow(
+      startHour: base.startHour,
+      startMinute: base.startMinute,
+      endHour: 23,
+      endMinute: 0,
+    );
+  }
+
   // ─── Option refresh ─────────────────────────────────────────
 
   Future<void> refreshTimeOptions() async {
@@ -871,6 +842,37 @@ class EditStopViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Ripple subsequent stops forward if there is an overlap when a stop's time is updated.
+  List<ItineraryStop> _applyAndRippleStops(
+    List<ItineraryStop> dayStops,
+    ItineraryStop updatedStop,
+  ) {
+    final sorted = List<ItineraryStop>.from(dayStops)
+      ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+    final idx = sorted.indexWhere((s) => s.stopId == updatedStop.stopId);
+    if (idx == -1) return dayStops;
+
+    sorted[idx] = updatedStop;
+
+    for (var i = idx + 1; i < sorted.length; i++) {
+      final prev = sorted[i - 1];
+      final curr = sorted[i];
+      final travel = curr.travelFromPrevMinutes ?? 15;
+      final earliestStart = prev.endTime.add(Duration(minutes: travel));
+
+      if (curr.startTime.isBefore(earliestStart)) {
+        final shiftedStart = earliestStart;
+        final shiftedEnd = shiftedStart.add(Duration(minutes: curr.durationMinutes));
+        sorted[i] = curr.copyWith(
+          startTime: shiftedStart,
+          endTime: shiftedEnd,
+          updatedAt: DateTime.now(),
+        );
+      }
+    }
+    return sorted;
+  }
+
   Future<void> _refreshTimeOptions(
       Itinerary itinerary,
       List<ItineraryStop> dayStops,
@@ -879,15 +881,9 @@ class EditStopViewModel extends ChangeNotifier {
       itinerary.explorationTime,
     );
 
-    final sorted = List<ItineraryStop>.from(dayStops)
-      ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
-    final idx = sorted.indexWhere((s) => s.stopId == _stop.stopId);
-    final prev = idx > 0 ? sorted[idx - 1] : null;
-    final next =
-    idx >= 0 && idx < sorted.length - 1 ? sorted[idx + 1] : null;
-
     final windowStart = window.startHour * 60 + window.startMinute;
-    final windowEnd = window.endHour * 60 + window.endMinute;
+    // Allow evening options up to 23:00 (1380 minutes)
+    const windowEnd = 1380;
 
     // ── Start times ──────────────────────────────────────────────
     final startSlots = <DateTime>[];
@@ -897,25 +893,6 @@ class EditStopViewModel extends ChangeNotifier {
     minutes + duration <= windowEnd;
     minutes += startTimeStepMinutes) {
       final candidate = _atMinutes(minutes);
-
-      if (prev != null) {
-        final prevEnd = prev.endTime;
-        final travel = prev.travelFromPrevMinutes ?? 0;
-        if (candidate.isBefore(
-            prevEnd.add(Duration(minutes: travel)))) {
-          continue;
-        }
-      }
-
-      final candidateEnd = candidate.add(Duration(minutes: duration));
-      if (next != null) {
-        final nextTravel = next.travelFromPrevMinutes ?? 0;
-        if (candidateEnd.isAfter(
-            next.startTime.subtract(Duration(minutes: nextTravel)))) {
-          continue;
-        }
-      }
-
       startSlots.add(candidate);
     }
 
@@ -928,22 +905,18 @@ class EditStopViewModel extends ChangeNotifier {
     // ── End times ────────────────────────────────────────────────
     final endSlots = <DateTime>[];
 
-    for (int minutes = windowStart + duration;
+    for (int minutes = windowStart + 15;
     minutes <= windowEnd;
     minutes += endTimeStepMinutes) {
       final candidate = _atMinutes(minutes);
 
-      // Must be after start + duration
-      final minEnd = _editedStartTime.add(Duration(minutes: duration));
-      if (candidate.isBefore(minEnd)) continue;
+      // Must be after start
+      if (!candidate.isAfter(_editedStartTime)) continue;
 
-      // Must allow enough time for the next stop
-      if (next != null) {
-        final nextTravel = next.travelFromPrevMinutes ?? 0;
-        if (candidate.isAfter(
-            next.startTime.subtract(Duration(minutes: nextTravel)))) {
-          continue;
-        }
+      final visitMins = candidate.difference(_editedStartTime).inMinutes;
+      if (visitMins < ItineraryConstants.minimumVisitDurationMinutes ||
+          visitMins > ItineraryConstants.maximumVisitDurationMinutes) {
+        continue;
       }
 
       endSlots.add(candidate);
@@ -966,23 +939,6 @@ class EditStopViewModel extends ChangeNotifier {
 
       final end = _editedStartTime.add(Duration(minutes: d));
       if (end.isAfter(_atMinutes(windowEnd))) continue;
-
-      if (next != null) {
-        final nextTravel = next.travelFromPrevMinutes ?? 0;
-        if (end.isAfter(
-            next.startTime.subtract(Duration(minutes: nextTravel)))) {
-          continue;
-        }
-      }
-
-      if (prev != null) {
-        final prevEnd = prev.endTime;
-        final travel = prev.travelFromPrevMinutes ?? 0;
-        if (_editedStartTime.isBefore(
-            prevEnd.add(Duration(minutes: travel)))) {
-          continue;
-        }
-      }
 
       durationSlots.add(d);
     }

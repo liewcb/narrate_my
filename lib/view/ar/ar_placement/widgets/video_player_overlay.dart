@@ -182,8 +182,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void dispose() {
     _hideTimer?.cancel();
+    try {
+      _controller?.pause();
+    } catch (_) {}
     _controller?.removeListener(_listener);
     _controller?.dispose();
+    _controller = null;
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: SystemUiOverlay.values,
+    );
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);

@@ -1,4 +1,4 @@
-﻿// lib/widgets/itinerary_card.dart
+// lib/widgets/itinerary_card.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../model/entities/itinerary.dart';
@@ -7,9 +7,14 @@ import '../../../core/theme/colors.dart';
 class ItineraryCard extends StatelessWidget {
   final Itinerary itinerary;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
-  const ItineraryCard({Key? key, required this.itinerary, required this.onTap})
-      : super(key: key);
+  const ItineraryCard({
+    Key? key,
+    required this.itinerary,
+    required this.onTap,
+    this.onDelete,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +33,6 @@ class ItineraryCard extends StatelessWidget {
 
     final bool isUpcoming = status == 'UPCOMING';
     final bool isOngoing = status == 'ONGOING';
-    final bool isPast = status == 'PAST';
 
     final String imageUrl =
         itinerary.coverImageUrl ??
@@ -173,15 +177,35 @@ class ItineraryCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    itinerary.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: textColor,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          itinerary.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.playfairDisplay(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                      ),
+                      if (onDelete != null) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 20,
+                            color: Color(0xFFC0392B),
+                          ),
+                          onPressed: onDelete,
+                          tooltip: 'Delete Itinerary',
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 8),
 

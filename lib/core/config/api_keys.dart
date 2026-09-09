@@ -6,12 +6,17 @@ class ApiKeys {
     'GOOGLE_MAPS_API_KEY',
   );
   static const String _mapsApiKey = String.fromEnvironment('MAPS_API_KEY');
+  static const String _defaultGoogleMapsApiKey = 'AIzaSyCLg1gBrQOjcfJrg2YCbrLAiGoX602LMIQ';
   static final String googleMapsApiKey = _googleMapsApiKey.isNotEmpty
       ? _googleMapsApiKey
-      : _mapsApiKey;
-  // static const String googleMapsApiKey = 'AIzaSyCLg1gBrQOjcfJrg2YCbrLAiGoX602LMIQ';
+      : (_mapsApiKey.isNotEmpty ? _mapsApiKey : _defaultGoogleMapsApiKey);
   static const String baiApiKey = 'sk-wy3505ikrt9kzkwviip5o7ymui5j9a2s';
   static const String baiModel = 'glm-5.3-flash';
+
+  // Google Gemini API configuration
+  static const String geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
+  static const String geminiModel = 'gemini-3.5-flash-lite';
+
   static const String openRouterApiKey = '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';
   static const String cohereApiKey = 'lKBNvJX7bEGZ7RSIjxH8TVaEHGdVF8KOul2deV9w';
   static const String weatherApikey = '11c8446740d749b88bb95110262608';

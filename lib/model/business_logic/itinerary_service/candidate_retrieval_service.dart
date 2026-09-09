@@ -1,10 +1,9 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:narrate_my/model/entities/trip_draft.dart';
 
 import '../../../core/config/interest_mapping.dart';
 import '../../../core/config/itinerary_constants.dart';
 import '../../../core/services/database_manager.dart';
-import '../../data_sources/remote/places_remote_data_source.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/destination_hotspot.dart';
 import '../../entities/place.dart';
@@ -156,7 +155,6 @@ class CandidatePool {
 /// The trip duration does NOT force one independent Google search per day.
 /// A hotspot is a geographic search area, never an itinerary day.
 class CandidateRetrievalService {
-  final PlacesRemoteDataSource _placesDataSource;
   final DestinationHotspotRepository _hotspotRepository;
   final DestinationRepository _destinationRepository;
   final PlaceRepository _placesRepository;
@@ -184,23 +182,12 @@ class CandidateRetrievalService {
   static const double attractionDiversityKm = 0.5;
   static const double foodDiversityKm = 0.1;
 
-  /// General attraction types always included as a safety floor, merged
-  /// with the interest-derived set.
-  static const List<String> _generalAttractionTypes = [
-    'tourist_attraction',
-    'park',
-    'museum',
-    'art_gallery',
-    'natural_feature',
-  ];
 
   CandidateRetrievalService({
-    PlacesRemoteDataSource? placesDataSource,
     DestinationHotspotRepository? hotspotRepository,
     DestinationRepository? destinationRepository,
     PlaceRepository? placesRepository,
-  })  : _placesDataSource = placesDataSource ?? PlacesRemoteDataSource(),
-        _hotspotRepository =
+  })  : _hotspotRepository =
             hotspotRepository ?? DatabaseManager().destinationHotspotRepository,
         _destinationRepository =
             destinationRepository ?? DatabaseManager().destinationRepository,
@@ -281,8 +268,17 @@ class CandidateRetrievalService {
     final mergedFood = <Place>[];
     final seenIds = <String>{};
 
+    final wantsNightlife = request.interests.any((i) {
+      final s = i.toLowerCase();
+      return s.contains('night') || s.contains('party') || s.contains('club') || s.contains('social');
+    }) || (request.exploration?.toLowerCase().contains('night') ?? false);
+
     for (final center in centers) {
-      final raw = await _fetchCenter(center, attractionTypes.toList());
+      final raw = await _fetchCenter(
+        center,
+        attractionTypes.toList(),
+        searchNightlife: wantsNightlife,
+      );
 
       if (ItineraryConstants.enableCandidateDebugLogs) {
         debugPrint(
@@ -334,11 +330,21 @@ class CandidateRetrievalService {
       0.05, // light dedup only â€” do not aggressively shrink the pool
     );
 
+    final allowedFoodAndNightlifeTypes = {
+      ...foodTypes,
+      'bar',
+      'night_club',
+      'pub',
+      'wine_bar',
+      'casino',
+      'lounge',
+    };
+
     final filteredFood = _applySpatialFiltering(
       _applyBasicFiltering(
         mergedFood,
         <String>{},
-        allowedSpecificTypes: foodTypes.toSet(),
+        allowedSpecificTypes: allowedFoodAndNightlifeTypes,
         allowSpa: false,
       ),
       0.05,
@@ -533,8 +539,9 @@ class CandidateRetrievalService {
 
   Future<_CenterResult> _fetchCenter(
       _SearchCenter center,
-      List<String> attractionTypes,
-      ) async {
+      List<String> attractionTypes, {
+        bool searchNightlife = false,
+      }) async {
     final double radiusMeters = center.radiusKm * 1000;
 
     if (ItineraryConstants.enableCandidateDebugLogs) {
@@ -545,20 +552,39 @@ class CandidateRetrievalService {
       );
     }
 
-    final (attractions, food) = await (
-    _placesDataSource.searchNearbyPlaces(
-      latitude: center.latitude,
-      longitude: center.longitude,
-      radiusMeters: radiusMeters,
-      types: attractionTypes,
-    ),
-    _placesDataSource.searchNearbyPlaces(
-      latitude: center.latitude,
-      longitude: center.longitude,
-      radiusMeters: radiusMeters,
-      types: foodTypes,
-    ),
-    ).wait;
+    final futures = <Future<List<Place>>>[
+      _placesRepository.searchNearbyPlaces(
+        latitude: center.latitude,
+        longitude: center.longitude,
+        radiusMeters: radiusMeters,
+        types: attractionTypes,
+      ),
+      _placesRepository.searchNearbyPlaces(
+        latitude: center.latitude,
+        longitude: center.longitude,
+        radiusMeters: radiusMeters,
+        types: foodTypes,
+      ),
+    ];
+
+    if (searchNightlife) {
+      futures.add(
+        _placesRepository.searchNearbyPlaces(
+          latitude: center.latitude,
+          longitude: center.longitude,
+          radiusMeters: radiusMeters,
+          types: const ['bar', 'night_club'],
+        ),
+      );
+    }
+
+    final results = await Future.wait(futures);
+    final attractions = results[0];
+    final food = results[1];
+    if (results.length > 2) {
+      // Keep up to 10 nightlife venues per hotspot in the food/nightlife pool
+      food.addAll(results[2].take(10));
+    }
 
     if (ItineraryConstants.enableCandidateDebugLogs) {
       debugPrint(
@@ -575,16 +601,33 @@ class CandidateRetrievalService {
   // ------------------------------------------------------------
 
   Set<String> _buildAttractionTypeSet(List<String> selectedInterests) {
-    final types = <String>{};
+    // ALWAYS put core tourist attractions, landmarks, museums, and parks FIRST!
+    // Google Places API Nearby Search prioritizes the first types in the list.
+    final types = <String>{
+      'tourist_attraction',
+      'museum',
+      'park',
+      'natural_feature',
+      'place_of_worship',
+      'hindu_temple',
+      'church',
+      'mosque',
+      'art_gallery',
+      'zoo',
+      'aquarium',
+    };
     for (final interest in selectedInterests) {
       types.addAll(
         InterestMapping.getAttractionGoogleTypesForInterest(interest),
       );
     }
+    // Remove food and bar/nightclub types from the daytime attraction search so
+    // that Google Places does NOT drown out national monuments, museums, and parks!
     types.removeWhere(foodTypes.contains);
-    if (types.length < 3) {
-      types.addAll(_generalAttractionTypes);
-    }
+    types.remove('bar');
+    types.remove('night_club');
+    types.remove('casino');
+    types.remove('liquor_store');
     return types;
   }
 
@@ -772,7 +815,7 @@ class CandidateRetrievalService {
 
       // â”€â”€ Level 1: exact place_id lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       debugPrint('[MUST-VISIT RECOVERY] Level 1: place_id lookup');
-      result = await _placesDataSource.getPlaceDetails(id);
+      result = await _placesRepository.getPlaceDetails(id);
       if (result != null && result.placeId.isNotEmpty) {
         debugPrint('[MUST-VISIT RECOVERY] Level 1 result: RECOVERED '
             '(${result.placeName})');
@@ -797,7 +840,7 @@ class CandidateRetrievalService {
       // â”€â”€ Level 3: nearby search â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (searchCenter != null) {
         debugPrint('[MUST-VISIT RECOVERY] Level 3: Nearby Search');
-        final nearby = await _placesDataSource.searchNearbyPlaces(
+        final nearby = await _placesRepository.searchNearbyPlaces(
           latitude: searchCenter.latitude,
           longitude: searchCenter.longitude,
           radiusMeters: 5000,
@@ -815,7 +858,7 @@ class CandidateRetrievalService {
 
       // â”€â”€ Level 4: text search exact name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       debugPrint('[MUST-VISIT RECOVERY] Level 4: Text Search');
-      final textResults = await _placesDataSource.searchPlacesByText(
+      final textResults = await _placesRepository.searchPlacesByText(
         name,
         latitude: searchCenter?.latitude,
         longitude: searchCenter?.longitude,
@@ -835,7 +878,7 @@ class CandidateRetrievalService {
       final normalized = name.toLowerCase().trim();
       if (normalized != name) {
         debugPrint('[MUST-VISIT RECOVERY] Level 5: normalized Text Search');
-        final normResults = await _placesDataSource.searchPlacesByText(
+        final normResults = await _placesRepository.searchPlacesByText(
           normalized,
           latitude: searchCenter?.latitude,
           longitude: searchCenter?.longitude,
@@ -857,7 +900,7 @@ class CandidateRetrievalService {
         final contextualQuery = '$name $destinationName';
         debugPrint('[MUST-VISIT RECOVERY] Level 6: contextual search '
             '"$contextualQuery"');
-        final ctxResults = await _placesDataSource.searchPlacesByText(
+        final ctxResults = await _placesRepository.searchPlacesByText(
           contextualQuery,
           latitude: searchCenter?.latitude,
           longitude: searchCenter?.longitude,

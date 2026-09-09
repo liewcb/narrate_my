@@ -1,5 +1,7 @@
+import '../../core/utils/schedule_display.dart';
 // lib/viewmodel/Itinerary/itinerary_final_vm.dart
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/config/api_keys.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/services/database_manager.dart';
@@ -24,7 +26,6 @@ class ItineraryFinalViewModel extends ChangeNotifier {
   final List<String> _mustVisitPlaceIds;
   final DateTime _tripStartDate;
   final Future<void> Function()? _regenerateRequest;
-  final Future<ItineraryResult> Function()? _regenerateAlternatives;
   final String _userId;
   final TripDraft? _draft;  // final – cannot be reassigned
 
@@ -37,11 +38,11 @@ class ItineraryFinalViewModel extends ChangeNotifier {
   bool _isSaved = false;
   String? _errorMessage;
   String? _saveMessage;
-  int _selectedDayIndex = 0;
+  int _selectedDayIndex = -1; // -1 represents "All Days"
 
   // NEW: track unsaved changes
   bool _hasUnsavedChanges = false;
-  final ItineraryRegenerationService _regenerationService;
+  ItineraryRegenerationService? _regenerationService;
 
   ItineraryFinalViewModel({
     required ItineraryResult result,
@@ -52,9 +53,9 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     required DateTime tripStartDate,
     Future<void> Function()? regenerateRequest,
     Future<ItineraryResult> Function()? regenerateAlternatives,
-    String userId = '252f0924-192c-42fe-8643-881da7bbf285',
+    String? userId,
     TripDraft? draft,
-    ItineraryRegenerationService? regenerationService, // 👈 Optional parameter for dependency injection
+    ItineraryRegenerationService? regenerationService,
   })  : _result = result,
         _title = title,
         _itineraryId = itineraryId,
@@ -62,10 +63,22 @@ class ItineraryFinalViewModel extends ChangeNotifier {
         _mustVisitPlaceIds = mustVisitPlaceIds,
         _tripStartDate = tripStartDate,
         _regenerateRequest = regenerateRequest,
-        _regenerateAlternatives = regenerateAlternatives,
-        _userId = userId,
+        _userId = (userId != null && userId.isNotEmpty)
+            ? userId
+            : _safeCurrentUserId(),
         _draft = draft,
-        _regenerationService = regenerationService ?? ItineraryRegenerationService();
+        _regenerationService = regenerationService;
+
+  static String _safeCurrentUserId() {
+    try {
+      return Supabase.instance.client.auth.currentUser?.id ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  ItineraryRegenerationService get regenerationService =>
+      _regenerationService ??= ItineraryRegenerationService();
 
   // ─── Getters ────────────────────────────────────────────────
 
@@ -108,8 +121,8 @@ class ItineraryFinalViewModel extends ChangeNotifier {
 
   bool get canSave {
     if (_result.scheduledDays == null || _result.scheduledDays!.isEmpty) return false;
-    if (_result.scheduledDays!.any((day) => day.stops.isEmpty)) return false;
-    return true;
+    // Allow saving as long as there is at least one scheduled stop across the trip
+    return _result.scheduledDays!.any((day) => day.stops.isNotEmpty);
   }
 
   bool get canRegenerate => _regenerateRequest != null && !_isRegenerating;
@@ -120,27 +133,96 @@ class ItineraryFinalViewModel extends ChangeNotifier {
       return DayData(
         dayNumber: day.dayIndex + 1,
         date: _formatDate(day.date),
-        stops: day.stops.map((stop) {
+        reason: day.reason,
+        stops: List.generate(day.stops.length, (i) {
+          final stop = day.stops[i];
           final place = stop.attraction.place;
+
+          final isUnscheduled = (stop.startTime.hour == 0 && stop.startTime.minute == 0 &&
+              stop.endTime.hour == 0 && stop.endTime.minute == 0);
+
+          String? conflict;
+          if (!isUnscheduled && i > 0) {
+            final prev = day.stops[i - 1];
+            final prevUnscheduled = (prev.startTime.hour == 0 && prev.startTime.minute == 0 &&
+                prev.endTime.hour == 0 && prev.endTime.minute == 0);
+            if (!prevUnscheduled) {
+              final travel = stop.travelFromPreviousMinutes.round();
+              final minStart = prev.endTime.add(Duration(minutes: travel));
+              if (stop.startTime.isBefore(prev.endTime)) {
+                final diff = prev.endTime.difference(stop.startTime).inMinutes;
+                conflict = 'Time overlap: starts ${formatScheduleMinutes(diff)} before previous stop ends';
+              } else if (stop.startTime.isBefore(minStart)) {
+                final available = stop.startTime.difference(prev.endTime).inMinutes;
+                conflict = 'Travel conflict: only ${formatScheduleMinutes(available)} between stops (needs ${formatScheduleMinutes(travel)})';
+              }
+            }
+          }
+
+          final oh = place.openingHours;
+          if (!isUnscheduled && oh != null && !oh.isOpen24Hours && oh.periods.isNotEmpty) {
+            final weekday = day.date.weekday % 7;
+            final dayPeriods = oh.periods.where((p) => p.open.day == weekday).toList();
+            if (dayPeriods.isEmpty) {
+              conflict = (conflict != null ? '$conflict • ' : '') + 'Might be closed at this time';
+            } else {
+              final startMins = stop.startTime.hour * 60 + stop.startTime.minute;
+              final endMins = stop.endTime.hour * 60 + stop.endTime.minute;
+              bool isOpen = false;
+              for (final p in dayPeriods) {
+                final openMin = _hhmmToMinutes(p.open.time);
+                var closeMin = _hhmmToMinutes(p.close.time);
+                var curStart = startMins;
+                var curEnd = endMins;
+                if (closeMin <= openMin) {
+                  closeMin += 1440;
+                  if (curStart < openMin) {
+                    curStart += 1440;
+                    curEnd += 1440;
+                  }
+                }
+                if (curStart >= openMin && curEnd <= closeMin) {
+                  isOpen = true;
+                  break;
+                }
+              }
+              if (!isOpen) {
+                conflict = (conflict != null ? '$conflict • ' : '') + 'Might be closed at this time';
+              }
+            }
+          }
+
+          final timeDisplay = isUnscheduled
+              ? 'Time to be arranged'
+              : _formatTime(stop.startTime) + ' - ' + _formatTime(stop.endTime);
+
           return StopData(
             name: place.placeName,
             type: place.category ?? 'Attraction',
             placeId: place.placeId,
             place: place,
-            time: _formatTime(stop.startTime) + ' - ' + _formatTime(stop.endTime),
-            duration: '${stop.durationMinutes} min',
-            transitTime: stop.travelFromPreviousMinutes > 0
+            time: timeDisplay,
+            duration: isUnscheduled ? '${stop.durationMinutes} min (Unscheduled)' : '${stop.durationMinutes} min',
+            transitTime: (!isUnscheduled && stop.travelFromPreviousMinutes > 0)
                 ? '${stop.travelFromPreviousMinutes.round()} min'
                 : null,
-            imageUrl: _placePhotoUrl(place.placePhotoRef, maxWidth: 400),
+            imageUrl: _resolvePlacePhotoUrl(place, maxWidth: 400),
+            scheduleReason: isUnscheduled
+                ? 'Time not arranged yet — tap Edit to set a time'
+                : stop.scheduleReason,
+            conflict: conflict,
+            isUnscheduled: isUnscheduled,
           );
-        }).toList(),
+        }),
         totalStops: day.stops.length,
-        timeRange: day.stops.isEmpty
-            ? null
-            : _formatTime(day.stops.first.startTime) +
-            ' - ' +
-            _formatTime(day.stops.last.endTime),
+        timeRange: () {
+          final scheduled = day.stops.where((s) =>
+              !(s.startTime.hour == 0 && s.startTime.minute == 0 && s.endTime.hour == 0 && s.endTime.minute == 0)).toList();
+          if (scheduled.isEmpty) {
+            return day.stops.isEmpty ? null : 'Time to be arranged';
+          }
+          return _formatTime(scheduled.first.startTime) + ' - ' + _formatTime(scheduled.last.endTime);
+        }(),
         isSelected: false,
       );
     }).toList();
@@ -179,12 +261,21 @@ class ItineraryFinalViewModel extends ChangeNotifier {
   }
 
   String? get heroImageUrl {
-    // Use first stop's image if available
-    final firstDay = days.isNotEmpty ? days.first : null;
-    if (firstDay != null && firstDay.stops.isNotEmpty) {
-      return firstDay.stops.first.imageUrl;
+    // 1. Search for first stop with a valid image
+    for (final day in days) {
+      for (final stop in day.stops) {
+        if (stop.imageUrl != null && stop.imageUrl!.trim().isNotEmpty) {
+          return stop.imageUrl!.trim();
+        }
+      }
     }
-    return null;
+    // 2. Check generated cover image
+    final cover = _coverImageUrl(_result);
+    if (cover != null && cover.trim().isNotEmpty) {
+      return cover.trim();
+    }
+    // 3. High quality destination fallback photo
+    return 'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=1200&q=80';
   }
 
   // ─── Actions ─────────────────────────────────────────────────
@@ -201,7 +292,7 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final result = await _regenerationService.regenerate(
+      final result = await regenerationService.regenerate(
         current: _result,
         request: _draft!,
       );
@@ -247,11 +338,11 @@ class ItineraryFinalViewModel extends ChangeNotifier {
       _isSaving = false;
       notifyListeners();
       return true;
-    } catch (e) {
-      debugPrint('[Save] Exception: $e');
+    } catch (e, stack) {
+      debugPrint('[Save] Exception: $e\n$stack');
       debugPrint('[FINAL] database save FAILED — working state preserved');
       _isSaved = false;
-      _saveMessage = 'Unable to save itinerary. Please try again.';
+      _saveMessage = 'Unable to save itinerary: $e';
       _isSaving = false;
       notifyListeners();
       return false;
@@ -370,12 +461,17 @@ class ItineraryFinalViewModel extends ChangeNotifier {
       throw StateError('No scheduled days to save.');
     }
 
+    final authUser = Supabase.instance.client.auth.currentUser;
+    final effectiveUserId = authUser?.id ?? (_userId.isNotEmpty ? _userId : null);
+    if (effectiveUserId == null || effectiveUserId.isEmpty) {
+      throw StateError('You must be logged in to save an itinerary.');
+    }
+
     final now = DateTime.now();
+    final targetItinId = _savedItineraryId ?? _itineraryId ?? _generateId('itin');
     final itinerary = Itinerary(
-      itineraryId: _generateId('itin'),
-      userId: _userId.isNotEmpty
-          ? _userId
-          : '252f0924-192c-42fe-8643-881da7bbf285',
+      itineraryId: targetItinId,
+      userId: effectiveUserId,
       title: _title.isEmpty ? 'My Trip' : _title,
       description: _draft?.additionalNotes,
       startDate: _tripStartDate,
@@ -393,16 +489,28 @@ class ItineraryFinalViewModel extends ChangeNotifier {
 
     debugPrint('[FINAL SAVE] Saving itinerary header');
     final itineraryRepo = DatabaseManager().itineraryRepository;
-    final saved = await itineraryRepo.createItinerary(itinerary);
+    late final Itinerary saved;
+    if (_savedItineraryId != null || _itineraryId != null) {
+      try {
+        saved = await itineraryRepo.updateItinerary(itinerary);
+      } catch (e) {
+        debugPrint('[FINAL SAVE] Update failed, falling back to create: $e');
+        saved = await itineraryRepo.createItinerary(itinerary);
+      }
+    } else {
+      saved = await itineraryRepo.createItinerary(itinerary);
+    }
     _savedItineraryId = saved.itineraryId;
 
     // ✅ MOVED UP: Resolve destination IDs BEFORE saving stops
     final destRepo = DatabaseManager().itineraryDestinationRepository;
     final destIdByName = <String, String>{};
+    final allDest = <dynamic>[];
     try {
-      final allDest =
-      await DatabaseManager().destinationRepository.getAllDestinations();
-      for (final d in allDest) {
+      final fetched =
+          await DatabaseManager().destinationRepository.getAllDestinations();
+      allDest.addAll(fetched);
+      for (final d in fetched) {
         destIdByName[d.destinationName.trim().toLowerCase()] = d.destinationId;
       }
     } catch (e) {
@@ -410,11 +518,15 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     }
 
     // ✅ Determine a safe default destination ID from the draft
-    String defaultDestId = 'D001'; // Fallback failsafe
-    if (_draft != null && _draft!.destinationNames.isNotEmpty) {
-      final firstName = _draft!.destinationNames.first.trim().toLowerCase();
-      if (destIdByName.containsKey(firstName)) {
-        defaultDestId = destIdByName[firstName]!;
+    String defaultDestId = allDest.isNotEmpty ? allDest.first.destinationId : 'D001';
+    final draft = _draft;
+    if (draft != null && draft.destinationNames.isNotEmpty) {
+      for (final name in draft.destinationNames) {
+        final key = name.trim().toLowerCase();
+        if (destIdByName.containsKey(key)) {
+          defaultDestId = destIdByName[key]!;
+          break;
+        }
       }
     }
 
@@ -432,6 +544,8 @@ class ItineraryFinalViewModel extends ChangeNotifier {
         } catch (e) {
           debugPrint('[FINAL SAVE] Place save failed: $e');
         }
+        final isUnscheduled = (scheduledStop.startTime.hour == 0 && scheduledStop.startTime.minute == 0 &&
+            scheduledStop.endTime.hour == 0 && scheduledStop.endTime.minute == 0);
         stops.add(ItineraryStop(
           stopId: 0,
           itineraryId: saved.itineraryId,
@@ -444,13 +558,13 @@ class ItineraryFinalViewModel extends ChangeNotifier {
           startTime: scheduledStop.startTime,
           endTime: scheduledStop.endTime,
           durationMinutes: scheduledStop.durationMinutes,
-          travelFromPrevMinutes: i > 0
+          travelFromPrevMinutes: (!isUnscheduled && i > 0)
               ? scheduledStop.startTime
               .difference(day.stops[i - 1].endTime)
               .inMinutes
               .abs()
               : 0,
-          stopStatus: 'PLANNED',
+          stopStatus: isUnscheduled ? 'UNSCHEDULED' : 'PLANNED',
           createdAt: now,
           updatedAt: now,
         ));
@@ -522,16 +636,33 @@ class ItineraryFinalViewModel extends ChangeNotifier {
         '&key=${ApiKeys.googleMapsApiKey}';
   }
 
+  String? _resolvePlacePhotoUrl(Place place, {int maxWidth = 400}) {
+    if (place.placeImageUrl != null && place.placeImageUrl!.trim().isNotEmpty) {
+      return place.placeImageUrl!.trim();
+    }
+    final ref = place.placePhotoRef?.trim();
+    if (ref != null && ref.trim().isNotEmpty) {
+      if (ref.startsWith('http://') || ref.startsWith('https://')) {
+        return ref.trim();
+      }
+      return _placePhotoUrl(ref.trim(), maxWidth: maxWidth);
+    }
+    if (place.placePhotoGoogleMapsUri != null && place.placePhotoGoogleMapsUri!.trim().isNotEmpty) {
+      return place.placePhotoGoogleMapsUri!.trim();
+    }
+    return null;
+  }
+
   /// Derive the itinerary cover image URL from the first scheduled stop
-  /// that has a valid photo reference.
+  /// that has a valid photo.
   String? _coverImageUrl(ItineraryResult generated) {
     final days = generated.scheduledDays;
     if (days == null) return null;
     for (final day in days) {
       for (final stop in day.stops) {
-        final ref = stop.attraction.place.placePhotoRef;
-        if (ref != null && ref.isNotEmpty) {
-          return _placePhotoUrl(ref, maxWidth: 800);
+        final url = _resolvePlacePhotoUrl(stop.attraction.place, maxWidth: 800);
+        if (url != null && url.isNotEmpty) {
+          return url;
         }
       }
     }
@@ -547,6 +678,13 @@ class ItineraryFinalViewModel extends ChangeNotifier {
     final minute = time.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
   }
+
+  int _hhmmToMinutes(String time) {
+    final clean = time.replaceAll(':', '');
+    final h = clean.length >= 2 ? (int.tryParse(clean.substring(0, 2)) ?? 0) : 0;
+    final m = clean.length >= 4 ? (int.tryParse(clean.substring(2, 4)) ?? 0) : 0;
+    return h * 60 + m;
+  }
 }
 
 // ─── Data classes for the UI ───────────────────────────────────
@@ -558,6 +696,7 @@ class DayData {
   final int totalStops;
   final String? timeRange;
   final bool isSelected;
+  final String reason;
 
   DayData({
     required this.dayNumber,
@@ -566,6 +705,7 @@ class DayData {
     required this.totalStops,
     this.timeRange,
     this.isSelected = false,
+    this.reason = '',
   });
 }
 
@@ -578,6 +718,9 @@ class StopData {
   final String duration;
   final String? transitTime;
   final String? imageUrl;
+  final String scheduleReason;
+  final String? conflict;
+  final bool isUnscheduled;
 
   StopData({
     required this.name,
@@ -588,5 +731,8 @@ class StopData {
     required this.duration,
     this.transitTime,
     this.imageUrl,
+    this.scheduleReason = '',
+    this.conflict,
+    this.isUnscheduled = false,
   });
 }

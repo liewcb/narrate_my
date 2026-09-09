@@ -37,8 +37,46 @@ class OpeningHours {
   /// [date] The date to check.
   /// Returns `true` if open, `false` otherwise.
   bool isOpenOnDay(int weekday) {
+    if (periods.isEmpty) return true; // unknown = assumed open
+    // 24/7 check (single period on day 0 with 0000)
+    if (periods.length == 1 &&
+        periods.first.open.day == 0 &&
+        periods.first.open.time == '0000') {
+      return true;
+    }
     final periodDay = weekday % 7; // 1→1, 7→0
     return periods.any((p) => p.open.day == periodDay);
+  }
+
+  bool get isOpen24Hours {
+    if (periods.length == 1 &&
+        periods.first.open.day == 0 &&
+        periods.first.open.time == '0000') {
+      return true;
+    }
+    return false;
+  }
+
+  bool isOpenAt(int weekday, int hour, int minute) {
+    if (periods.isEmpty || isOpen24Hours) return true;
+    final periodDay = weekday % 7;
+    final targetMinutes = hour * 60 + minute;
+    final dayPeriods = periods.where((p) => p.open.day == periodDay).toList();
+    if (dayPeriods.isEmpty) return false;
+    for (final p in dayPeriods) {
+      if (p.open.time == p.close.time ||
+          (p.open.time == '0000' && p.close.time == '2400')) {
+        return true;
+      }
+      final openMin = _timeToMinutes(p.open.time);
+      final closeMin = _timeToMinutes(p.close.time);
+      if (closeMin <= openMin) {
+        if (targetMinutes >= openMin || targetMinutes <= closeMin) return true;
+      } else {
+        if (targetMinutes >= openMin && targetMinutes <= closeMin) return true;
+      }
+    }
+    return false;
   }
 
   bool isOpenWithinWindow(int windowStartMinutes, int windowEndMinutes) {

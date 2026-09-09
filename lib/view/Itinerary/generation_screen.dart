@@ -7,7 +7,6 @@ import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import 'itinerary_final_screen.dart';
 import '../../core/theme/colors.dart';
 import '../../model/business_logic/itinerary_service/itinerary_generation_status.dart';
-import '../../model/entities/trip_draft.dart';
 import '../../viewmodel/Itinerary/itinerary_generation_vm.dart';
 
 class GenerationScreen extends StatefulWidget {
@@ -71,7 +70,7 @@ class _GenerationBody extends StatelessWidget {
               backgroundColor: AppColors.brandGreen,
             ),
           );
-        Navigator.pushReplacement(
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
             builder: (_) => ItineraryFinalScreen(
@@ -86,6 +85,7 @@ class _GenerationBody extends StatelessWidget {
               draft: vm.draft,
             ),
           ),
+          (route) => route.isFirst,
         );
       });
       return const SizedBox.shrink();
@@ -111,7 +111,7 @@ class _GenerationBody extends StatelessWidget {
                 _StatusNoticeView(
                   status: result.status,
                   onViewItinerary: () {
-                    Navigator.pushReplacement(
+                    Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
                         builder: (_) => ItineraryFinalScreen(
@@ -130,6 +130,7 @@ class _GenerationBody extends StatelessWidget {
                           draft: vm.draft,
                         ),
                       ),
+                      (route) => route.isFirst,
                     );
                   },
                 ),
@@ -204,8 +205,6 @@ class __MapHeroState extends State<_MapHero>
   @override
   void initState() {
     super.initState();
-
-    // Only handle UI animations here!
     _pulse = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -221,80 +220,105 @@ class __MapHeroState extends State<_MapHero>
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 280,
-      // Simplification: Clean corner radius 16px, shadows removed
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
+      height: 260,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            offset: const Offset(0, 8),
+            blurRadius: 20,
+          ),
+        ],
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: Stack(
           fit: StackFit.expand,
           children: [
+            // High-res modern architectural / travel landscape overview
             Image.network(
-              'https://images.unsplash.com/photo-1524661135-423995f22d0b?w=600&q=80',
+              'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&auto=format&fit=crop&q=80',
               fit: BoxFit.cover,
             ),
+            // Elegant gradient overlay with subtle travel tint
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    AppColors.creamBg.withOpacity(0.2),
-                    AppColors.white.withOpacity(0.4),
-                    AppColors.creamBg.withOpacity(0.6),
+                    Colors.black.withOpacity(0.35),
+                    Colors.black.withOpacity(0.15),
+                    Colors.black.withOpacity(0.55),
                   ],
                 ),
               ),
             ),
+            // Smooth curved flight path
             CustomPaint(painter: _RoutePainter()),
+            // Starting Pin
             _buildPin(
-              left: 0.08,
-              bottom: 0.72,
+              left: 0.12,
+              bottom: 0.65,
               color: AppColors.brandGreen,
-              label: 'KL · 3d',
+              label: 'Departure',
             ),
+            // Destination Pin
             _buildPin(
-              left: 0.75,
-              bottom: 0.32,
+              left: 0.72,
+              bottom: 0.28,
               color: AppColors.brandTerracotta,
-              label: 'Penang · 2d',
+              label: 'Adventure',
             ),
+            // Plane along path
             AnimatedPositioned(
-              left:
-              widget.planeOffset.dx *
-                  (MediaQuery.of(context).size.width - 48),
-              bottom:
-              widget.planeOffset.dy *
-                  (MediaQuery.of(context).size.height - 48),
-              duration: const Duration(milliseconds: 1300),
-              curve: Curves.easeInOut,
+              left: widget.planeOffset.dx * (MediaQuery.of(context).size.width - 64),
+              bottom: widget.planeOffset.dy * 200,
+              duration: const Duration(milliseconds: 1200),
+              curve: Curves.easeInOutCubic,
               child: Container(
-                width: 32,
-                height: 32,
-                decoration: const BoxDecoration(
-                  color: AppColors.white,
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white,
                   shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.25),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: const Icon(
-                  Icons.flight,
+                  Icons.flight_takeoff_rounded,
                   color: AppColors.brandGreen,
-                  size: 18,
+                  size: 20,
                 ),
               ),
             ),
+            // Modern Glassmorphic Status Badge
             Positioned(
               top: 16,
               left: 0,
               right: 0,
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   decoration: BoxDecoration(
-                    color: AppColors.white.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.black.withOpacity(0.65),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.25),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 12,
+                      ),
+                    ],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -302,19 +326,26 @@ class __MapHeroState extends State<_MapHero>
                       Container(
                         width: 8,
                         height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.green,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4CAF50),
                           shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF4CAF50).withOpacity(0.6),
+                              blurRadius: 6,
+                              spreadRadius: 2,
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // Hierarchy: 14px status label
-                      const Text(
+                      Text(
                         'GENERATING YOUR TRIP',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.black,
+                        style: GoogleFonts.nunito(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                          color: Colors.white,
                         ),
                       ),
                     ],
@@ -385,17 +416,17 @@ class _RoutePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = AppColors.brandGreen
-      ..strokeWidth = 2
+      ..color = const Color(0xFF81C784)
+      ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke;
 
     final path = Path()
-      ..moveTo(size.width * 0.08, size.height * 0.72)
+      ..moveTo(size.width * 0.12, size.height * 0.65)
       ..quadraticBezierTo(
-        size.width * 0.45,
-        size.height * 0.4,
-        size.width * 0.75,
-        size.height * 0.32,
+        size.width * 0.42,
+        size.height * 0.35,
+        size.width * 0.72,
+        size.height * 0.28,
       );
 
     const double dashWidth = 8.0;

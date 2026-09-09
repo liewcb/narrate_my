@@ -1,3 +1,4 @@
+import '../../core/utils/schedule_display.dart';
 // lib/viewmodel/ItineraryModel/edit_itinerary_vm.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show TimeOfDay;
@@ -68,6 +69,7 @@ class EditItineraryViewModel extends ChangeNotifier {
   final String _title;
   final String _transportMode;
   final GoogleMapsService _mapsService;
+  final DateTime Function() _now;
 
   List<EditableStop> _stops = [];
   String? _error;
@@ -86,6 +88,7 @@ class EditItineraryViewModel extends ChangeNotifier {
     required String title,
     String transportMode = 'walking',
     GoogleMapsService? mapsService,
+    DateTime Function()? now,
   })  : _originalResult = result,
         _dayIndex = dayIndex,
         _tripStartDate = tripStartDate,
@@ -93,6 +96,7 @@ class EditItineraryViewModel extends ChangeNotifier {
         _mustVisitPlaceIds = mustVisitPlaceIds,
         _title = title,
         _transportMode = transportMode,
+        _now = now ?? DateTime.now,
         _mapsService = mapsService ?? GoogleMapsService() {
     _stops = _buildStops();
     _dayMustVisitIds = _stops
@@ -131,7 +135,7 @@ class EditItineraryViewModel extends ChangeNotifier {
 
   /// The temporal status of this day portion: past / ongoing / upcoming.
   ItineraryTemporalStatus get dayStatus {
-    final now = DateTime.now();
+    final now = _now();
     final dayStart = DateTime(dayDate.year, dayDate.month, dayDate.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
     if (now.isBefore(dayStart)) return ItineraryTemporalStatus.upcoming;
@@ -145,19 +149,23 @@ class EditItineraryViewModel extends ChangeNotifier {
   /// NOT completely elapsed. Ongoing: the remaining portion stays editable.
   /// Upcoming: everything editable. Past: nothing editable.
   bool isStopEditable(int index) {
-    if (!isDayEditable) return false;
-    final now = DateTime.now();
+    if (index < 0 || index >= _stops.length || !isDayEditable) return false;
     final stop = _stops[index];
-    final scheduledEnd = DateTime(
-      dayDate.year, dayDate.month, dayDate.day,
-      stop.endTime.hour, stop.endTime.minute,
-    );
-    return now.isBefore(scheduledEnd);
+    if (stop.startTime.hour == 0 && stop.startTime.minute == 0 &&
+        stop.endTime.hour == 0 && stop.endTime.minute == 0) return true;
+    final start = DateTime(dayDate.year, dayDate.month, dayDate.day,
+        stop.startTime.hour, stop.startTime.minute);
+    var end = DateTime(dayDate.year, dayDate.month, dayDate.day,
+        stop.endTime.hour, stop.endTime.minute);
+    if (end.isBefore(start)) end = end.add(const Duration(days: 1));
+    return _now().isBefore(end);
   }
 
   /// Set both start and end times for a stop.
   /// The duration is derived from the difference.
-  /// Re‑chains the schedule and validates.
+  /// Set both start and end times for a stop.
+  /// The duration is derived from the difference.
+  /// Re-orders stops chronologically and recalculates travel times.
   bool setTimeRange(int index, TimeOfDay start, TimeOfDay end) {
     if (index < 0 || index >= _stops.length) return false;
     if (!isStopEditable(index)) {
@@ -170,18 +178,12 @@ class EditItineraryViewModel extends ChangeNotifier {
     final endMin = end.hour * 60 + end.minute;
     final duration = endMin - startMin;
 
-    if (duration < 15) {
-      _error = 'End time must be at least 15 minutes after start.';
-      notifyListeners();
-      return false;
-    }
-    if (duration > maxDurationMinutes) {
-      _error = 'Visit cannot exceed 2 hours.';
+    if (duration <= 0) {
+      _error = 'End time must be after start time.';
       notifyListeners();
       return false;
     }
 
-    final snapshot = _snapshotStops();
     final stop = _stops[index];
     stop.startTime = DateTime(
       stop.startTime.year,
@@ -191,17 +193,18 @@ class EditItineraryViewModel extends ChangeNotifier {
       start.minute,
     );
     stop.durationMinutes = duration;
-    stop.endTime = stop.startTime.add(Duration(minutes: duration));
-    _rechainSchedule();
+    stop.endTime = DateTime(
+      stop.endTime.year,
+      stop.endTime.month,
+      stop.endTime.day,
+      end.hour,
+      end.minute,
+    );
 
-    final errors = validate();
-    if (errors.isNotEmpty) {
-      _restoreStops(snapshot);
-      _error = errors.first;
-      notifyListeners();
-      return false;
-    }
+    // Sort chronologically by start time (keeping unscheduled stops at end) and recalculate travel times
+    _stops.sort(compareStops);
     _error = null;
+    recalculateAllTravelTimes();
     notifyListeners();
     return true;
   }
@@ -224,11 +227,9 @@ class EditItineraryViewModel extends ChangeNotifier {
   List<TimeOfDay> availableStartTimes(int index) {
     if (index < 0 || index >= _stops.length) return const [];
     final stop = _stops[index];
-    final win = window;
-    final winEnd = win.endMinutes;
 
-    // Lower bound: previous stop end + travel to this stop.
-    var lower = win.startMinutes;
+    // Lower bound: allow from 06:00 (360) or previous stop end + travel.
+    var lower = 360;
     if (index > 0) {
       final prev = _stops[index - 1];
       final prevEnd = prev.endTime.hour * 60 + prev.endTime.minute;
@@ -252,7 +253,8 @@ class EditItineraryViewModel extends ChangeNotifier {
     // Round up to the next 30-minute slot after [lower].
     var slot = (lower / 30).ceil() * 30;
     final options = <TimeOfDay>[];
-    while (slot + stop.durationMinutes <= winEnd) {
+    const manualCeiling = 1380; // Allow manual schedules up to 23:00
+    while (slot + stop.durationMinutes <= manualCeiling) {
       options.add(TimeOfDay(hour: slot ~/ 60, minute: slot % 60));
       slot += 30;
     }
@@ -275,7 +277,7 @@ class EditItineraryViewModel extends ChangeNotifier {
     if (index < 0 || index >= _stops.length) return const [];
     final stop = _stops[index];
     const choices = [20, 30, 45, 60, 75, 90, 105, 120];
-    final winEnd = window.endMinutes;
+    const winEnd = 1380; // Allow manual schedules up to 23:00
     final startMin = stop.startTime.hour * 60 + stop.startTime.minute;
 
     // Closing bound from opening hours (if known).
@@ -309,26 +311,13 @@ class EditItineraryViewModel extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-    if (minutes > maxDurationMinutes) {
-      _error = 'Visits are limited to 2 hours.';
-      notifyListeners();
-      return false;
-    }
 
-    final snapshot = _snapshotStops();
     final stop = _stops[index];
     stop.durationMinutes = minutes;
     stop.endTime = stop.startTime.add(Duration(minutes: minutes));
     _rechainSchedule();
-
-    final errors = validate();
-    if (errors.isNotEmpty) {
-      _restoreStops(snapshot);
-      _error = errors.first;
-      notifyListeners();
-      return false;
-    }
     _error = null;
+    recalculateAllTravelTimes();
     notifyListeners();
     return true;
   }
@@ -341,10 +330,8 @@ class EditItineraryViewModel extends ChangeNotifier {
 
   // ─── Operations ─────────────────────────────────────────────
 
-  /// Reorders a stop. Returns `true` when the order actually changed and the
-  /// resulting schedule is still valid. On an invalid reorder the change is
-  /// reverted and [_error] carries a user-friendly reason. Elapsed/locked
-  /// stops can never be moved.
+  /// Reorders a stop. Returns `true` when the order actually changed.
+  /// Does NOT revert or hard-block the user; recalculates travel times and updates.
   bool reorder(int oldIndex, int newIndex) {
     if (newIndex > oldIndex) newIndex -= 1;
     if (oldIndex == newIndex) return false;
@@ -359,26 +346,16 @@ class EditItineraryViewModel extends ChangeNotifier {
       return false;
     }
 
-    final snapshot = _snapshotStops();
     final item = _stops.removeAt(oldIndex);
     _stops.insert(newIndex, item);
     _rechainSchedule();
-
-    final errors = validate();
-    if (errors.isNotEmpty) {
-      _restoreStops(snapshot);
-      _error = errors.first;
-      notifyListeners();
-      return false;
-    }
     _error = null;
+    recalculateAllTravelTimes();
     notifyListeners();
     return true;
   }
 
-  /// Sets a new start time for a stop and rechains the rest of the day.
-  /// Returns `true` only when the new time keeps the day valid; otherwise the
-  /// change is reverted and [_error] carries a user-friendly reason.
+  /// Sets a new start time for a stop, keeps chronological order and recalculates travel times.
   bool setStartTime(int index, TimeOfDay newTime) {
     if (index < 0 || index >= _stops.length) return false;
     if (!isStopEditable(index)) {
@@ -387,7 +364,6 @@ class EditItineraryViewModel extends ChangeNotifier {
       return false;
     }
 
-    final snapshot = _snapshotStops();
     final stop = _stops[index];
     stop.startTime = DateTime(
       stop.startTime.year,
@@ -397,16 +373,10 @@ class EditItineraryViewModel extends ChangeNotifier {
       newTime.minute,
     );
     stop.endTime = stop.startTime.add(Duration(minutes: stop.durationMinutes));
-    _rechainSchedule();
 
-    final errors = validate();
-    if (errors.isNotEmpty) {
-      _restoreStops(snapshot);
-      _error = errors.first;
-      notifyListeners();
-      return false;
-    }
+    _stops.sort(compareStops);
     _error = null;
+    recalculateAllTravelTimes();
     notifyListeners();
     return true;
   }
@@ -470,8 +440,7 @@ class EditItineraryViewModel extends ChangeNotifier {
     // removed stop's former successor (the only newly-adjacent pair).
     await _recalculateTravelAround(index);
 
-    // §9 — recalculate start/end times for the selected day only.
-    _rechainSchedule();
+    // Keep manually selected visit times; only the affected travel leg changes.
 
     // §10 — deterministic validation; restore on failure (no partial state).
     final errors = validate();
@@ -524,6 +493,39 @@ class EditItineraryViewModel extends ChangeNotifier {
     }
   }
 
+  /// Recalculates travel times between all consecutive stops using their coordinates.
+  Future<void> recalculateAllTravelTimes() async {
+    if (_stops.isEmpty) return;
+    _stops.first.travelFromPrevMinutes = 0;
+    for (int i = 1; i < _stops.length; i++) {
+      final prev = _stops[i - 1];
+      final cur = _stops[i];
+      final mins = await _travelMinutes(prev.place.coordinates, cur.place.coordinates);
+      if (mins != null) {
+        cur.travelFromPrevMinutes = mins;
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Compares two stops, keeping unscheduled stops (00:00-00:00) at the end.
+  static int compareStops(EditableStop a, EditableStop b) {
+    final aUnscheduled = (a.startTime.hour == 0 && a.startTime.minute == 0 && a.endTime.hour == 0 && a.endTime.minute == 0);
+    final bUnscheduled = (b.startTime.hour == 0 && b.startTime.minute == 0 && b.endTime.hour == 0 && b.endTime.minute == 0);
+    if (aUnscheduled && !bUnscheduled) return 1;
+    if (!aUnscheduled && bUnscheduled) return -1;
+    if (aUnscheduled && bUnscheduled) return 0;
+    return a.startTime.compareTo(b.startTime);
+  }
+
+  /// Sorts stops chronologically by start time and recalculates travel times.
+  Future<void> sortChronologicallyAndRecalculate() async {
+    if (_stops.length <= 1) return;
+    _stops.sort(compareStops);
+    await recalculateAllTravelTimes();
+    notifyListeners();
+  }
+
   bool canAddCandidate(Place candidate) {
     if (_stops.any((s) => s.placeId == candidate.placeId)) {
       _error = 'This place is already in your itinerary.';
@@ -533,85 +535,141 @@ class EditItineraryViewModel extends ChangeNotifier {
     return true;
   }
 
-  /// Adds a candidate to the end of the day. Returns `true` only when the
-  /// addition keeps the day valid; otherwise the addition is reverted and
-  /// [_error] carries a user-friendly reason.
+  /// Adds a candidate to the day. Orders chronologically and recalculates travel times.
+  /// If it's a daytime attraction and no daytime slot fits, leaves it unscheduled (00:00 - 00:00).
+  /// Never blocks or reverts.
   bool addCandidate(Place candidate) {
     if (!canAddCandidate(candidate)) return false;
 
-    final snapshot = _snapshotStops();
     final day = _tripStartDate.add(Duration(days: _dayIndex));
-    final startTime = _stops.isNotEmpty
-        ? _stops.last.endTime.add(const Duration(minutes: 15))
-        : DateTime(day.year, day.month, day.day, 9, 0);
-    final endTime = startTime.add(Duration(minutes: candidate.visitDurationMinutes ?? 90));
+    final duration = candidate.visitDurationMinutes ?? 90;
+    final types = <String>[
+      ...candidate.placeTypes.map((t) => t.toLowerCase()),
+      if (candidate.category != null) candidate.category!.toLowerCase(),
+    ];
+    final isDaytimeOnly = types.any((String t) =>
+        t.contains('museum') ||
+        t.contains('gallery') ||
+        t.contains('park') ||
+        t.contains('temple') ||
+        t.contains('worship') ||
+        t.contains('natural_feature') ||
+        t.contains('tourist_attraction') ||
+        t.contains('point_of_interest') ||
+        t.contains('monument') ||
+        t.contains('landmark'));
+
+    DateTime startTime;
+    DateTime endTime;
+
+    if (isDaytimeOnly) {
+      final day9am = DateTime(day.year, day.month, day.day, 9, 0);
+      final day6pm = DateTime(day.year, day.month, day.day, 18, 0);
+      final scheduledStops = _stops.where((s) =>
+          !(s.startTime.hour == 0 && s.startTime.minute == 0 && s.endTime.hour == 0 && s.endTime.minute == 0)).toList();
+
+      DateTime? chosenStart;
+      if (scheduledStops.isEmpty) {
+        chosenStart = day9am;
+      } else {
+        if (scheduledStops.first.startTime.difference(day9am).inMinutes >= duration + 20) {
+          chosenStart = day9am;
+        } else {
+          for (int i = 0; i < scheduledStops.length - 1; i++) {
+            final gapStart = scheduledStops[i].endTime.add(const Duration(minutes: 15));
+            final gapEnd = scheduledStops[i + 1].startTime;
+            if (gapStart.isAfter(day9am) && gapEnd.isBefore(day6pm)) {
+              if (gapEnd.difference(gapStart).inMinutes >= duration) {
+                chosenStart = gapStart;
+                break;
+              }
+            }
+          }
+          if (chosenStart == null) {
+            final afterLast = scheduledStops.last.endTime.add(const Duration(minutes: 15));
+            if (afterLast.isBefore(day6pm) && day6pm.difference(afterLast).inMinutes >= duration) {
+              chosenStart = afterLast;
+            }
+          }
+        }
+      }
+
+      if (chosenStart != null) {
+        startTime = chosenStart;
+        endTime = startTime.add(Duration(minutes: duration));
+      } else {
+        // Unscheduled — leave empty (00:00 - 00:00) so user can schedule it manually
+        startTime = DateTime(day.year, day.month, day.day, 0, 0);
+        endTime = DateTime(day.year, day.month, day.day, 0, 0);
+      }
+    } else {
+      final candidateStart = _stops.isNotEmpty
+          ? _stops.last.endTime.add(const Duration(minutes: 15))
+          : DateTime(day.year, day.month, day.day, 9, 0);
+      final candidateEnd = candidateStart.add(Duration(minutes: duration));
+      if (candidateStart.day != day.day ||
+          candidateEnd.day != day.day ||
+          (candidateStart.hour * 60 + candidateStart.minute + duration > 1439)) {
+        // Spill over to next day -> mark as unscheduled (00:00 - 00:00)
+        startTime = DateTime(day.year, day.month, day.day, 0, 0);
+        endTime = DateTime(day.year, day.month, day.day, 0, 0);
+      } else {
+        startTime = candidateStart;
+        endTime = candidateEnd;
+      }
+    }
+
     _stops.add(EditableStop(
       placeId: candidate.placeId,
       name: candidate.placeName,
       address: candidate.placeAddress,
-      durationMinutes: candidate.visitDurationMinutes ?? 90,
+      durationMinutes: duration,
       isMustVisit: _mustVisitPlaceIds.contains(candidate.placeId),
       place: candidate,
       startTime: startTime,
       endTime: endTime,
       travelFromPrevMinutes: _stops.isNotEmpty ? 15 : 0,
     ));
-    _rechainSchedule();
 
-    final errors = validate();
-    if (errors.isNotEmpty) {
-      _restoreStops(snapshot);
-      _error = errors.first;
-      notifyListeners();
-      return false;
-    }
+    _stops.sort(compareStops);
     _error = null;
+    recalculateAllTravelTimes();
     notifyListeners();
     return true;
   }
 
-  /// Replaces a stop. Returns `true` only when the replacement keeps the day
-  /// valid; otherwise the original stop is restored and [_error] carries a
-  /// user-friendly reason.
-  bool replaceStop(int index, Place candidate) {    if (index < 0 || index >= _stops.length) return false;
+  /// Replaces a stop. Recalculates travel times and updates without reverting.
+  bool replaceStop(int index, Place candidate) {
+    if (index < 0 || index >= _stops.length) return false;
     if (_stops.any((s) => s.placeId == candidate.placeId && s.placeId != _stops[index].placeId)) {
       _error = 'This place is already in your itinerary.';
       notifyListeners();
       return false;
     }
 
-    final snapshot = _snapshotStops();
+    final duration = candidate.visitDurationMinutes ?? _stops[index].durationMinutes;
     _stops[index] = EditableStop(
       placeId: candidate.placeId,
       name: candidate.placeName,
       address: candidate.placeAddress,
-      durationMinutes: candidate.visitDurationMinutes ?? 90,
+      durationMinutes: duration,
       isMustVisit: _mustVisitPlaceIds.contains(candidate.placeId),
       place: candidate,
       startTime: _stops[index].startTime,
-      endTime: _stops[index].startTime.add(Duration(minutes: candidate.visitDurationMinutes ?? 90)),
+      endTime: _stops[index].startTime.add(Duration(minutes: duration)),
       travelFromPrevMinutes: _stops[index].travelFromPrevMinutes,
     );
-    _rechainSchedule();
 
-    final errors = validate();
-    if (errors.isNotEmpty) {
-      _restoreStops(snapshot);
-      _error = errors.first;
-      notifyListeners();
-      return false;
-    }
     _error = null;
+    recalculateAllTravelTimes();
     notifyListeners();
     return true;
   }
 
-  /// Applies a validated proposed day (from the Add Custom Place workflow)
-  /// to the temporary stop list. The proposal is re-validated with the same
-  /// deterministic engine; on failure the previous temporary state is
-  /// restored and [_error] carries a user-friendly reason.
+  /// Applies a validated proposed day (from the Add Place workflow)
+  /// to the temporary stop list. Sorts chronologically and recalculates travel times.
+  /// Never blocks or reverts.
   bool applyProposedDay(ScheduledDay proposedDay) {
-    final snapshot = _snapshotStops();
     final converted = proposedDay.stops.map((s) {
       final p = s.attraction.place;
       return EditableStop(
@@ -627,117 +685,136 @@ class EditItineraryViewModel extends ChangeNotifier {
       );
     }).toList();
 
-    _stops = converted;
-    final errors = validate();
-    if (errors.isNotEmpty) {
-      _restoreStops(snapshot);
-      _error = errors.first;
-      notifyListeners();
-      return false;
+    // Sort chronologically by startTime, keeping unscheduled stops at the end
+    converted.sort(compareStops);
+    if (converted.isNotEmpty) {
+      converted.first.travelFromPrevMinutes = 0;
     }
+
+    _stops = converted;
     _error = null;
+    recalculateAllTravelTimes();
     notifyListeners();
     return true;
   }
 
   // ─── Validation ─────────────────────────────────────────────
 
-  /// Returns a list of error messages. Empty list means validation passed.
+  /// Structural validation (empty day, duplicate IDs).
+  /// Soft/advisory issues (travel distance, time overlap, venue hours) are surfaced
+  /// as warnings via [getStopConflict] without blocking the traveler.
   List<String> validate() {
     final errors = <String>[];
-    debugPrint('[EDIT VALIDATION] Started');
+    if (_stops.isEmpty) {
+      errors.add('Add at least one stop before finishing.');
+    }
+    final ids = _stops.map((s) => s.placeId).toList();
+    if (ids.length != ids.toSet().length) {
+      errors.add('You have duplicate stops in this day.');
+    }
+    return errors;
+  }
 
-    // 1. This day's must-visits all present (day-scoped guard).
+  /// Structural validation that prevents saving broken itineraries (e.g. empty or missing must-visits).
+  List<String> validateStructural() {
+    final errors = <String>[];
     for (final mvId in _dayMustVisitIds) {
       if (!_stops.any((s) => s.placeId == mvId)) {
         errors.add('This change removes a required must-visit place.');
         break;
       }
     }
-    debugPrint('[EDIT VALIDATION] Must-visits: ${errors.isEmpty ? "PASS" : "FAIL"}');
-
-    // 2. No duplicate place IDs.
     final ids = _stops.map((s) => s.placeId).toList();
     if (ids.length != ids.toSet().length) {
       errors.add('You have duplicate stops in this day.');
     }
-    debugPrint('[EDIT VALIDATION] Duplicates: ${errors.isEmpty ? "PASS" : "FAIL"}');
-
     if (_stops.isEmpty) {
       errors.add('Add at least one stop before finishing.');
-      debugPrint('[EDIT VALIDATION] RESULT: FAIL');
-      return errors;
     }
-
-    // 3. Exploration window + chronological order.
-    final win = window;
-    final winStart = win.startMinutes;
-    final winEnd = win.endMinutes;
-
-    for (int i = 0; i < _stops.length; i++) {
-      final s = _stops[i];
-      final startMins = s.startTime.hour * 60 + s.startTime.minute;
-      final endMins = s.endTime.hour * 60 + s.endTime.minute;
-
-      if (endMins <= startMins) {
-        errors.add('Stop "${s.name}" has an invalid time sequence (end before start).');
-        break;
-      }
-      if (startMins < winStart || endMins > winEnd) {
-        errors.add('"${s.name}" is outside the available exploration time '
-            '(${_fmtWin(winStart)}–${_fmtWin(winEnd)}).');
-        break;
-      }
-
-      // Check chronological order between consecutive stops.
-      if (i > 0) {
-        final prev = _stops[i - 1];
-        final prevEndMins = prev.endTime.hour * 60 + prev.endTime.minute;
-        if (startMins < prevEndMins + s.travelFromPrevMinutes) {
-          errors.add('The selected order requires more travel time than is available '
-              'between "${prev.name}" and "${s.name}".');
-          break;
-        }
-      }
-    }
-    debugPrint('[EDIT VALIDATION] Exploration time: ${errors.isEmpty ? "PASS" : "FAIL"}');
-    debugPrint('[EDIT VALIDATION] Travel time: ${errors.isEmpty ? "PASS" : "FAIL"}');
-
-    // 4. Opening hours (best-effort).
-    if (errors.isEmpty) {
-      for (final s in _stops) {
-        final oh = s.place.openingHours;
-        if (oh == null || oh.periods.isEmpty) continue;
-        final dayOfWeek = (_tripStartDate.add(Duration(days: _dayIndex)).weekday) % 7;
-        final matchingPeriods = oh.periods.where((p) => p.open.day == dayOfWeek);
-        if (matchingPeriods.isNotEmpty) {
-          final allMatch = matchingPeriods.every((p) {
-            final openMin = int.parse(p.open.time.substring(0, 2)) * 60 +
-                int.parse(p.open.time.substring(2, 4));
-            final closeMin = int.parse(p.close.time.substring(0, 2)) * 60 +
-                int.parse(p.close.time.substring(2, 4));
-            final startMins = s.startTime.hour * 60 + s.startTime.minute;
-            final endMins = s.endTime.hour * 60 + s.endTime.minute;
-            return startMins >= openMin && endMins <= closeMin;
-          });
-          if (!allMatch) {
-            errors.add('"${s.name}" is closed during the selected time.');
-            debugPrint('[EDIT VALIDATION] Opening hours: FAIL');
-            break;
-          }
-        }
-      }
-      debugPrint('[EDIT VALIDATION] Opening hours: PASS');
-    }
-
-    debugPrint('[EDIT VALIDATION] RESULT: ${errors.isEmpty ? "PASS" : "FAIL"}');
     return errors;
   }
 
+  /// Evaluates whether a stop at [index] has any schedule, travel, or venue alert.
+  /// Returns a human-friendly advisory description, or null if clear.
+  String? getStopConflict(int index) {
+    if (index < 0 || index >= _stops.length) return null;
+    final stop = _stops[index];
+
+    final isUnscheduled = (stop.startTime.hour == 0 && stop.startTime.minute == 0 && stop.endTime.hour == 0 && stop.endTime.minute == 0);
+    if (isUnscheduled) {
+      return null;
+    }
+
+    final startMins = stop.startTime.hour * 60 + stop.startTime.minute;
+    final endMins = stop.endTime.hour * 60 + stop.endTime.minute;
+
+    if (endMins <= startMins) {
+      return 'Time alert: end time is before or equal to start time.';
+    }
+
+    if (startMins < 360 || endMins > 1439) {
+      return 'Schedule alert: outside standard daily hours (06:00–23:59)';
+    }
+
+    if (index > 0) {
+      final prev = _stops[index - 1];
+      final prevUnscheduled = (prev.startTime.hour == 0 && prev.startTime.minute == 0 && prev.endTime.hour == 0 && prev.endTime.minute == 0);
+      if (!prevUnscheduled) {
+        final travel = stop.travelFromPrevMinutes.clamp(0, 120);
+        final minStart = prev.endTime.add(Duration(minutes: travel));
+        if (stop.startTime.isBefore(prev.endTime)) {
+          final diff = prev.endTime.difference(stop.startTime).inMinutes;
+          return 'Time overlap: starts ${formatScheduleMinutes(diff)} before "${prev.name}" ends (${_fmt(prev.endTime)})';
+        } else if (stop.startTime.isBefore(minStart)) {
+          final available = stop.startTime.difference(prev.endTime).inMinutes;
+          return 'Travel alert: needs ~${formatScheduleMinutes(travel)} travel from "${prev.name}" (only ${formatScheduleMinutes(available)} scheduled)';
+        }
+      }
+    }
+
+    final oh = stop.place.openingHours;
+    if (oh != null && !oh.isOpen24Hours && oh.periods.isNotEmpty) {
+      final weekday = dayDate.weekday % 7;
+      final dayPeriods = oh.periods.where((p) => p.open.day == weekday).toList();
+      if (dayPeriods.isEmpty) {
+        return 'Might be closed at this time';
+      }
+      bool isOpen = false;
+      for (final p in dayPeriods) {
+        final openMin = _hhmmToMinutes(p.open.time);
+        var closeMin = _hhmmToMinutes(p.close.time);
+        var curStart = startMins;
+        var curEnd = endMins;
+        if (closeMin <= openMin) {
+          closeMin += 1440;
+          if (curStart < openMin) {
+            curStart += 1440;
+            curEnd += 1440;
+          }
+        }
+        if (curStart >= openMin && curEnd <= closeMin) {
+          isOpen = true;
+          break;
+        }
+      }
+      if (!isOpen) {
+        return 'Might be closed at this time';
+      }
+    }
+
+    return null;
+  }
+
+  String _fmt(DateTime t) {
+    final h = t.hour.toString().padLeft(2, '0');
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
   /// Build an updated [ItineraryResult] with the edited day replacing the
-  /// original. Does NOT mutate the original.
+  /// original. Does NOT mutate the original. Allows saving with time conflicts.
   void applyChanges() {
-    final errors = validate();
+    final errors = validateStructural();
     if (errors.isNotEmpty) {
       _error = errors.first;
       notifyListeners();
@@ -846,12 +923,31 @@ class EditItineraryViewModel extends ChangeNotifier {
   /// the first stop's start time, using travelFromPrevMinutes between stops.
   void _rechainSchedule() {
     if (_stops.isEmpty) return;
+    final baseDate = _stops.first.startTime;
     for (int i = 1; i < _stops.length; i++) {
       final prev = _stops[i - 1];
       final cur = _stops[i];
+      final prevUnscheduled = (prev.startTime.hour == 0 && prev.startTime.minute == 0 &&
+          prev.endTime.hour == 0 && prev.endTime.minute == 0);
+      if (prevUnscheduled) {
+        cur.startTime = DateTime(baseDate.year, baseDate.month, baseDate.day, 0, 0);
+        cur.endTime = DateTime(baseDate.year, baseDate.month, baseDate.day, 0, 0);
+        continue;
+      }
       final travel = cur.travelFromPrevMinutes.clamp(0, 120);
-      cur.startTime = prev.endTime.add(Duration(minutes: travel));
-      cur.endTime = cur.startTime.add(Duration(minutes: cur.durationMinutes));
+      final newStart = prev.endTime.add(Duration(minutes: travel));
+      final newEnd = newStart.add(Duration(minutes: cur.durationMinutes));
+      // Do not allow stops to spill over to the next day!
+      if (newStart.day != baseDate.day ||
+          newEnd.day != baseDate.day ||
+          (newStart.hour * 60 + newStart.minute + cur.durationMinutes > 1439)) {
+        // Leave unscheduled so user knows it hasn't been arranged yet
+        cur.startTime = DateTime(baseDate.year, baseDate.month, baseDate.day, 0, 0);
+        cur.endTime = DateTime(baseDate.year, baseDate.month, baseDate.day, 0, 0);
+      } else {
+        cur.startTime = newStart;
+        cur.endTime = newEnd;
+      }
     }
   }
 
@@ -860,15 +956,11 @@ class EditItineraryViewModel extends ChangeNotifier {
     if (original.length != _stops.length) return true;
     for (int i = 0; i < _stops.length; i++) {
       if (_stops[i].placeId != original[i].placeId) return true;
-      if (_stops[i].startTime.hour != original[i].startTime.hour ||
-          _stops[i].startTime.minute != original[i].startTime.minute) return true;
+      if (_stops[i].startTime != original[i].startTime ||
+          _stops[i].endTime != original[i].endTime ||
+          _stops[i].durationMinutes != original[i].durationMinutes ||
+          _stops[i].travelFromPrevMinutes != original[i].travelFromPrevMinutes) return true;
     }
     return false;
-  }
-
-  String _fmtWin(int mins) {
-    final h = (mins ~/ 60).toString().padLeft(2, '0');
-    final m = (mins % 60).toString().padLeft(2, '0');
-    return '$h:$m';
   }
 }

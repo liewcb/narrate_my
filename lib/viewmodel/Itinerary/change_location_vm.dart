@@ -1,5 +1,7 @@
 // lib/viewmodel/Itinerary/change_location_vm.dart
 import 'package:flutter/foundation.dart';
+import '../../core/services/database_manager.dart';
+import '../../model/repositories/interfaces/bookmark/bookmark_repository.dart';
 
 import '../../model/business_logic/itinerary_service/change_location_service.dart';
 import '../../model/entities/itinerary_stop.dart';
@@ -13,7 +15,36 @@ class ChangeLocationViewModel extends ChangeNotifier {
   ChangeLocationRecommendationResult? _recommendationResult;
   bool _isLoadingRecommendations = false;
 
-  ChangeLocationViewModel({required this.stop});
+  final BookmarkRepository _bookmarkRepository;
+  List<Place> bookmarks = [];
+  bool isLoadingBookmarks = false;
+  String? bookmarksError;
+  bool _disposed = false;
+
+  ChangeLocationViewModel({required this.stop, BookmarkRepository? bookmarkRepository})
+      : _bookmarkRepository = bookmarkRepository ?? DatabaseManager().bookmarkRepository;
+
+  Future<void> loadBookmarks([String userId = '']) async {
+    if (isLoadingBookmarks) return;
+    isLoadingBookmarks = true;
+    bookmarksError = null;
+    notifyListeners();
+    try {
+      final effectiveUserId = userId.isNotEmpty ? userId : _bookmarkRepository.currentUserId ?? '';
+      final entries = effectiveUserId.isEmpty ? <Place>[] :
+          (await _bookmarkRepository.getBookmarksWithPlaces(effectiveUserId)).map((entry) => entry.place).toList();
+      if (!_disposed) bookmarks = entries;
+    } catch (_) {
+      if (!_disposed) bookmarksError = 'Could not load bookmarks.';
+    } finally {
+      isLoadingBookmarks = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() { _disposed = true; super.dispose(); }
+
 
   // ─── State ──────────────────────────────────────────────────
 
@@ -46,7 +77,7 @@ class ChangeLocationViewModel extends ChangeNotifier {
       );
     } finally {
       _isLoadingRecommendations = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -73,7 +104,7 @@ class ChangeLocationViewModel extends ChangeNotifier {
       );
     } finally {
       _isLoadingRecommendations = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 

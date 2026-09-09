@@ -498,10 +498,15 @@ class ARPlacementViewModel extends ChangeNotifier {
       arSessionManager?.onPlaneOrPointTap = (results) {};
       _nodes.clear();
       _anchors.clear();
+      arSessionManager?.pause();
       arSessionManager?.dispose();
     } catch (e) {
       debugPrint("Error disposing AR resources: $e");
     }
+
+    try {
+      _placementService.narrationService.stop();
+    } catch (_) {}
 
     _placementService.dispose();
     super.dispose();

@@ -65,17 +65,17 @@ class _Step1WhereToBody extends StatelessWidget {
           SingleChildScrollView(
             padding: const EdgeInsets.only(bottom: 140),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 8),
                   const WizardProgressBar(activeSteps: 1),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
                   const _Header(),
                   const SizedBox(height: 24),
                   _SearchBar(onChanged: vm.searchDestinations),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
                   _SelectedChips(
                     selected: selected,
                     onRemove: (dest) => _handleToggle(context, vm, dest),

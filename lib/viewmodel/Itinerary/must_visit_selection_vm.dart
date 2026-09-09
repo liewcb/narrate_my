@@ -283,7 +283,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
   Step3AddPlaceVM(
       this.draft, {
-        userId,
+        String? userId,
         GoogleMapsService? mapsService,
         DestinationRepository? destinationRepository,
         BookmarkRepository? bookmarkRepository,
@@ -293,7 +293,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
             destinationRepository ?? DatabaseManager().destinationRepository,
         _bookmarkRepository =
             bookmarkRepository ?? DatabaseManager().bookmarkRepository,
-        user_id = userId,
+        user_id = userId ?? (bookmarkRepository ?? DatabaseManager().bookmarkRepository).currentUserId ?? '',
         _candidateService =
             candidateService ?? CandidateRetrievalService() {
     _ensureSelectedDestinations();
@@ -363,6 +363,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
   }
 
   Future<void> loadBookmarks() async {
+    if (user_id.isEmpty) return;
     isLoadingBookmarks = true;
     bookmarksError = null;
     notifyListeners();
@@ -372,7 +373,6 @@ class Step3AddPlaceVM extends ChangeNotifier {
       final dtos = await _bookmarkRepository.getBookmarksWithPlaces(user_id);
 
       final validBookmarks = <WizardPlace>[];
-      final disabledBookmarks = <WizardPlace>[];
 
       for (final dto in dtos) {
         final place = dto.place;
@@ -390,24 +390,18 @@ class Step3AddPlaceVM extends ChangeNotifier {
           }
         }
 
-        // 2. If it belongs to a destination, attach the destinationId!
+        // 2. Only add bookmarks belonging to the user's selected destination!
+        // Places outside selection are completely excluded (never shown).
         if (matchedDest != null) {
           validBookmarks.add(_toWizardPlace(
             place,
             matchedDest.destinationName,
-            destinationId: matchedDest.destinationId, // ✅ Attach destination ID here!
+            destinationId: matchedDest.destinationId,
           ).copyWith(isEnabled: true));
-        } else {
-          // If it's completely outside the trip, keep it disabled
-          disabledBookmarks.add(_toWizardPlace(
-            place,
-            'Outside Travel Area',
-          ).copyWith(isEnabled: false));
         }
       }
 
-      // Show valid ones if they exist, otherwise show disabled ones.
-      _bookmarks = validBookmarks.isNotEmpty ? validBookmarks : disabledBookmarks;
+      _bookmarks = validBookmarks;
 
     } catch (e) {
       bookmarksError = 'Could not load bookmarks.';
@@ -424,13 +418,6 @@ class Step3AddPlaceVM extends ChangeNotifier {
   /// is skipped so a transient database failure cannot hide every bookmark;
   /// selection-time validation re-applies the rule whenever destinations are
   /// known.
-  bool _belongsToAnySelectedDestinationByPlace(WizardPlace w) {
-    if (_cachedSelectedDestinations.isEmpty) return true;
-    final place = _placeById[w.placeId];
-    if (place == null) return false;
-    return _belongsToAnySelectedDestination(place);
-  }
-
   bool _belongsToAnySelectedDestination(Place place) {
     if (_cachedSelectedDestinations.isEmpty) return false;
     for (final dest in _cachedSelectedDestinations) {
@@ -843,7 +830,7 @@ class Step3AddPlaceVM extends ChangeNotifier {
 
         // Filter results by the relevant types
         final filteredResults = results.where((place) {
-          final placeTypes = place.placeTypes ?? [];
+          final placeTypes = place.placeTypes;
           return placeTypes.any((t) => uniqueTypes.contains(t));
         }).toList();
 
@@ -956,14 +943,21 @@ class Step3AddPlaceVM extends ChangeNotifier {
       Destination dest,
       Coordinates? destCoords,
       ) {
-    const maxKm = 50.0;
-    if (destCoords != null) {
+    if (place.destinationId != null && place.destinationId!.isNotEmpty) {
+      if (place.destinationId == dest.destinationId) return true;
+    }
+    const maxKm = 45.0;
+    if (destCoords != null && place.coordinates.latitude != 0 && place.coordinates.longitude != 0) {
       final d = _mapsService.distanceKm(destCoords, place.coordinates);
       if (d <= maxKm) return true;
     }
     if (dest.destinationName.isNotEmpty) {
       final address = (place.address + ' ' + place.name).toLowerCase();
-      if (address.contains(dest.destinationName.toLowerCase())) return true;
+      final destName = dest.destinationName.toLowerCase();
+      if (address.contains(destName)) return true;
+      // Handle multi-word names like "Kota Kinabalu" vs "Kinabalu"
+      final parts = destName.split(RegExp(r'\s+')).where((p) => p.length > 3);
+      if (parts.any((p) => address.contains(p))) return true;
     }
     return false;
   }
@@ -981,20 +975,56 @@ class Step3AddPlaceVM extends ChangeNotifier {
     // identity, coordinates, category and destination compatibility.
     registerPlace(place);
 
-    final primaryType = _resolvePrimaryCategory(place.placeTypes ?? []);
-    final typeIcon = _getCategoryIcon(place.placeTypes ?? []);
+    final primaryType = _resolvePrimaryCategory(place.placeTypes);
+    final typeIcon = _getCategoryIcon(place.placeTypes);
     final (travelIcon, travelLabel) = _getTravelModeInfo();
+
+    String travelEstimate;
+    if (distanceKm != null && distanceKm > 0) {
+      final roadKm = distanceKm * 1.35;
+      final mode = draft.transportation.toString().toLowerCase();
+      int estMins;
+      if (mode.contains('car') || mode.contains('drive')) {
+        estMins = (roadKm / 35.0 * 60).ceil() + 5;
+      } else if (mode.contains('transit') ||
+          mode.contains('ktm') ||
+          mode.contains('lrt') ||
+          mode.contains('mrt') ||
+          mode.contains('bus') ||
+          mode.contains('train')) {
+        estMins = (roadKm / 22.0 * 60).ceil() + 10;
+      } else if (mode.contains('bike') || mode.contains('cycl')) {
+        estMins = (roadKm / 12.0 * 60).ceil();
+      } else {
+        estMins = (roadKm / 4.5 * 60).ceil();
+      }
+      travelEstimate = '$travelLabel ~$estMins min';
+    } else {
+      final mode = draft.transportation.toString().toLowerCase();
+      if (mode.contains('car') || mode.contains('drive')) {
+        travelEstimate = '$travelLabel ~15-20 min';
+      } else if (mode.contains('transit') ||
+          mode.contains('ktm') ||
+          mode.contains('lrt') ||
+          mode.contains('mrt') ||
+          mode.contains('bus') ||
+          mode.contains('train')) {
+        travelEstimate = '$travelLabel ~25-35 min';
+      } else {
+        travelEstimate = '$travelLabel ~15-25 min';
+      }
+    }
 
     return WizardPlace(
       placeId: place.placeId,
-      name: place.placeName ?? 'Unnamed',
+      name: place.placeName,
       type: primaryType,
       typeIcon: typeIcon,
-      rating: place.placeRating ?? 0.0,
+      rating: place.placeRating,
       imageUrl: place.placePhotoRef != null
           ? 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.placePhotoRef}&key=${ApiKeys.googleMapsApiKey}'
           : null,
-      travelTime: '$travelLabel ~10-15m',
+      travelTime: travelEstimate,
       travelIcon: travelIcon,
       duration: 'Estimating…',
       location: destinationName,
@@ -1052,8 +1082,14 @@ class Step3AddPlaceVM extends ChangeNotifier {
     final mode = draft.transportation.toString().toLowerCase();
     if (mode.contains('car') || mode.contains('drive') || mode.contains('driving')) {
       return (Icons.directions_car_rounded, 'Drive');
-    } else if (mode.contains('transit') || mode.contains('bus') || mode.contains('train')) {
-      return (Icons.directions_bus_rounded, 'Transit');
+    } else if (mode.contains('transit') ||
+        mode.contains('ktm') ||
+        mode.contains('lrt') ||
+        mode.contains('mrt') ||
+        mode.contains('train') ||
+        mode.contains('subway') ||
+        mode.contains('bus')) {
+      return (Icons.directions_subway_rounded, 'Transit');
     } else if (mode.contains('bike') || mode.contains('cycling')) {
       return (Icons.directions_bike_rounded, 'Bike');
     }

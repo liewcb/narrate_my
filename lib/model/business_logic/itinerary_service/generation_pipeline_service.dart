@@ -145,16 +145,13 @@ class ItineraryGenerationPipeline {
   /// guarantees must-visits, per-destination coverage, food options and
   /// cluster diversity are all preserved. The larger retrieval/scoring/
   /// clustering pipeline is unaffected — this only bounds the AI-facing pool.
-  static const int maxAiCandidatePool = 14;
-
-  /// Minimum compact pool kept for the AI so it always has alternatives.
-  static const int minAiCandidatePool = 10;
-
   /// Target candidate count handed to the AI, sized by trip length:
-  /// `(days * 3 + 2)` clamped to the [10..14] range.
-  /// 1-day → 10, 2-day → 10, 3-day → 11, 4-day → 14, 5-day → 14.
+  /// `(days * 7 + 8)` clamped to the [15..90] range.
+  static const int maxAiCandidatePool = 90;
+  static const int minAiCandidatePool = 15;
+
   static int targetCandidateCount(int tripDays) =>
-      (tripDays * 3 + 2).clamp(minAiCandidatePool, maxAiCandidatePool);
+      (tripDays * 7 + 8).clamp(minAiCandidatePool, maxAiCandidatePool);
 
   final CandidateRetrievalService _candidateRetrieval;
   final ScoringService _scoring;
@@ -205,9 +202,10 @@ class ItineraryGenerationPipeline {
     // is simply the safety margin within which the (fast) schedule
     // construction, validation, conversion and UI handoff must finish.
     final generationStart = DateTime.now();
-    final globalDeadline = generationStart.add(const Duration(seconds: 18));
+    final globalDeadline = generationStart.add(
+        Duration(seconds: request.totalDays >= 7 ? 35 : 20));
     final preprocessingDeadline =
-    generationStart.add(const Duration(seconds: 7));
+        generationStart.add(const Duration(seconds: 8));
 
     Duration remainingPreprocessing() =>
         _remainingTime(preprocessingDeadline);
@@ -256,7 +254,7 @@ class ItineraryGenerationPipeline {
       // ============================================================
       // STAGE 03-06 - HOTSPOT RETRIEVAL, GOOGLE PLACES, MERGE + DEDUP
       // ============================================================
-      onProgress('Finding attractions... (1/9)');
+      onProgress('Finding attractions... (0/9)');
       final retrievalSw = Stopwatch()..start();
       CandidatePool candidatePool;
       try {
@@ -446,7 +444,7 @@ class ItineraryGenerationPipeline {
       // (business status, review floor, banned types).  The remaining
       // pool is our "usable" set.
       // ============================================================
-      onProgress('Filtering candidates...');
+      onProgress('Filtering candidates... (1/9)');
       final usableCount = candidatePool.totalCount;
       debugPrint('[STAGE 09 - FILTER]');
       debugPrint('Before: $rawCount');
@@ -513,7 +511,7 @@ class ItineraryGenerationPipeline {
       // Scoring RANKS the entire usable pool.  Must-visits are preserved
       // by the label flag.  No candidates are eliminated by scoring.
       // ============================================================
-      onProgress('Scoring places... (3/9)');
+      onProgress('Scoring places... (2/9)');
       final allPlaces = [...candidatePool.attractions, ...candidatePool.food];
       debugPrint('[STAGE 11 - SCORING]');
       debugPrint('Candidates entering: ${allPlaces.length}');
@@ -526,6 +524,8 @@ class ItineraryGenerationPipeline {
         mustVisitIds: effectiveMustVisitIds,
         explorationTime: effectiveExploration,
         tripLocation: tripLocation,
+        travelerType: request.travelType ?? 'Solo',
+        transportMode: request.transportation,
         strictInterestFilter: false, // rank all, do not eliminate
       );
       debugPrint('[TIMING] Scoring: ${scoringSw.elapsedMilliseconds} ms');
@@ -548,7 +548,7 @@ class ItineraryGenerationPipeline {
       // ============================================================
       // STAGE 12 - K-MEANS — PURE GEOGRAPHIC CLUSTERING
       // ============================================================
-      onProgress('Grouping by location... (4/9)');
+      onProgress('Grouping by location... (3/9)');
       final clusteringSw = Stopwatch()..start();
       final clusters = _clustering.clusterGeographically(
         scoredPlaces: scored,
@@ -565,7 +565,7 @@ class ItineraryGenerationPipeline {
       // ============================================================
       // STAGE 13 - PREPARE STRUCTURED AI INPUT
       // ============================================================
-      onProgress('Building AI context... (5/9)');
+      onProgress('Grouping by location... (3/9)');
       final clusterIdOfPlace = <String, int>{};
       for (final c in clusters) {
         for (final a in c.attractions) {
@@ -629,11 +629,32 @@ class ItineraryGenerationPipeline {
           s.place.placeId: _destinationForPlace(request, s.place),
       };
 
+      // Pre-fetch weather forecast so AI prompt can adapt recommendations to
+      // sunny vs rainy days.
+      Coordinates? tripCoord;
+      if (request.destinationCoordinates.isNotEmpty) {
+        tripCoord = request.destinationCoordinates.values.first;
+      } else if (candidates.isNotEmpty) {
+        tripCoord = Coordinates(
+          latitude: candidates.first.latitude,
+          longitude: candidates.first.longitude,
+        );
+      }
+      final startDate = request.startDate ?? DateTime.now();
+      final endDate = request.endDate ??
+          startDate.add(Duration(days: request.totalDays));
+      final weather = await _fetchWeatherForTrip(
+        tripCoord,
+        startDate,
+        endDate,
+      );
+
       final prompt = _promptBuilder.buildCompactPlanPrompt(
         request: request,
         candidates: candidates,
         clusters: aiClusters,
         mustVisitIds: effectiveMustVisitIds,
+        weatherForecast: weather,
       );
 
       debugPrint('[STAGE 13 - DEEPSEEK INPUT]');
@@ -660,7 +681,7 @@ class ItineraryGenerationPipeline {
       // operation (safety margin below the 25s requirement). It is never
       // reset: a timeout or invalid response goes straight to the
       // deterministic planner — NO second AI request.
-      onProgress('Creating schedule... (7/9)');
+      onProgress('Creating schedule... (4/9)');
       final plannerSw = Stopwatch()..start();
 
       // ── [DART PREPROCESSING] summary ────────────────────────────
@@ -689,9 +710,9 @@ class ItineraryGenerationPipeline {
         aiDuration = remainingToGlobal - postProcessingBuffer;
       }
 
-      // Clamp to sensible bounds: minimum 5s, maximum 14s
+      // Clamp to sensible bounds: minimum 5s, maximum 28s for long trips
       const minAiDuration = Duration(seconds: 5);
-      const maxAiDurationLimit = Duration(seconds: 14);
+      final maxAiDurationLimit = Duration(seconds: request.totalDays >= 7 ? 28 : 15);
       if (aiDuration < minAiDuration) {
         aiDuration = minAiDuration;
       } else if (aiDuration > maxAiDurationLimit) {
@@ -702,8 +723,8 @@ class ItineraryGenerationPipeline {
 
       debugPrint('[AI PLANNER] AI deadline: ${aiDuration.inMilliseconds} ms from now');
 
-      debugPrint('[AI PLANNER] PROVIDER: B.AI');
-      debugPrint('[AI PLANNER] MODEL: ${_aiService.baiModel}');
+      debugPrint('[AI PLANNER] PROVIDER: Google Gemini');
+      debugPrint('[AI PLANNER] MODEL: ${_aiService.geminiModel}');
       debugPrint('[AI PLANNER] START');
       debugPrint('[AI PLANNER] Candidates: ${candidates.length}');
       debugPrint('[AI PLANNER] Prompt: ${prompt.length} chars');
@@ -733,6 +754,7 @@ class ItineraryGenerationPipeline {
         knownIds: scoredPlaceIds,
         mustVisitIds: effectiveMustVisitIds,
         placeIdToDestination: placeIdToDestination,
+        scored: scored,
       )
           : null;
 
@@ -754,6 +776,7 @@ class ItineraryGenerationPipeline {
 
       if (plan != null) {
         aiDays = _constructAiDaysFromPlan(
+          mustVisitIds: effectiveMustVisitIds,
           plan: plan,
           request: request,
           scored: scored,
@@ -792,6 +815,7 @@ class ItineraryGenerationPipeline {
           mustVisitIds: effectiveMustVisitIds,
         );
         aiDays = _constructAiDaysFromPlan(
+          mustVisitIds: effectiveMustVisitIds,
           plan: fallbackPlan,
           request: request,
           scored: scored,
@@ -815,6 +839,10 @@ class ItineraryGenerationPipeline {
           'stops=${aiDays.fold<int>(0, (s, d) => s + d.schedule.length)}');
 
       if (!validation.passed) {
+        debugPrint('❌ [VALIDATION FAILED ISSUES]:');
+        for (final i in validation.issues) {
+          debugPrint('   → [${i.type}] ${i.message}');
+        }
         // Classify the hard failure from the constraint issues that remain.
         final failureStatus = mostSevereStatus([
           for (final i in validation.issues)
@@ -838,7 +866,7 @@ class ItineraryGenerationPipeline {
       // ============================================================
       // STAGE 16 - CONVERT VALIDATED AI OUTPUT → DOMAIN SCHEDULE
       // ============================================================
-      onProgress('Validating... (8/9)');
+      onProgress('Validating... (5/9)');
       final scheduledDays = _toScheduledDays(
         aiDays: aiDays,
         request: request,
@@ -903,6 +931,7 @@ class ItineraryGenerationPipeline {
 
       // ============================================================
       // STAGE 17 - WEATHER (NO secondary AI call)
+      onProgress('Fetching weather... (6/9)');
       // ============================================================
       //
       // The travel plan is complete at this point. Weather is fetched from
@@ -913,19 +942,58 @@ class ItineraryGenerationPipeline {
       // chronology, must-visits, place IDs, travel/duration) is performed
       // deterministically by Dart already.
 
-      // Extract coordinates from the first stop, if available.
-      Coordinates? firstCoord;
-      if (scheduledDays.isNotEmpty && scheduledDays.first.stops.isNotEmpty) {
-        firstCoord = scheduledDays.first.stops.first.attraction.place.coordinates;
+      // Reuse pre-fetched weather or attempt fallback with first scheduled stop
+      var finalWeather = weather;
+      if (finalWeather.daily.isEmpty) {
+        Coordinates? firstCoord;
+        if (scheduledDays.isNotEmpty && scheduledDays.first.stops.isNotEmpty) {
+          firstCoord = scheduledDays.first.stops.first.attraction.place.coordinates;
+        }
+        finalWeather = await _fetchWeatherForTrip(
+          firstCoord,
+          startDate,
+          endDate,
+        );
       }
-      final startDate = request.startDate ?? DateTime.now();
-      final endDate = request.endDate ??
-          startDate.add(Duration(days: request.totalDays));
-      final weather = await _fetchWeatherForTrip(
-        firstCoord,
-        startDate,
-        endDate,
-      );
+
+      // Enrich scheduledDays with weather forecast if available
+      var finalScheduledDays = scheduledDays;
+      if (finalWeather.daily.isNotEmpty) {
+        final weatherMap = {
+          for (final w in weather.daily)
+            '${w.date.year}-${w.date.month}-${w.date.day}': w,
+        };
+        final enrichedDays = <ScheduledDay>[];
+        for (final day in scheduledDays) {
+          final key = '${day.date.year}-${day.date.month}-${day.date.day}';
+          final dw = weatherMap[key];
+          if (dw != null) {
+            final note = '${dw.condition} · ${dw.minTemperature.round()}°C - ${dw.maxTemperature.round()}°C';
+            final enrichedStops = day.stops.map((stop) {
+              return ScheduledStop(
+                attraction: stop.attraction,
+                startTime: stop.startTime,
+                endTime: stop.endTime,
+                durationMinutes: stop.durationMinutes,
+                travelFromPreviousMinutes: stop.travelFromPreviousMinutes,
+                scheduleReason: stop.scheduleReason,
+                weatherNote: note,
+              );
+            }).toList();
+            enrichedDays.add(ScheduledDay(
+              dayIndex: day.dayIndex,
+              date: day.date,
+              stops: enrichedStops,
+              totalDuration: day.totalDuration,
+              totalTravelTime: day.totalTravelTime,
+            ));
+          } else {
+            enrichedDays.add(day);
+          }
+        }
+        finalScheduledDays = enrichedDays;
+      }
+
       final List<String> unretrievable = const [];
       final critic = const CriticResult(
         overallSuitable: true,
@@ -936,7 +1004,7 @@ class ItineraryGenerationPipeline {
       );
 
       // 5. DIAGNOSTIC SUMMARY
-      onProgress('Finalizing your itinerary...');
+      onProgress('Checking results... (7/9)');
       final totalStops =
       scheduledDays.fold<int>(0, (sum, d) => sum + d.stops.length);
       debugPrint('════════════════════════════════════════════');
@@ -973,9 +1041,10 @@ class ItineraryGenerationPipeline {
       );
       debugPrint('[RESULT STATUS] ${resultStatus.name}');
 
+      onProgress('Finalizing your itinerary... (8/9)');
       return ItineraryResult.success(
-          scheduledDays: scheduledDays,
-          weather: weather,
+          scheduledDays: finalScheduledDays,
+          weather: finalWeather,
           criticFeedback: critic,
           status: resultStatus,
           warnings: validation.issues
@@ -1193,6 +1262,7 @@ class ItineraryGenerationPipeline {
     required Set<String> knownIds,
     required List<String> mustVisitIds,
     required Map<String, String> placeIdToDestination,
+    List<ScoredAttraction>? scored,
   }) {
     if (plan.isEmpty) return null;
 
@@ -1201,7 +1271,7 @@ class ItineraryGenerationPipeline {
     final dayDest = <int, String>{};
     var counter = 0;
     for (final name in request.destinationNames) {
-      final days = (allocation[name] ?? 1).clamp(1, 5);
+      final days = (allocation[name] ?? 1).clamp(1, 14);
       for (var d = 0; d < days; d++) {
         if (counter < request.totalDays) dayDest[counter++] = name;
       }
@@ -1210,17 +1280,14 @@ class ItineraryGenerationPipeline {
     // 1. Collect per-day placeIds, discarding unknowns. AI-estimated visit
     //    minutes are preserved so the schedule constructor keeps using them.
     final byDay = <int, List<String>>{};
-    for (var d = 0; d < request.totalDays; d++) byDay[d] = [];
+    for (var d = 0; d < request.totalDays; d++) {
+      byDay[d] = [];
+    }
     final visitMinutes = <String, int>{};
     // Track reasons per day.
     final reasons = <int, String>{};
 
     // ── 0-based normalization ────────────────────────────────────
-    // The prompt now demands 0-based dayIndex, but if the model still
-    // returns 1-BASED numbering (no day 0 used AND day totalDays present —
-    // the unmistakable signature), shift every index down by 1 instead of
-    // silently discarding the out-of-bounds last day (which previously
-    // deleted a whole day of places and triggered the day-refill clump).
     final usedIndexes = plan.map((d) => d.dayIndex).toSet();
     final hasOutOfBounds = usedIndexes.any((i) => i >= request.totalDays);
     var normalizedPlan = plan;
@@ -1259,7 +1326,6 @@ class ItineraryGenerationPipeline {
     }
 
     // 3. Insert missing must-visits.
-    // Map must-visit → destination.
     final mvDest = <String, String>{};
     for (final mv in mustVisitIds.where((m) => m.isNotEmpty && knownIds.contains(m))) {
       if (seen.contains(mv)) continue; // already present
@@ -1321,6 +1387,34 @@ class ItineraryGenerationPipeline {
       }
     }
 
+    // 6. Enrich sparse or underpopulated days with unused candidates so NO day
+    //    is left starved (e.g. Day 1 has 1 stop while Day 2/3 are empty).
+    final targetStops = request.pace == 'Slow' ? 4 : (request.pace == 'Fast' ? 6 : 5);
+    if (scored != null && scored.isNotEmpty) {
+      final usedIds = <String>{
+        for (final list in byDay.values) ...list,
+      };
+      final unusedSorted = List<ScoredAttraction>.from(scored)
+        ..sort((a, b) => b.score.compareTo(a.score));
+
+      for (var d = 0; d < request.totalDays; d++) {
+        if (byDay[d]!.length >= targetStops) continue;
+        final expectedDest = (dayDest[d] ?? request.destinationNames.first).trim().toLowerCase();
+
+        for (final s in unusedSorted) {
+          if (byDay[d]!.length >= targetStops) break;
+          final pid = s.place.placeId;
+          if (usedIds.contains(pid)) continue;
+          final dest = (placeIdToDestination[pid] ?? expectedDest).trim().toLowerCase();
+          if (dest != expectedDest) continue;
+          if (_isNightlifeScored(s)) continue; // Never top up with more nightlife venues
+
+          byDay[d]!.add(pid);
+          usedIds.add(pid);
+        }
+      }
+    }
+
     // Rebuild plan.
     final result = <AiCompactPlanDay>[];
     for (var d = 0; d < request.totalDays; d++) {
@@ -1328,7 +1422,7 @@ class ItineraryGenerationPipeline {
         dayIndex: d,
         placeIds: byDay[d]!,
         visitMinutes: visitMinutes,
-        reason: reasons[d] ?? 'Repaired by Dart.',
+        reason: reasons[d] ?? 'Balanced and repaired by Dart.',
       ));
     }
 
@@ -1342,6 +1436,7 @@ class ItineraryGenerationPipeline {
   /// computed deterministically in Dart. AI-estimated visit minutes are used
   /// when provided; otherwise the Dart category baseline applies.
   List<AIDaySchedule> _constructAiDaysFromPlan({
+    required List<String> mustVisitIds,
     required List<AiCompactPlanDay> plan,
     required TripDraft request,
     required List<ScoredAttraction> scored,
@@ -1349,15 +1444,20 @@ class ItineraryGenerationPipeline {
     final scoredById = <String, ScoredAttraction>{
       for (final s in scored) s.place.placeId: s,
     };
-    final window = ItineraryConstants.explorationWindows[
-    request.exploration ?? 'Standard'] ??
-        ItineraryConstants.explorationWindows['Standard']!;
+    final window = ItineraryConstants.explorationWindowFor(
+        request.exploration ?? 'Standard');
     final startDate = request.startDate ?? DateTime.now();
     final travelPace = request.pace ?? 'Standard';
     final transportation = request.transportation;
 
-    return [
-      for (final day in plan)
+    final globalUsedIds = <String>{};
+    for (final day in plan) {
+      globalUsedIds.addAll(day.placeIds);
+    }
+
+    final days = <AIDaySchedule>[];
+    for (final day in plan) {
+      days.add(
         _constructDaySchedule(
           dayIndex: day.dayIndex,
           date: startDate.add(Duration(days: day.dayIndex)),
@@ -1368,8 +1468,67 @@ class ItineraryGenerationPipeline {
           travelPace: travelPace,
           transportation: transportation,
           scoredById: scoredById,
+          request: request,
+          globalUsedIds: globalUsedIds,
         ),
-    ];
+      );
+    }
+    final seenStops = <String>{};
+    final cleanedDays = <AIDaySchedule>[];
+    for (final day in days) {
+      final validStops = <AIScheduleStop>[];
+      for (final stop in day.schedule) {
+        if (seenStops.add(stop.placeId)) {
+          validStops.add(stop);
+        } else {
+          debugPrint('⚠️ [DEDUP SAFETY] Dropping duplicate placeId "${stop.placeId}" from day ${day.dayIndex}');
+        }
+      }
+      final reorderedStops = <AIScheduleStop>[];
+      for (var i = 0; i < validStops.length; i++) {
+        final s = validStops[i];
+        reorderedStops.add(AIScheduleStop(
+          stopOrder: i + 1,
+          placeId: s.placeId,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          visitDurationMinutes: s.visitDurationMinutes,
+          travelFromPreviousMinutes: i == 0 ? 0 : s.travelFromPreviousMinutes,
+          scheduleReason: s.scheduleReason,
+          weatherNote: s.weatherNote,
+        ));
+      }
+      cleanedDays.add(AIDaySchedule(
+        dayIndex: day.dayIndex,
+        date: day.date,
+        reason: day.reason,
+        schedule: reorderedStops,
+      ));
+    }
+    final durations = <String, int>{};
+    final targets = <String, int>{};
+    for (final id in mustVisitIds) {
+      final attraction = scoredById[id];
+      if (attraction == null) continue;
+      final destination = _destinationForPlace(request, attraction.place);
+      final eligible = cleanedDays.where((d) =>
+        _destinationForDay(request, d.dayIndex) == destination).toList();
+      if (eligible.isEmpty) continue;
+      final intended = plan.where((d) => d.placeIds.contains(id)).toList();
+      final target = eligible.firstWhere(
+        (d) => intended.any((p) => p.dayIndex == d.dayIndex),
+        orElse: () => eligible.first);
+      durations[id] = attraction.place.visitDurationMinutes ?? 60;
+      targets[id] = target.dayIndex;
+    }
+    final retained = retainUnscheduledMustVisits(
+      days: cleanedDays, durations: durations, targetDays: targets);
+    for (final day in retained) {
+      for (final stop in day.schedule.where((s) => s.startTime == '00:00' && s.endTime == '00:00')) {
+        debugPrint('[MUST-VISIT RETAINED] ${stop.placeId} day=${day.dayIndex + 1} Unscheduled');
+      }
+    }
+    return retained;
   }
 
   /// Dart-side schedule constructor. Given an ordered list of place IDs for
@@ -1389,31 +1548,294 @@ class ItineraryGenerationPipeline {
     required String travelPace,
     required String transportation,
     required Map<String, ScoredAttraction> scoredById,
+    required TripDraft request,
+    required Set<String> globalUsedIds,
   }) {
     final winStart = window.startMinutes;
-    final winEnd = window.endMinutes;
     final buffer = ItineraryConstants.bufferForPace(travelPace);
     final factor = ItineraryConstants.durationFactorForPace(travelPace);
 
-    // ── Hard daily stop limit (pace-based) ──────────────────────
-    // Enforced directly in Dart so the AI can never pack the first days
-    // and starve the last ones under the global cap. Slow = 3, Fast = 5,
-    // Standard = 4 — matching the prompt's daily TARGET.
+    // ── Daily stop limit (pace-based, accommodating 3 meals + sights) ──────
     int maxStops;
     if (travelPace == 'Slow') {
-      maxStops = 3;
+      maxStops = 5; // Breakfast, Morning sight, Lunch, Afternoon sight, Dinner
     } else if (travelPace == 'Fast') {
-      maxStops = 5;
+      maxStops = 7; // Breakfast, 2 Morning sights, Lunch, Afternoon sight, Dinner, Nightlife
     } else {
-      maxStops = 4; // Standard
+      maxStops = 6; // Standard: Breakfast, Morning sight, Lunch, Afternoon sight, Dinner, (optional nightlife)
     }
 
     final stops = <AIScheduleStop>[];
     var cursor = winStart;
     Coordinates? prevCoord;
 
-    for (final placeId in orderedPlaceIds) {
-      if (stops.length >= maxStops) break;
+    // Categorize proposed places into:
+    // 1. Genuine Sightseeing Attractions (museums, monuments, parks, nature, culture, landmarks)
+    // 2. Dining / Food (restaurants, cafes, bakeries)
+    // 3. Nightlife (bars, clubs, lounges)
+    final attractionIds = <String>[];
+    final foodIds = <String>[];
+    final nightlifeIds = <String>[];
+
+    for (final id in orderedPlaceIds) {
+      final scored = scoredById[id];
+      if (scored == null) continue;
+      if (_isNightlifeScored(scored)) {
+        nightlifeIds.add(id);
+      } else if (_isFoodScored(scored)) {
+        foodIds.add(id);
+      } else {
+        attractionIds.add(id);
+      }
+    }
+
+    // Separate food into Breakfast (cafes/bakeries) and Lunch/Dinner (restaurants/dining)
+    final breakfastCandidates = <String>[];
+    final diningCandidates = <String>[];
+    for (final id in foodIds) {
+      final s = scoredById[id];
+      if (s == null) continue;
+      if (_isBreakfastScored(s)) {
+        breakfastCandidates.add(id);
+      } else {
+        diningCandidates.add(id);
+      }
+    }
+
+    // 1 breakfast cafe in the morning
+    final dailyBreakfast = breakfastCandidates.take(1).toList();
+
+    // 1 dining restaurant for midday lunch
+    final dailyFood = diningCandidates.take(1).toList();
+
+    // 1 dining restaurant for dinner
+    final dailyDinner = diningCandidates.skip(1).take(1).toList();
+
+    // Determine the exact destination allocated for this day
+    final dayDestination = _destinationForDay(request, dayIndex);
+
+    // ── GUARANTEED THREE MEALS (BREAKFAST, LUNCH, DINNER) ──
+    final dayDestLower = dayDestination.trim().toLowerCase();
+
+    // 1. Breakfast: morning cafe/bakery/kopitiam (09:00 - 10:00)
+    if (dailyBreakfast.isEmpty) {
+      // (a) First try unused breakfast in destination
+      for (final entry in scoredById.entries) {
+        final s = entry.value;
+        if (!_isBreakfastScored(s)) continue;
+        final dest = _destinationForPlace(request, s.place).trim().toLowerCase();
+        if (dest != dayDestLower) continue;
+        if (globalUsedIds.contains(entry.key)) continue;
+        dailyBreakfast.add(entry.key);
+        globalUsedIds.add(entry.key);
+        break;
+      }
+      // (b) Fallback: any unused food in destination
+      if (dailyBreakfast.isEmpty) {
+        for (final entry in scoredById.entries) {
+          final s = entry.value;
+          if (!_isFoodScored(s) || _isNightlifeScored(s)) continue;
+          final dest = _destinationForPlace(request, s.place).trim().toLowerCase();
+          if (dest != dayDestLower) continue;
+          if (globalUsedIds.contains(entry.key)) continue;
+          dailyBreakfast.add(entry.key);
+          globalUsedIds.add(entry.key);
+          break;
+        }
+      }
+    }
+
+    // 2. Lunch: midday dining restaurant (12:00 - 13:30)
+    if (dailyFood.isEmpty) {
+      // (a) First try unused dining in destination (different from breakfast)
+      for (final entry in scoredById.entries) {
+        final s = entry.value;
+        if (!_isDiningScored(s)) continue;
+        final dest = _destinationForPlace(request, s.place).trim().toLowerCase();
+        if (dest != dayDestLower) continue;
+        if (globalUsedIds.contains(entry.key) || dailyBreakfast.contains(entry.key)) continue;
+        dailyFood.add(entry.key);
+        globalUsedIds.add(entry.key);
+        break;
+      }
+      // (b) Fallback: any unused food in destination
+      if (dailyFood.isEmpty) {
+        for (final entry in scoredById.entries) {
+          final s = entry.value;
+          if (!_isFoodScored(s) || _isNightlifeScored(s)) continue;
+          final dest = _destinationForPlace(request, s.place).trim().toLowerCase();
+          if (dest != dayDestLower) continue;
+          if (globalUsedIds.contains(entry.key) || dailyBreakfast.contains(entry.key)) continue;
+          dailyFood.add(entry.key);
+          globalUsedIds.add(entry.key);
+          break;
+        }
+      }
+    }
+
+    // 3. Dinner: evening dining restaurant (18:00 - 20:00, different from lunch)
+    if (dailyDinner.isEmpty) {
+      // (a) First try unused dining in destination
+      for (final entry in scoredById.entries) {
+        final s = entry.value;
+        if (!_isDiningScored(s)) continue;
+        final dest = _destinationForPlace(request, s.place).trim().toLowerCase();
+        if (dest != dayDestLower) continue;
+        if (globalUsedIds.contains(entry.key) ||
+            dailyFood.contains(entry.key) ||
+            dailyBreakfast.contains(entry.key)) {
+          continue;
+        }
+        dailyDinner.add(entry.key);
+        globalUsedIds.add(entry.key);
+        break;
+      }
+      // (b) Fallback: any unused food in destination
+      if (dailyDinner.isEmpty) {
+        for (final entry in scoredById.entries) {
+          final s = entry.value;
+          if (!_isFoodScored(s) || _isNightlifeScored(s)) continue;
+          final dest = _destinationForPlace(request, s.place).trim().toLowerCase();
+          if (dest != dayDestLower) continue;
+          if (globalUsedIds.contains(entry.key) ||
+              dailyFood.contains(entry.key) ||
+              dailyBreakfast.contains(entry.key)) {
+            continue;
+          }
+          dailyDinner.add(entry.key);
+          globalUsedIds.add(entry.key);
+          break;
+        }
+      }
+    }
+
+    // ── GUARANTEED NIGHTLIFE (OPTIONAL) ──
+    final dailyNightlife = nightlifeIds.take(1).toList();
+    final wantsNightlife = request.interests.any((i) =>
+        i.toLowerCase().contains('night') || i.toLowerCase().contains('social'));
+    if (wantsNightlife && dailyNightlife.isEmpty) {
+      for (final entry in scoredById.entries) {
+        final s = entry.value;
+        if (!_isNightlifeScored(s)) continue;
+        final dest = _destinationForPlace(request, s.place).trim().toLowerCase();
+        if (dest != dayDestLower) continue;
+        if (globalUsedIds.contains(entry.key)) continue;
+        dailyNightlife.add(entry.key);
+        globalUsedIds.add(entry.key);
+        break;
+      }
+    }
+
+    // ── RELIGIOUS DIVERSITY & SIGHTSEEING SELECTION ──
+    // Religious diversity: At most ONE mosque / temple / church per day!
+    final diversifiedAttractionIds = <String>[];
+    var hasReligious = false;
+    for (final id in attractionIds) {
+      final s = scoredById[id];
+      if (s == null) continue;
+      if (_isReligiousScored(s)) {
+        if (hasReligious) continue; // Skip multiple religious places on the same day
+        hasReligious = true;
+      }
+      diversifiedAttractionIds.add(id);
+    }
+
+    // Allow 2 daytime attractions (1 morning, 1 afternoon) for balanced pacing
+    final allowedAttractions = travelPace == 'Slow' ? 2 : (travelPace == 'Fast' ? 3 : 2);
+
+    // If needed, supplement secular attractions (museums, towers, parks)
+    if (diversifiedAttractionIds.length < allowedAttractions) {
+      for (final entry in scoredById.entries) {
+        if (diversifiedAttractionIds.length >= allowedAttractions) break;
+        final s = entry.value;
+        if (_isNightlifeScored(s) || _isFoodScored(s)) continue;
+        if (hasReligious && _isReligiousScored(s)) continue;
+        if (diversifiedAttractionIds.contains(entry.key) ||
+            orderedPlaceIds.contains(entry.key) ||
+            globalUsedIds.contains(entry.key)) {
+          continue;
+        }
+        final dest = _destinationForPlace(request, s.place).trim().toLowerCase();
+        if (dest != dayDestLower) continue;
+        if (_isReligiousScored(s)) hasReligious = true;
+        diversifiedAttractionIds.add(entry.key);
+        globalUsedIds.add(entry.key);
+      }
+    }
+
+    final finalAttractionIds = diversifiedAttractionIds.take(allowedAttractions).toList();
+
+    // ── Daily Flow with Geographical Proximity Ordering: ──
+    // 1. Breakfast (09:00 - 10:00)
+    // 2. Morning Sightseeing (10:15 - 11:45, nearest to breakfast)
+    // 3. Midday Lunch (12:00 - 13:15, GUARANTEED)
+    // 4. Afternoon Sightseeing (13:30 - 17:30, concluding by 17:45)
+    // 5. Evening Dinner (18:00 - 19:30, GUARANTEED)
+    // 6. Optional Nightlife (19:45 - 21:00)
+    final sortedPlaceIds = <String>[];
+    sortedPlaceIds.addAll(dailyBreakfast);
+
+    final remainingSights = List<String>.from(finalAttractionIds);
+    final morningSights = <String>[];
+    Coordinates? currentCoord = dailyBreakfast.isNotEmpty
+        ? scoredById[dailyBreakfast.first]?.place.coordinates
+        : null;
+
+    if (remainingSights.isNotEmpty) {
+      final anchor = currentCoord;
+      if (anchor != null) {
+        remainingSights.sort((a, b) {
+          final ca = scoredById[a]?.place.coordinates;
+          final cb = scoredById[b]?.place.coordinates;
+          if (ca == null || cb == null) return 0;
+          return anchor.distanceTo(ca).compareTo(anchor.distanceTo(cb));
+        });
+      }
+      final picked = remainingSights.removeAt(0);
+      morningSights.add(picked);
+      currentCoord = scoredById[picked]?.place.coordinates;
+    }
+    sortedPlaceIds.addAll(morningSights);
+
+    // Lunch nearest to morning sight
+    if (dailyFood.isNotEmpty) {
+      sortedPlaceIds.addAll(dailyFood);
+      currentCoord = scoredById[dailyFood.first]?.place.coordinates ?? currentCoord;
+    }
+
+    // Afternoon sights ordered by nearest neighbor from lunch
+    final afternoonSights = <String>[];
+    while (remainingSights.isNotEmpty) {
+      final anchor = currentCoord;
+      if (anchor != null) {
+        remainingSights.sort((a, b) {
+          final ca = scoredById[a]?.place.coordinates;
+          final cb = scoredById[b]?.place.coordinates;
+          if (ca == null || cb == null) return 0;
+          return anchor.distanceTo(ca).compareTo(anchor.distanceTo(cb));
+        });
+      }
+      final picked = remainingSights.removeAt(0);
+      afternoonSights.add(picked);
+      currentCoord = scoredById[picked]?.place.coordinates;
+    }
+    sortedPlaceIds.addAll(afternoonSights);
+
+    final winEnd = window.endMinutes;
+
+    // Evening dinner and optional nightlife as final stops
+    if (dailyDinner.isNotEmpty) {
+      sortedPlaceIds.addAll(dailyDinner);
+    }
+    if (dailyNightlife.isNotEmpty && winEnd > 1080) {
+      sortedPlaceIds.addAll(dailyNightlife);
+    }
+
+    for (final placeId in sortedPlaceIds) {
+      final isDinner = dailyDinner.contains(placeId);
+      // NEVER drop dinner even if stops reached maxStops - 1!
+      if (stops.length >= maxStops && !isDinner) break;
+
       final scored = scoredById[placeId];
       if (scored == null) continue; // filtered by structural validation
 
@@ -1429,23 +1851,100 @@ class ItineraryGenerationPipeline {
           .clamp(ItineraryConstants.minimumVisitDurationMinutes,
           ItineraryConstants.maximumVisitDurationMinutes);
 
-      final travel = stops.isEmpty
+      var travel = stops.isEmpty
           ? 0
           : _travelMinutes(
           prevCoord!, place.coordinates, transportation, buffer);
+      if (travel > 60) {
+        travel = 60; // Clamp intra-day travel to avoid breaking schedule on outlier coordinates
+      }
 
-      final start = stops.isEmpty ? winStart : cursor + travel + buffer;
-      final end = start + duration;
-      if (end > winEnd) break;
+      final isBreakfast = dailyBreakfast.contains(placeId) || _isBreakfastScored(scored);
+      final isNightlife = dailyNightlife.contains(placeId) || _isNightlifeScored(scored);
+      final isLunch = dailyFood.contains(placeId) || (_isDiningScored(scored) && !isDinner);
+      final isMealOrNight = isBreakfast || isLunch || isDinner || isNightlife;
+
+      // Skip nightlife completely if window ends at or before 18:00
+      if (isNightlife && winEnd <= 1080) continue;
+
+      var start = stops.isEmpty
+          ? (isBreakfast ? 540 : winStart)
+          : cursor + travel + buffer;
+
+      // Realistic synchronized timing:
+      // - Breakfast: 09:00 - 10:00
+      // - Lunch: 12:00 - 13:30
+      // - Dinner: within dinner window or before winEnd
+      // - Nightlife: 20:00 - 21:30 (only if winEnd > 18:00)
+      if (isBreakfast && stops.isEmpty) {
+        start = 540; // 09:00 AM
+      } else if (isNightlife) {
+        const targetNightStart = 1200; // 20:00 PM (after dinner)
+        if (start < targetNightStart) {
+          start = targetNightStart;
+        }
+      } else if (isDinner) {
+        final targetDinnerStart = winEnd <= 1080 ? (winEnd - 90).clamp(winStart, 1080) : 1080;
+        if (start < targetDinnerStart) {
+          start = targetDinnerStart;
+        }
+      } else if (isLunch) {
+        const targetLunchStart = 720; // 12:00 PM (lunch window: 12:00 - 13:30)
+        if (start < targetLunchStart) {
+          start = targetLunchStart;
+        }
+      }
+
+      var visitDuration = duration;
+      var end = start + visitDuration;
+
+      // Regular daytime sights conclude before dinner / by 17:45 or winEnd.
+      // MUST-VISIT places and evening venues are allowed to extend up to 23:00 (1380 mins)
+      // so the traveler's explicit must-go places are ALWAYS scheduled with concrete times!
+      final isMustVisit = scored.isMustVisit || request.mustVisitPlaceIds.contains(placeId);
+      final extendedWindowEnd = isMustVisit ? 1380 : (isMealOrNight ? (winEnd > 1260 ? winEnd : 1260) : winEnd);
+      final daytimeEnd = winEnd < 1065 ? winEnd : 1065;
+      final effectiveEnd = (isMealOrNight || isMustVisit) ? extendedWindowEnd : daytimeEnd;
+
+      if (start >= effectiveEnd) {
+        if (!isMealOrNight && !isMustVisit) continue;
+        break;
+      }
+
+      if (end > effectiveEnd) {
+        if (start + 30 <= effectiveEnd) {
+          visitDuration = effectiveEnd - start;
+          end = effectiveEnd;
+        } else {
+          // Cannot fit before window ends: never spill into next day or past window
+          if (!isMealOrNight && !isMustVisit) continue;
+          break;
+        }
+      }
+
+      String stopScheduleReason;
+      if (isBreakfast) {
+        stopScheduleReason = 'Morning breakfast: Start your morning with local coffee, traditional breakfast delights, and a relaxed atmosphere.';
+      } else if (isLunch) {
+        stopScheduleReason = 'Midday dining: Savor authentic regional lunch specialties, signature local dishes, and vibrant flavors.';
+      } else if (isDinner) {
+        stopScheduleReason = 'Evening dinner: Enjoy a delicious local dinner, renowned culinary delights, and a vibrant evening dining ambiance.';
+      } else if (isNightlife) {
+        stopScheduleReason = 'Evening wind-down: Experience panoramic skyline views, signature refreshments, and ambient social vibes.';
+      } else if (_isReligiousScored(scored)) {
+        stopScheduleReason = 'Cultural heritage: Discover historical architecture, sacred artistry, and profound local traditions.';
+      } else {
+        stopScheduleReason = 'Must-visit highlight: Explore iconic landmarks, picturesque photo spots, and immersive local culture.';
+      }
 
       stops.add(AIScheduleStop(
         stopOrder: stops.length + 1,
         placeId: placeId,
         startTime: _hhmm(start),
         endTime: _hhmm(end),
-        visitDurationMinutes: duration,
+        visitDurationMinutes: visitDuration,
         travelFromPreviousMinutes: travel,
-        scheduleReason: reason,
+        scheduleReason: stopScheduleReason,
         weatherNote: '',
       ));
       cursor = end;
@@ -1457,27 +1956,35 @@ class ItineraryGenerationPipeline {
       date: date.toIso8601String().split('T').first,
       schedule: stops,
       warnings: [if (reason.isNotEmpty) reason],
+      reason: reason,
     );
   }
 
   /// Deterministic travel time (minutes) between two coordinates using the
-  /// transport mode. Speeds match the existing [ScheduleConstructionService]
-  /// conventions: walking 5 km/h, driving 40 km/h, transit 30 km/h.
+  /// transport mode. Accounts for actual road winding (1.35x) and realistic
+  /// wait / walking buffer for public transit.
   int _travelMinutes(
       Coordinates a, Coordinates b, String transportation, int fallback) {
     final distanceKm = a.distanceTo(b);
-    double speed;
-    switch (transportation) {
-      case 'driving':
-        speed = 40.0;
-      case 'transit':
-        speed = 30.0;
-      case 'cycling':
-        speed = 12.0;
-      default:
-        speed = 5.0; // walking
+    if (distanceKm <= 0.05) return fallback;
+
+    final roadKm = distanceKm * 1.35;
+    final mode = transportation.toLowerCase();
+    int minutes;
+    if (mode.contains('car') || mode.contains('driving') || mode.contains('drive')) {
+      minutes = (roadKm / 35.0 * 60).ceil() + 5;
+    } else if (mode.contains('transit') ||
+        mode.contains('ktm') ||
+        mode.contains('lrt') ||
+        mode.contains('mrt') ||
+        mode.contains('bus') ||
+        mode.contains('train')) {
+      minutes = (roadKm / 22.0 * 60).ceil() + 10;
+    } else if (mode.contains('cycling') || mode.contains('bike')) {
+      minutes = (roadKm / 12.0 * 60).ceil();
+    } else {
+      minutes = (roadKm / 4.5 * 60).ceil(); // walking
     }
-    final minutes = (distanceKm / speed * 60).ceil();
     return minutes < 1 ? fallback : minutes;
   }
 
@@ -1489,20 +1996,9 @@ class ItineraryGenerationPipeline {
     required List<ScoredAttraction> scored,
     required List<String> mustVisitIds,
   }) {
-    final allocation = _allocationFor(request);
     final mustSet = mustVisitIds.where((m) => m.isNotEmpty).toSet();
 
-    String dayDest(int dayIndex) {
-      var counter = 0;
-      for (final name in request.destinationNames) {
-        final days = (allocation[name] ?? 1).clamp(1, 5);
-        for (var d = 0; d < days; d++) {
-          if (counter == dayIndex) return name;
-          counter++;
-        }
-      }
-      return request.destinationNames.isNotEmpty ? request.destinationNames.first : '';
-    }
+    String dayDest(int dayIndex) => _destinationForDay(request, dayIndex);
 
     final byDest = <String, List<ScoredAttraction>>{};
     for (final s in scored) {
@@ -1525,41 +2021,149 @@ class ItineraryGenerationPipeline {
       }
     }
 
-    // 2. Fill remaining slots per day by destination + score.
-    const paceTarget = {'Slow': 2, 'Standard': 4, 'Fast': 6};
+    // 2. Fill slots per day by destination + score.
+    const paceTarget = {'Slow': 3, 'Standard': 4, 'Fast': 5};
     final target = paceTarget[request.pace] ?? 4;
+    final wantsNightlife = request.interests.any((i) =>
+        i.toLowerCase().contains('night') || i.toLowerCase().contains('social'));
+
     for (var day = 0; day < request.totalDays; day++) {
       final dest = dayDest(day);
       final pool = List<ScoredAttraction>.of(byDest[dest] ?? const [])
         ..sort((a, b) => b.score.compareTo(a.score));
       final list = dayPlaces[day] ??= [];
 
+      // (A) Core daytime attractions (museums, nature, towers, culture)
+      // Enforce diversity: at most ONE religious place per day!
+      final minDaytime = wantsNightlife ? (target - 2).clamp(1, 3) : (target - 1).clamp(2, 4);
       for (final s in pool) {
-        if (list.length >= target) break;
+        if (list.length >= minDaytime) break;
         if (used.contains(s.place.placeId)) continue;
-        if (_isFoodScored(s)) continue;
+        if (_isFoodScored(s) || _isNightlifeScored(s)) continue;
+        if (_isReligiousScored(s) && list.any(_isReligiousScored)) continue; // Max 1 temple/church/mosque
         list.add(s);
         used.add(s.place.placeId);
       }
-      // One food per day.
+
+      // (B) Exactly one dining / food stop for lunch
       for (final s in pool) {
         if (used.contains(s.place.placeId)) continue;
-        if (!_isFoodScored(s)) continue;
+        if (!_isFoodScored(s) || _isNightlifeScored(s)) continue;
         list.add(s);
         used.add(s.place.placeId);
         break;
       }
+
+      // (C) Guaranteed Nightlife: 1 evening nightlife venue per day when traveler wants nightlife
+      if (wantsNightlife) {
+        for (final s in pool) {
+          if (used.contains(s.place.placeId)) continue;
+          if (!_isNightlifeScored(s)) continue;
+          list.add(s);
+          used.add(s.place.placeId);
+          break;
+        }
+      }
+
+      // (D) If still under target, top up with more daytime ATTRACTIONS ONLY (never extra meals!)
+      for (final s in pool) {
+        if (list.length >= target) break;
+        if (used.contains(s.place.placeId)) continue;
+        if (_isFoodScored(s) || _isNightlifeScored(s)) continue; // ONLY real attractions!
+        if (_isReligiousScored(s) && list.any(_isReligiousScored)) continue;
+        list.add(s);
+        used.add(s.place.placeId);
+      }
+
+      // (E) Safety guarantee: If daytime attractions are fewer than 2, borrow from the destination pool first!
+      final attractionCount = list.where((s) => !_isFoodScored(s) && !_isNightlifeScored(s)).length;
+      if (attractionCount < 2) {
+        // First try unplaced attractions in the same destination pool
+        for (final s in pool) {
+          if (list.length >= target) break;
+          if (used.contains(s.place.placeId)) continue;
+          if (_isNightlifeScored(s) || _isFoodScored(s)) continue;
+          if (_isReligiousScored(s) && list.any(_isReligiousScored)) continue;
+          list.add(s);
+          used.add(s.place.placeId);
+        }
+        // If still under target, borrow from places in the same destination across all scored
+        if (list.length < target) {
+          for (final s in scored) {
+            if (list.length >= target) break;
+            if (used.contains(s.place.placeId)) continue;
+            if (_destinationForPlace(request, s.place) != dest) continue; // NEVER borrow across cities!
+            if (_isNightlifeScored(s) || _isFoodScored(s)) continue;
+            if (_isReligiousScored(s) && list.any(_isReligiousScored)) continue;
+            list.add(s);
+            used.add(s.place.placeId);
+          }
+        }
+      }
+
+      // (F) Long-trip guarantee (e.g. 7-10 days in single city):
+      // Top up from any remaining unused places in destination pool
+      if (list.length < target) {
+        for (final s in pool) {
+          if (list.length >= target) break;
+          if (used.contains(s.place.placeId)) continue; // STRICTLY NO DUPLICATES
+          if (_isReligiousScored(s) && list.any(_isReligiousScored)) continue;
+          list.add(s);
+          used.add(s.place.placeId);
+        }
+      }
     }
 
-    // 3. Order each day geographically (nearest neighbour from first stop).
+    // 3. Logical daily flow:
+    //    Morning Attractions (1-2) → Midday Lunch (1) → Afternoon Attractions (1-2) → Evening Nightlife (max 1)
     return [
       for (var day = 0; day < request.totalDays; day++)
         AiCompactPlanDay(
           dayIndex: day,
-          placeIds: _orderByProximity(dayPlaces[day] ?? const [])
-              .map((s) => s.place.placeId)
-              .toList(),
-          reason: 'Deterministic plan: top-scored places grouped by proximity.',
+          placeIds: () {
+            final all = dayPlaces[day] ?? const [];
+            final attractions = all.where((s) => !_isFoodScored(s) && !_isNightlifeScored(s)).toList();
+            final food = all.where((s) => _isFoodScored(s) && !_isNightlifeScored(s)).toList();
+            final nightlife = all.where((s) => _isNightlifeScored(s)).toList();
+
+            // Safety guard: if attractions is empty, borrow from scored pool
+            if (attractions.isEmpty) {
+              final dest = dayDest(day);
+              final fallback = (byDest[dest] ?? scored)
+                  .where((s) => !_isFoodScored(s) && !_isNightlifeScored(s) && !used.contains(s.place.placeId))
+                  .take(3)
+                  .toList();
+              for (final f in fallback) {
+                used.add(f.place.placeId);
+              }
+              attractions.addAll(fallback);
+            }
+
+            final orderedAttractions = _orderByProximity(attractions);
+            final dayStops = <ScoredAttraction>[];
+
+            // 1. Morning Sightseeing (1 to 2 attractions)
+            if (orderedAttractions.isNotEmpty) {
+              dayStops.add(orderedAttractions.removeAt(0));
+            }
+            if (orderedAttractions.length >= 2) {
+              dayStops.add(orderedAttractions.removeAt(0));
+            }
+
+            // 2. Midday Lunch (EXACTLY ONE meal!)
+            if (food.isNotEmpty) {
+              dayStops.add(food.first);
+            }
+
+            // 3. Afternoon Sightseeing / Culture / Shopping
+            dayStops.addAll(orderedAttractions);
+
+            // 4. Evening Nightlife (at most 1, at the end of the day)
+            dayStops.addAll(nightlife.take(1));
+
+            return dayStops.map((s) => s.place.placeId).toList();
+          }(),
+          reason: 'Balanced schedule: morning sightseeing, midday lunch, afternoon exploration.',
         ),
     ];
   }
@@ -1595,6 +2199,7 @@ class ItineraryGenerationPipeline {
   }) {
     return _validator.validate(
       days: aiDays,
+      unscheduledPlaceIds: mustVisitIds.toSet(),
       knownPlaceIds: knownPlaceIds,
       mustVisitIds: mustVisitIds,
       totalDays: request.totalDays,
@@ -1670,7 +2275,7 @@ class ItineraryGenerationPipeline {
     final totalDays = request.totalDays < 1 ? 1 : request.totalDays;
     final destQuota = <String, int>{
       for (final entry in byDest.entries)
-        entry.key: ((target * ((allocation[entry.key] ?? 1).clamp(1, 5))) /
+        entry.key: ((target * (allocation[entry.key] ?? 1)) /
             totalDays)
             .ceil(),
     };
@@ -1700,25 +2305,63 @@ class ItineraryGenerationPipeline {
       }
     }
 
-    // 3 + 4. Per destination: reserve a food option first, then top-scored
-    // attractions, up to the destination's allowance and the global target.
+    // 3. Per destination: ensure rich daytime sightseeing, balanced food, and at most 1 nightlife
     for (final entry in byDest.entries) {
-      final quota = destQuota[entry.key] ?? 1;
-      var foodRoom = 1;
+      final daysForDest = allocation[entry.key] ?? 1;
+
+      // (A) GUARANTEED DAYTIME SIGHTSEEING (Landmarks, museums, nature, culture)
+      // Must NOT be food and must NOT be nightlife!
+      // Enforce diversity: limit religious buildings to at most 1 per planned day
+      var daytimeQuota = daysForDest * 3;
+      var religiousCount = 0;
       for (final s in entry.value) {
-        if (selected.length >= target) break;
-        if (foodRoom <= 0) break;
-        if (!_isFoodScored(s)) continue;
+        if (daytimeQuota <= 0) break;
+        if (_isFoodScored(s) || _isNightlifeScored(s)) continue;
+        if (_isReligiousScored(s)) {
+          if (religiousCount >= daysForDest) continue;
+          religiousCount++;
+        }
         add(s);
-        foodRoom--;
+        daytimeQuota--;
       }
-      var room = quota;
+
+      // (B) FOOD & DINING OPTIONS: Provide at least 3 dining options per day for lunch & dinner
+      var diningQuota = daysForDest * 3;
+      for (final s in entry.value) {
+        if (diningQuota <= 0) break;
+        if (!_isDiningScored(s)) continue;
+        add(s);
+        diningQuota--;
+      }
+
+      // (C) BREAKFAST & CAFES: Provide at least 1-2 breakfast / coffee spots per day
+      var breakfastQuota = daysForDest * 2;
+      for (final s in entry.value) {
+        if (breakfastQuota <= 0) break;
+        if (!_isBreakfastScored(s)) continue;
+        add(s);
+        breakfastQuota--;
+      }
+
+      // (D) OPTIONAL NIGHTLIFE: Up to 2 nightlife options per planned day
+      final wantsNightlife = request.interests.any((i) =>
+          i.toLowerCase().contains('night') || i.toLowerCase().contains('social'));
+      if (wantsNightlife) {
+        var nightlifeQuota = daysForDest * 2;
+        for (final s in entry.value) {
+          if (nightlifeQuota <= 0) break;
+          if (!_isNightlifeScored(s)) continue;
+          add(s);
+          nightlifeQuota--;
+        }
+      }
+
+      // (D) Fill remainder with top daytime attractions (NEVER extra food or nightlife)
       for (final s in entry.value) {
         if (selected.length >= target) break;
-        if (room <= 0) break;
-        if (_isFoodScored(s)) continue; // food already handled above
+        if (selectedIds.contains(s.place.placeId)) continue;
+        if (_isNightlifeScored(s) || _isFoodScored(s)) continue; // ONLY real attractions!
         add(s);
-        room--;
       }
     }
 
@@ -1736,13 +2379,16 @@ class ItineraryGenerationPipeline {
       if (best != null) add(best);
     }
 
-    // 6. Safety floor: top the pool back up with the highest-scored places.
+    // 6. Safety floor: top the pool back up with the highest-scored places (preferring daytime).
     if (selected.length < minAiCandidatePool) {
       final sorted = List<ScoredAttraction>.from(scored)
         ..sort((a, b) => b.score.compareTo(a.score));
       for (final s in sorted) {
         if (selected.length >= target) break;
         if (selected.length >= minAiCandidatePool) break;
+        if (selectedIds.contains(s.place.placeId)) continue;
+        if (_isNightlifeScored(s) && selected.where(_isNightlifeScored).length >= request.totalDays) continue;
+        if (_isFoodScored(s) && selected.where(_isFoodScored).length >= request.totalDays * 4) continue;
         add(s);
       }
     }
@@ -1753,7 +2399,89 @@ class ItineraryGenerationPipeline {
   /// Whether a scored candidate is a food/drink place.
   bool _isFoodScored(ScoredAttraction s) {
     final types = s.place.types.map((t) => t.toLowerCase()).toSet();
-    return types.any(CandidateRetrievalService.foodTypes.contains);
+    if (types.any(CandidateRetrievalService.foodTypes.contains)) return true;
+    final cat = (s.place.category ?? '').toLowerCase();
+    return cat.contains('food') ||
+        cat.contains('restaurant') ||
+        cat.contains('cafe') ||
+        cat.contains('bakery') ||
+        cat.contains('dining');
+  }
+
+  /// Whether a scored candidate is a nightlife venue (bar, club, pub, etc.).
+  bool _isNightlifeScored(ScoredAttraction s) {
+    final types = s.place.types.map((t) => t.toLowerCase()).toSet();
+    if (types.contains('night_club') ||
+        types.contains('bar') ||
+        types.contains('casino') ||
+        types.contains('wine_bar') ||
+        types.contains('liquor_store')) {
+      return true;
+    }
+    final cat = (s.place.category ?? '').toLowerCase();
+    return cat.contains('nightlife') || cat.contains('bar') || cat.contains('club');
+  }
+
+  /// Whether a scored candidate is a place of worship (mosque, temple, church, etc.).
+  bool _isReligiousScored(ScoredAttraction s) {
+    final types = s.place.types.map((t) => t.toLowerCase()).toSet();
+    return types.any((t) => const {
+      'place_of_worship', 'hindu_temple', 'church', 'mosque', 'synagogue'
+    }.contains(t));
+  }
+
+  /// Whether a scored candidate is a breakfast / morning cafe / bakery / kopitiam.
+  bool _isBreakfastScored(ScoredAttraction s) {
+    if (_isNightlifeScored(s)) return false;
+    final types = s.place.types.map((t) => t.toLowerCase()).toSet();
+    if (types.contains('cafe') || types.contains('bakery') || types.contains('coffee_shop')) return true;
+    final cat = (s.place.category ?? '').toLowerCase();
+    final name = s.place.placeName.toLowerCase();
+    return cat.contains('cafe') ||
+        cat.contains('bakery') ||
+        cat.contains('breakfast') ||
+        cat.contains('coffee') ||
+        name.contains('cafe') ||
+        name.contains('kopitiam') ||
+        name.contains('kopi') ||
+        name.contains('toast') ||
+        name.contains('breakfast') ||
+        name.contains('dim sum') ||
+        name.contains('noodle') ||
+        name.contains('roti') ||
+        name.contains('tea');
+  }
+
+  /// Whether a scored candidate is an authentic dining / lunch / dinner restaurant
+  /// (strictly excluding bakeries, dessert shops, ice cream parlors, bubble tea, etc.).
+  bool _isDiningScored(ScoredAttraction s) {
+    if (_isNightlifeScored(s)) return false;
+    final types = s.place.types.map((t) => t.toLowerCase()).toSet();
+    final name = s.place.placeName.toLowerCase();
+    final cat = (s.place.category ?? '').toLowerCase();
+
+    // Strictly exclude dessert, sweets, bakery, ice cream from lunch/dinner dining
+    final isDessert = types.contains('bakery') ||
+        types.contains('dessert_shop') ||
+        types.contains('ice_cream_shop') ||
+        name.contains('dessert') ||
+        name.contains('ice cream') ||
+        name.contains('gelato') ||
+        name.contains('bingsu') ||
+        name.contains('cendol') ||
+        name.contains('cake') ||
+        name.contains('waffle') ||
+        name.contains('pastry') ||
+        name.contains('sweet') ||
+        name.contains('bubble tea') ||
+        name.contains('boba') ||
+        name.contains('tea house') ||
+        cat.contains('dessert') ||
+        cat.contains('bakery');
+    if (isDessert) return false;
+
+    if (types.contains('restaurant') || types.contains('meal_takeaway')) return true;
+    return cat.contains('restaurant') || cat.contains('dining') || cat.contains('food');
   }
 
   /// Time remaining before [deadline], clamped to zero.
@@ -1815,7 +2543,7 @@ class ItineraryGenerationPipeline {
       // Every requested day MUST be preserved in the final model, even when
       // it has zero stops (e.g. a 3-day trip must always yield 3 days). This
       // prevents an empty day from silently shrinking the itinerary.
-      result.add(ScheduledDay(
+      result.add(normalizeProposedDay(ScheduledDay(
         dayIndex: day.dayIndex,
         date: date,
         stops: stops,
@@ -1823,7 +2551,8 @@ class ItineraryGenerationPipeline {
         stops.fold<int>(0, (sum, s) => sum + s.durationMinutes),
         totalTravelTime:
         stops.fold<double>(0, (sum, s) => sum + s.travelFromPreviousMinutes),
-      ));
+        reason: day.reason,
+      ), request.exploration ?? 'Standard'));
     }
 
     return result;
@@ -1848,6 +2577,19 @@ class ItineraryGenerationPipeline {
       }
     }
     return best ?? (request.destinationNames.isNotEmpty ? request.destinationNames.first : 'Unknown');
+  }
+
+  String _destinationForDay(TripDraft request, int dayIndex) {
+    final allocation = _allocationFor(request);
+    var counter = 0;
+    for (final name in request.destinationNames) {
+      final days = (allocation[name] ?? 1).clamp(1, 14);
+      for (var d = 0; d < days; d++) {
+        if (counter == dayIndex) return name;
+        counter++;
+      }
+    }
+    return request.destinationNames.isNotEmpty ? request.destinationNames.first : '';
   }
 
   // ============================================================

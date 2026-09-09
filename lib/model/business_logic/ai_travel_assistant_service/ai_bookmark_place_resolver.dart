@@ -1,6 +1,5 @@
-import '../../../core/services/google_maps_service.dart';
-import '../../data_sources/remote/ai_nearby_place_remote_data_source.dart';
-import '../../data_sources/remote/ai_bookmark_place_remote_data_source.dart';
+import '../../repositories/interfaces/ai_assist/ai_place_repository.dart';
+import '../../repositories/adapters/ai_assist/ai_place_repository_adapter.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
 import './ai_chat_action_policy.dart';
@@ -28,28 +27,22 @@ typedef AiTextPlaceLoader =
     Future<List<Place>> Function({required String query});
 
 class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
-  AiBookmarkPlaceResolver({
-    GoogleMapsService? mapsService,
-    AiBookmarkPlaceRemoteDataSource? knownPlacesSource,
-    AiNearbyPlaceRemoteDataSource? nearbyPlaceSource,
+  factory AiBookmarkPlaceResolver({
+    AiPlaceRepository? repository,
     Future<List<Place>> Function()? knownPlacesLoader,
     AiNearbyPlaceLoader? nearbyPlaceLoader,
     AiTextPlaceLoader? textPlaceLoader,
-  }) : _mapsService = mapsService ?? GoogleMapsService(),
-       _loadNearbyPlaces =
-           nearbyPlaceLoader ??
-           (nearbyPlaceSource ?? AiNearbyPlaceRemoteDataSource())
-               .searchNearbyPlaces,
-       _loadTextPlaces =
-           textPlaceLoader ??
-           (nearbyPlaceSource ?? AiNearbyPlaceRemoteDataSource())
-               .searchTextPlaces,
-       _loadKnownPlaces =
-           knownPlacesLoader ??
-           (knownPlacesSource ?? AiBookmarkPlaceRemoteDataSource())
-               .fetchBookmarkablePlaces;
+  }) {
+    final places = repository ?? AiPlaceRepositoryAdapter();
+    return AiBookmarkPlaceResolver._(
+      knownPlacesLoader ?? places.fetchBookmarkablePlaces,
+      nearbyPlaceLoader ?? places.searchNearbyPlaces,
+      textPlaceLoader ?? places.searchTextPlaces,
+    );
+  }
 
-  final GoogleMapsService _mapsService;
+  AiBookmarkPlaceResolver._(this._loadKnownPlaces, this._loadNearbyPlaces, this._loadTextPlaces);
+
   final AiNearbyPlaceLoader _loadNearbyPlaces;
   final AiTextPlaceLoader _loadTextPlaces;
   final Future<List<Place>> Function() _loadKnownPlaces;
@@ -104,15 +97,7 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
     try {
       results = await _loadTextPlaces(query: query);
     } catch (_) {
-      // The server-side search is authoritative. Retain the legacy client
-      // fallback for development launches that explicitly provide a Dart key.
-      if (_mapsService.googleMapsApiKey.trim().isNotEmpty) {
-        try {
-          results = await _mapsService.searchTextPlaces(query: query);
-        } catch (_) {
-          return const [];
-        }
-      }
+      return const [];
     }
     final intentQuestion = AiChatActionPolicy.normalizeForIntent(
       placeSearchTerms,
@@ -211,21 +196,6 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
       // places from another state.
     }
 
-    if (_mapsService.googleMapsApiKey.trim().isNotEmpty) {
-      try {
-        final results = await _mapsService.searchTextPlaces(
-          query: _nearbySearchQuery(question),
-          latitude: origin.latitude,
-          longitude: origin.longitude,
-          radius: _nearbyRadiusKm * 1000,
-        );
-        final matches = _rankNearbyPlaces(question, results, origin);
-        if (matches.isNotEmpty) return List.unmodifiable(matches);
-      } catch (_) {
-        // Continue to the strictly filtered Supabase fallback.
-      }
-    }
-
     try {
       final knownPlaces = _cachedKnownPlaces ??= await _loadKnownPlaces();
       return List.unmodifiable(
@@ -276,24 +246,7 @@ class AiBookmarkPlaceResolver implements AiBookmarkPlaceQuestionResolver {
       place.placeLongitude <= 180 &&
       !(place.placeLatitude == 0 && place.placeLongitude == 0);
 
-  String _nearbySearchQuery(String question) {
-    final normalized = AiChatActionPolicy.normalizeForIntent(question);
-    if (normalized.contains('restaurant') || normalized.contains('food')) {
-      return 'restaurant';
-    }
-    if (normalized.contains('cafe') || normalized.contains('coffee')) {
-      return 'cafe';
-    }
-    if (normalized.contains('drink') || normalized.contains('bar')) {
-      return 'cafe or bar';
-    }
-    if (normalized.contains('museum')) return 'museum';
-    if (normalized.contains('park')) return 'park';
-    if (normalized.contains('shopping') || normalized.contains('mall')) {
-      return 'shopping mall';
-    }
-    return 'tourist attraction';
-  }
+
 
   List<String> _nearbyIncludedTypes(String question) {
     final normalized = AiChatActionPolicy.normalizeForIntent(question);

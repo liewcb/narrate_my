@@ -1,4 +1,4 @@
-﻿import 'dart:ui' as ui;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import './add_place_screen.dart';
@@ -220,18 +220,50 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     _dayKeys = [];
   }
 
+  void _ensureDayKeys(int count) {
+    while (_dayKeys.length < count) {
+      _dayKeys.add(GlobalKey());
+    }
+  }
+
   void _selectDay(int index) {
     setState(() {
       _selectedDayIndex = index;
     });
+    _ensureDayKeys(index + 1);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final key = _dayKeys[index];
-      if (key.currentContext != null) {
+      if (!mounted) return;
+      final key = (index >= 0 && index < _dayKeys.length) ? _dayKeys[index] : null;
+      if (key?.currentContext != null) {
         Scrollable.ensureVisible(
-          key.currentContext!,
-          duration: const Duration(milliseconds: 400),
+          key!.currentContext!,
+          duration: const Duration(milliseconds: 350),
           curve: Curves.easeInOut,
+          alignment: 0.05,
         );
+      } else if (_scrollController.hasClients) {
+        final estimatedOffset = 420.0 + (index * 550.0);
+        final target = estimatedOffset.clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        ).then((_) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            if (key?.currentContext != null) {
+              Scrollable.ensureVisible(
+                key!.currentContext!,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                alignment: 0.05,
+              );
+            }
+          });
+        });
       }
     });
   }
@@ -313,6 +345,7 @@ class _ItineraryDetailScreenState extends State<ItineraryDetailScreen> {
     final days = data.days;
     return CustomScrollView(
       controller: _scrollController,
+      cacheExtent: 10000,
       slivers: [
         // Hero
         SliverToBoxAdapter(

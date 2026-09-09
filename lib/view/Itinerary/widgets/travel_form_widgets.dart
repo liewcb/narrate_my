@@ -86,7 +86,7 @@ class _TravelDatesSectionState extends State<TravelDatesSection> {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+      lastDate: DateTime.now().add(const Duration(days: 180)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(

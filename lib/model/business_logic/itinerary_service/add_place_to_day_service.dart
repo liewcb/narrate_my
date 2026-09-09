@@ -391,8 +391,10 @@ class AddPlaceToDayService {
     }
 
     // ── CRITERION 7 — DAILY TIME WINDOW ─────────────────────────
-    if (proposedStartMin < context.window.startMinutes ||
-        proposedEndMin > context.window.endMinutes) {
+    // Allow manual additions from 06:00 (360) up to 23:00 (1380)
+    final allowableStart = context.window.startMinutes < 360 ? context.window.startMinutes : 360;
+    final allowableEnd = context.window.endMinutes > 1380 ? context.window.endMinutes : 1380;
+    if (proposedStartMin < allowableStart || proposedEndMin > allowableEnd) {
       return AddPlaceValidationResult(
         isValid: false,
         errorMessage: 'There is not enough time remaining on Day '
@@ -432,9 +434,10 @@ class AddPlaceToDayService {
     }
     final required = totalVisit + totalTravel + buffer * (existing.length);
     debugPrint('[DAY CAPACITY]');
-    debugPrint('Available: ${context.window.totalMinutes} min');
+    debugPrint('Available: 840 min');
     debugPrint('Required: $required min');
-    if (required > context.window.totalMinutes) {
+    const maxDayCapacity = 840; // 14 hours active day for manual additions
+    if (required > maxDayCapacity) {
       debugPrint('Result: FAIL');
       return AddPlaceValidationResult(
         isValid: false,

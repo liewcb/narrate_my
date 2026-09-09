@@ -252,6 +252,7 @@ class AppRadius {
   static const double card = 16.0;
   static const double iconSm = 6.0;
   static const double pill = 999.0;
+  static const double button = 12.0;
 }
 
 /// Spacing tokens shared by itinerary screens.
@@ -272,3 +273,4 @@ class AppShadows {
 
   static const Color card = Color(0x0A000000);
 }
+

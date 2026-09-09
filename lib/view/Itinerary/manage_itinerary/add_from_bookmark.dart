@@ -1,50 +1,37 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import '../../../core/services/database_manager.dart';
+import '../../../viewmodel/Itinerary/add_from_bookmarks_vm.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/dto/bookmark_with_place_dto.dart';
-import '../../../model/repositories/interfaces/bookmark/bookmark_repository.dart';
 
 class AddFromBookmarksScreen extends StatefulWidget {
   final String userId;
+  final String? destinationName;
 
-  const AddFromBookmarksScreen({super.key, required this.userId});
+  const AddFromBookmarksScreen({super.key, required this.userId, this.destinationName});
 
   @override
   State<AddFromBookmarksScreen> createState() => _AddFromBookmarksScreenState();
 }
 
 class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
-  final BookmarkRepository _repo = DatabaseManager().bookmarkRepository;
-
-  List<BookmarkWithPlaceDTO> _bookmarks = [];
-  final Set<String> _selectedPlaceIds = {};
-  bool _isLoading = true;
+  late final AddFromBookmarksViewModel _vm;
+  List<BookmarkWithPlaceDTO> get _bookmarks => _vm.bookmarks;
+  Set<String> get _selectedPlaceIds => _vm.selectedIds;
+  bool get _isLoading => _vm.isLoading;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _vm = AddFromBookmarksViewModel(userId: widget.userId,
+        destinationNames: widget.destinationName == null || widget.destinationName!.isEmpty ? const [] : [widget.destinationName!]);
+    _vm.addListener(_refresh);
+    _vm.load();
   }
-
-  Future<void> _load() async {
-    try {
-      _bookmarks = await _repo.getBookmarksWithPlaces(widget.userId);
-    } catch (_) {
-      _bookmarks = [];
-    }
-    if (mounted) setState(() => _isLoading = false);
-  }
-
-  void _toggleSelection(String placeId) {
-    setState(() {
-      if (_selectedPlaceIds.contains(placeId)) {
-        _selectedPlaceIds.remove(placeId);
-      } else {
-        _selectedPlaceIds.add(placeId);
-      }
-    });
-  }
+  void _refresh() { if (mounted) setState(() {}); }
+  void _toggleSelection(String id) => _vm.toggleSelection(id);
+  @override
+  void dispose() { _vm.removeListener(_refresh); _vm.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +46,13 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
               top: 100, left: 20, right: 20, bottom: 140,
             ),
             children: [
+              TextField(
+                onChanged: _vm.setQuery,
+                decoration: const InputDecoration(hintText: 'Search bookmarks', prefixIcon: Icon(Icons.search)),
+              ),
+              const SizedBox(height: 16),
+              if (_vm.error != null)
+                TextButton(onPressed: _vm.load, child: Text('${_vm.error} Retry')),
               if (_isLoading)
                 const Center(
                   child: Padding(

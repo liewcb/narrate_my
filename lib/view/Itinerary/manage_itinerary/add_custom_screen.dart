@@ -4,8 +4,8 @@ import 'package:intl/intl.dart';
 
 import '../../../core/config/api_keys.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../model/business_logic/itinerary_service/custom_place_service.dart';
-import '../../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../../model/entities/place.dart';
 import '../../../viewmodel/Itinerary/add_custom_place_vm.dart';
 
@@ -187,13 +187,12 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
   Widget _buildWarningBanner() {
     final vm = _viewModel;
     final errors = <String>[];
-    if (vm.searchError != null) errors.add(vm.searchError!);
-    if (vm.planError != null) errors.add(vm.planError!);
-    if (vm.planResult != null && !vm.planResult!.success) {
-      errors.add(vm.planResult!.message ??
-          "We couldn't plan this place right now. Please try again.");
+    if (vm.searchError != null && vm.searchError!.trim().isNotEmpty) errors.add(vm.searchError!.trim());
+    if (vm.planError != null && vm.planError!.trim().isNotEmpty) errors.add(vm.planError!.trim());
+    if (vm.planResult != null && !vm.planResult!.success && (vm.planResult!.message?.trim().isNotEmpty ?? false)) {
+      errors.add(vm.planResult!.message!.trim());
     }
-    if (vm.loadError != null) errors.add(vm.loadError!);
+    if (vm.loadError != null && vm.loadError!.trim().isNotEmpty) errors.add(vm.loadError!.trim());
     if (errors.isEmpty) return const SizedBox.shrink();
     return Container(
       width: double.infinity,
@@ -412,11 +411,13 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
   // Unified Card Design for both Search Results and Bookmarks
   Widget _buildRichPlaceCard(Place place) {
     final isSelected = _viewModel.selectedPlaceId == place.placeId;
-    final photoUrl = place.photoReference != null
-        ? 'https://maps.googleapis.com/maps/api/place/photo'
-        '?maxwidth=200&photoreference=${place.photoReference}'
-        '&key=${ApiKeys.googleMapsApiKey}'
-        : null;
+    final photoUrl = (place.imageUrl != null && place.imageUrl!.trim().isNotEmpty)
+        ? place.imageUrl!.trim()
+        : (place.photoReference != null && place.photoReference!.trim().isNotEmpty
+            ? 'https://maps.googleapis.com/maps/api/place/photo'
+                '?maxwidth=200&photoreference=${place.photoReference!.trim()}'
+                '&key=${ApiKeys.googleMapsApiKey}'
+            : null);
     final subtitle = place.placeCategory ?? (place.types.isNotEmpty ? place.types.first : 'Place');
 
     return Container(
@@ -496,11 +497,13 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     final place = vm.selectedPlace;
     if (place == null) return const SizedBox.shrink();
 
-    final photoUrl = place.photoReference != null
-        ? 'https://maps.googleapis.com/maps/api/place/photo'
-        '?maxwidth=400&photoreference=${place.photoReference}'
-        '&key=${ApiKeys.googleMapsApiKey}'
-        : null;
+    final photoUrl = (place.imageUrl != null && place.imageUrl!.trim().isNotEmpty)
+        ? place.imageUrl!.trim()
+        : (place.photoReference != null && place.photoReference!.trim().isNotEmpty
+            ? 'https://maps.googleapis.com/maps/api/place/photo'
+                '?maxwidth=400&photoreference=${place.photoReference!.trim()}'
+                '&key=${ApiKeys.googleMapsApiKey}'
+            : null);
     final primaryType = place.placeCategory ?? (place.types.isNotEmpty ? place.types.first : 'Attraction');
     final prox = vm.proximity;
 
@@ -657,35 +660,52 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     final newPlaceId = _viewModel.selectedPlaceId;
     final timeFormat = DateFormat('HH:mm');
 
+    final hasUnscheduled = plan.proposedDay?.reason.contains('unscheduled') == true ||
+        stops.any((s) => s.startTime.hour == 0 && s.startTime.minute == 0 && s.endTime.hour == 0 && s.endTime.minute == 0);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (plan.success)
+        if (plan.success) ...[
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: AppColors.green.withOpacity(0.1),
+              color: hasUnscheduled
+                  ? const Color(0xFFFFF3E0)
+                  : AppColors.green.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.green.withOpacity(0.3)),
+              border: Border.all(
+                color: hasUnscheduled
+                    ? const Color(0xFFFFB74D)
+                    : AppColors.green.withOpacity(0.3),
+              ),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.check_circle, size: 18, color: AppColors.green),
-                SizedBox(width: 8),
+                Icon(
+                  hasUnscheduled ? Icons.info_outline_rounded : Icons.check_circle,
+                  size: 18,
+                  color: hasUnscheduled ? const Color(0xFFE65100) : AppColors.green,
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Place can be added to your itinerary.',
+                    hasUnscheduled
+                        ? 'Place added! Daytime hours are full, so time is left open for you to schedule.'
+                        : 'Place can be added to your itinerary.',
                     style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600,
-                      color: AppColors.green,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: hasUnscheduled ? const Color(0xFFD84315) : AppColors.green,
                     ),
                   ),
                 ),
               ],
             ),
           ),
+        ],
         const Padding(
           padding: EdgeInsets.only(left: 4.0, bottom: 8.0),
           child: Text(
@@ -713,12 +733,16 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
             children: stops.map((stop) {
               final isNew = stop.attraction.place.placeId == newPlaceId;
               final travel = stop.travelFromPreviousMinutes;
+              final isUnscheduled = stop.startTime.hour == 0 &&
+                  stop.startTime.minute == 0 &&
+                  stop.endTime.hour == 0 &&
+                  stop.endTime.minute == 0;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (travel > 0)
+                    if (travel > 0 && !isUnscheduled)
                       Padding(
                         padding: const EdgeInsets.only(left: 4, bottom: 4),
                         child: Row(
@@ -746,7 +770,8 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            timeFormat.format(stop.startTime),
+                            isUnscheduled ? '--:--' : timeFormat.format(stop.startTime),
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 11, fontWeight: FontWeight.w700,
                               color: isNew ? AppColors.accent : AppColors.ink,
@@ -805,7 +830,7 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
 
   Widget _buildStickyFooter() {
     final vm = _viewModel;
-    final canAdd = vm.hasPlan && vm.planResult!.success && !vm.isPlanning;
+    final canAdd = vm.selectedPlace != null && !vm.isPlanning;
 
     return Positioned(
       bottom: 0, left: 0, right: 0,
@@ -853,17 +878,19 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
                   flex: 2,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: canAdd ? AppColors.green : AppColors.surface2,
-                      foregroundColor: canAdd ? Colors.white : AppColors.inkFaint,
+                      backgroundColor: canAdd && !vm.isSaving ? AppColors.green : AppColors.surface2,
+                      foregroundColor: canAdd && !vm.isSaving ? Colors.white : AppColors.inkFaint,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30),
                       ),
                     ),
-                    onPressed: canAdd ? () => _onAdd(context) : null,
+                    onPressed: canAdd && !vm.isSaving ? () => _onAdd() : null,
                     child: Text(
-                      vm.isPlanning ? 'Planning...' : 'Add to Itinerary',
+                      vm.isSaving
+                          ? 'Saving...'
+                          : (vm.isPlanning ? 'Planning...' : 'Add to Itinerary'),
                       style: const TextStyle(
                         fontFamily: 'Inter', fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -879,12 +906,11 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
     );
   }
 
-  /// Confirm → return the validated proposed day to the caller. The
-  /// temporary itinerary is updated by the HOST (EditItinerary state) —
-  /// nothing is persisted here. The final Save process persists later.
-  Future<void> _onAdd(BuildContext context) async {
+  /// Confirm → if preview mode, returns proposed day to host;
+  /// if saved itinerary mode, persists to database and returns true.
+  Future<void> _onAdd() async {
     final vm = _viewModel;
-    if (vm.isPlanning) return; // no action while planning runs
+    if (vm.isPlanning || vm.isSaving) return;
 
     final proposedDay = vm.confirmedProposedDay();
     if (proposedDay == null) {
@@ -902,31 +928,52 @@ class _AddCustomStopScreenState extends State<AddCustomStopScreen> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final isPreview = widget.dayStops != null;
+    final placeName = vm.selectedPlace?.placeName ?? 'This place';
+
+    final confirmed = await showConfirmationDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add this place?'),
-        content: Text(
-          '${vm.selectedPlace?.placeName ?? 'This place'} will be added to '
-              'Day ${vm.dayIndex} of your itinerary preview. '
-              'Changes become permanent only when you save.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
+      title: 'Add this place?',
+      message: isPreview
+          ? '$placeName will be added to Day ${vm.dayIndex} of your itinerary preview. Changes become permanent only when you save.'
+          : '$placeName will be added to Day ${vm.dayIndex} of your itinerary.',
+      confirmLabel: 'Confirm',
+      cancelLabel: 'Cancel',
+      confirmColor: AppColors.primary,
+      icon: Icons.add_location_alt_outlined,
+      iconBgColor: AppColors.primary.withOpacity(0.12),
+      iconColor: AppColors.primary,
     );
     if (confirmed != true || !mounted) return;
 
-    // Return the validated proposed day — NO database write here.
-    Navigator.pop(context, (dayIndex: vm.dayIndex, day: proposedDay));
+    if (isPreview) {
+      Navigator.pop(context, (dayIndex: vm.dayIndex, day: proposedDay));
+    } else {
+      final success = await vm.confirmAndSave();
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('Added $placeName to Day ${vm.dayIndex}.'),
+              backgroundColor: AppColors.primary,
+            ),
+          );
+        Navigator.pop(context, true);
+      } else {
+        await showConfirmationDialog(
+          context: context,
+          title: 'Cannot Add Place',
+          message: vm.planError ?? 'Failed to add place to itinerary.',
+          confirmLabel: 'OK',
+          cancelLabel: '',
+          icon: Icons.error_outline_rounded,
+          iconColor: AppColors.error,
+          iconBgColor: AppColors.error.withOpacity(0.12),
+        );
+      }
+    }
   }
 
   Widget _buildRecommendationsSection() {

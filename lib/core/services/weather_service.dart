@@ -12,6 +12,18 @@ class WeatherService {
     required DateTime startDate,
     required DateTime endDate,
   }) async {
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final daysUntilStart = startDate.difference(todayOnly).inDays;
+
+    // Standard free forecast APIs (Open-Meteo & yr.no) support at most 16 days ahead.
+    // If the trip is further in the future (e.g., 2027), gracefully drop weather prediction
+    // without failing, timing out, or throwing errors.
+    if (daysUntilStart > 15 || endDate.isBefore(todayOnly)) {
+      debugPrint('ℹ️ [WeatherService] Dates are beyond 16-day forecast horizon ($startDate -> $endDate) — skipping weather prediction gracefully.');
+      return WeatherForecast(daily: []);
+    }
+
     // ━━━ Tier 1: Open-Meteo (FREE, 16 days, global) ━━━
     try {
       final openMeteoResult = await _getOpenMeteoForecast(

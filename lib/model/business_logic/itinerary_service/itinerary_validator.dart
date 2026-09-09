@@ -197,7 +197,10 @@ class ItineraryValidator {
 
       visitTotal += duration;
 
-      if (startMin < window.startMinutes || endMin > window.endMinutes) {
+      // Allow stops within daytime waking hours (06:00 to 23:59) for manual customizations
+      final allowStart = window.startMinutes < 360 ? window.startMinutes : 360;
+      final allowEnd = window.endMinutes > 1439 ? window.endMinutes : 1439;
+      if (startMin < allowStart || endMin > allowEnd) {
         issues.add(ItineraryValidationIssue(
           code: ItineraryValidationCodes.dayWindowExceeded,
           message: 'This change makes $dayLabel exceed the available schedule. '
@@ -208,27 +211,26 @@ class ItineraryValidator {
       }
 
       if (i > 0) {
-        final travel = await _resolveTravel(
+        var travel = await _resolveTravel(
           stops: stops,
           leg: i,
           rerouteLegIndices: rerouteLegIndices,
           transportMode: transportMode,
         );
 
-        if (travel == null) {
-          issues.add(ItineraryValidationIssue(
-            code: ItineraryValidationCodes.routeUnavailable,
-            message: 'Unable to calculate a route between the selected '
-                'locations. Please try another location.',
-            stopId: stop.stopId.toString(),
-            placeId: stop.placeId,
-          ));
-          continue;
-        }
+        // Straight-line fallback if routing API fails
+        travel ??= _estimateTravelMinutes(
+          distanceKm: stops[i - 1].place != null && place != null
+              ? stops[i - 1].place!.coordinates.distanceTo(place.coordinates)
+              : 5.0,
+          mode: transportMode,
+        );
 
         travelTotal += travel;
 
-        if (travel > ItineraryConstants.hardMaxTravelMinutes) {
+        // Only enforce maximum travel time constraint when replacing a place (candidatePlace != null),
+        // NEVER when a traveler is merely editing the time of an already scheduled stop!
+        if (candidatePlace != null && travel > ItineraryConstants.hardMaxTravelMinutes) {
           issues.add(ItineraryValidationIssue(
             code: ItineraryValidationCodes.travelTimeExceeded,
             message: '${place?.placeName ?? 'This location'} cannot fit after '
@@ -375,6 +377,13 @@ class ItineraryValidator {
     required int visitEnd,
     required String dayLabel,
   }) {
+    // 24/7 check (Google Places standard single period: day 0, 0000)
+    if (hours.periods.length == 1 &&
+        hours.periods.first.open.day == 0 &&
+        hours.periods.first.open.time == '0000') {
+      return null;
+    }
+
     // OpeningHours.isOpenOnDay uses the same 1→1, 7→0 mapping.
     final weekday = dayOfWeek % 7;
     final dayPeriods =
@@ -389,6 +398,12 @@ class ItineraryValidator {
     }
 
     for (final period in dayPeriods) {
+      // 24/7 on this day: open and close both at 00:00 (or close is 2400)
+      if (period.open.time == period.close.time ||
+          (period.open.time == '0000' && period.close.time == '2400')) {
+        return null;
+      }
+
       final openMin = _hhmmToMinutes(period.open.time);
       var closeMin = _hhmmToMinutes(period.close.time);
       var start = visitStart;
@@ -407,6 +422,8 @@ class ItineraryValidator {
     }
 
     final first = dayPeriods.first;
+    if (first.open.time == first.close.time) return null;
+
     return ItineraryValidationIssue(
       code: ItineraryValidationCodes.outsideOpeningHours,
       message: '${place.placeName} is not open during the planned visit time. '

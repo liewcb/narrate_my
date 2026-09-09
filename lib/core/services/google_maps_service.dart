@@ -1,6 +1,7 @@
 // lib/services/google_maps_service.dart
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/place.dart';
@@ -171,36 +172,61 @@ class GoogleMapsService {
   Future<TravelInfo> getTravelTime({
     required Coordinates origin,
     required Coordinates destination,
-    required String mode, // 'walking' or 'driving'
+    required String mode, // 'walking', 'driving', 'transit', etc.
   }) async {
-    final url = Uri.parse(
-      'https://maps.googleapis.com/maps/api/directions/json'
-      '?origin=${origin.latitude},${origin.longitude}'
-      '&destination=${destination.latitude},${destination.longitude}'
-      '&mode=$mode'
-      '&key=$googleMapsApiKey',
-    );
-
-    final response = await http.get(url);
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final route = data['routes'][0];
-      final leg = route['legs'][0];
-      return TravelInfo(
-        distanceKm: leg['distance']['value'] / 1000.0,
-        durationMinutes: leg['duration']['value'] / 60.0,
-        durationText: leg['duration']['text'],
-      );
-    } else {
-      // Fallback: Estimate travel time using Haversine distance.
-      return TravelInfo(
-        distanceKm: _calculateDistance(origin, destination),
-        durationMinutes: _estimateTravelTime(origin, destination, mode),
-        durationText:
-            '${_estimateTravelTime(origin, destination, mode).toInt()} min',
-      );
+    final lowerMode = mode.toLowerCase();
+    String googleMode = 'walking';
+    if (lowerMode.contains('car') || lowerMode.contains('drive')) {
+      googleMode = 'driving';
+    } else if (lowerMode.contains('transit') ||
+        lowerMode.contains('ktm') ||
+        lowerMode.contains('lrt') ||
+        lowerMode.contains('mrt') ||
+        lowerMode.contains('bus') ||
+        lowerMode.contains('train')) {
+      googleMode = 'transit';
+    } else if (lowerMode.contains('bike') || lowerMode.contains('cycl')) {
+      googleMode = 'bicycling';
     }
+
+    try {
+      final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/directions/json'
+        '?origin=${origin.latitude},${origin.longitude}'
+        '&destination=${destination.latitude},${destination.longitude}'
+        '&mode=$googleMode'
+        '&key=$googleMapsApiKey',
+      );
+
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final routes = data['routes'] as List?;
+        if (routes != null && routes.isNotEmpty) {
+          final route = routes[0];
+          final legs = route['legs'] as List?;
+          if (legs != null && legs.isNotEmpty) {
+            final leg = legs[0];
+            return TravelInfo(
+              distanceKm: leg['distance']['value'] / 1000.0,
+              durationMinutes: leg['duration']['value'] / 60.0,
+              durationText: leg['duration']['text'],
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Google Maps Directions API error: $e');
+    }
+
+    // Fallback: Estimate travel time using Haversine distance with realistic winding & mode buffer.
+    return TravelInfo(
+      distanceKm: _calculateDistance(origin, destination),
+      durationMinutes: _estimateTravelTime(origin, destination, googleMode),
+      durationText:
+          '${_estimateTravelTime(origin, destination, googleMode).toInt()} min',
+    );
   }
 
   // ==================== PRIVATE HELPERS ====================
@@ -239,10 +265,18 @@ class GoogleMapsService {
     return R * c;
   }
 
-  /// Estimate travel time in minutes based on distance and mode (walking/driving).
+  /// Estimate travel time in minutes based on distance and mode (walking/driving/transit/bicycling).
   double _estimateTravelTime(Coordinates a, Coordinates b, String mode) {
-    final distance = _calculateDistance(a, b);
-    final speed = mode == 'walking' ? 5.0 : 40.0; // km/h
-    return (distance / speed) * 60; // minutes
+    final straightDistance = _calculateDistance(a, b);
+    final roadDistance = straightDistance * 1.35; // account for actual road/rail winding
+    if (mode == 'driving') {
+      return (roadDistance / 35.0) * 60 + 5; // city driving + 5m parking/start
+    } else if (mode == 'transit') {
+      return (roadDistance / 22.0) * 60 + 10; // transit speed + 10m walk/wait buffer
+    } else if (mode == 'bicycling') {
+      return (roadDistance / 12.0) * 60;
+    } else {
+      return (roadDistance / 4.5) * 60; // walking
+    }
   }
 }

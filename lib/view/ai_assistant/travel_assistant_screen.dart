@@ -266,6 +266,7 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
         if (!didPop) _confirmLeave();
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         backgroundColor: AppColors.bg,
         body: SafeArea(
           child: Column(
@@ -273,8 +274,14 @@ class _TravelAssistantViewState extends State<_TravelAssistantView> {
               _buildHeader(vm),
               if (attractionName != null && attractionName.isNotEmpty)
                 _buildAttractionContext(attractionName),
-              Expanded(child: _buildMessageList(vm)),
-              _buildInputBar(vm.isSending || vm.isSummarizing),
+              Expanded(
+                child: RepaintBoundary(
+                  child: _buildMessageList(vm),
+                ),
+              ),
+              RepaintBoundary(
+                child: _buildInputBar(vm.isSending || vm.isSummarizing),
+              ),
             ],
           ),
         ),

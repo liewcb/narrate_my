@@ -66,6 +66,7 @@ class AiScheduleValidator {
     Map<String, int>? allocatedDaysPerDestination,
     Map<String, String>? placeIdToDestination,
     Map<String, String>? routeMatrix,
+    Set<String> unscheduledPlaceIds = const {},
   }) {
     final issues = <AiValidationIssue>[];
 
@@ -162,6 +163,11 @@ class AiScheduleValidator {
           seenMustVisitIds.add(stop.placeId);
         }
 
+        // Only Dart-retained, verified must-visits may bypass clock checks.
+        if (unscheduledPlaceIds.contains(stop.placeId) &&
+            stop.startTime == '00:00' && stop.endTime == '00:00' &&
+            stop.visitDurationMinutes > 0) continue;
+
         // ── 9. start time < end time ─────────────────────────────
         final start = _parseHHmm(stop.startTime);
         final end = _parseHHmm(stop.endTime);
@@ -201,7 +207,10 @@ class AiScheduleValidator {
             ItineraryConstants.explorationWindows['Standard']!;
         final windowStart = window.startHour * 60 + window.startMinute;
         final windowEnd = window.endHour * 60 + window.endMinute;
-        if (start < windowStart || end > windowEnd) {
+        // Allow breakfast from 08:30 (510 min) and dinner/evening venues up to 22:00 (1320 min)
+        final effectiveStart = (start >= 510 && start <= windowStart) ? start : windowStart;
+        final effectiveEnd = (end <= 1320 && end >= windowEnd) ? end : windowEnd;
+        if (start < effectiveStart || end > effectiveEnd) {
           issues.add(AiValidationIssue(
             type: 'window',
             message:
@@ -240,6 +249,7 @@ class AiScheduleValidator {
       issues: issues,
       days: days,
       routeMatrix: routeMatrix,
+      unscheduledPlaceIds: unscheduledPlaceIds,
     );
 
     return AiValidationResult(
@@ -305,12 +315,13 @@ class AiScheduleValidator {
     required List<AiValidationIssue> issues,
     required List<AIDaySchedule> days,
     Map<String, String>? routeMatrix,
+    Set<String> unscheduledPlaceIds = const {},
   }) {
     if (routeMatrix == null || routeMatrix.isEmpty) return;
     final hardMax = ItineraryConstants.hardMaxTravelMinutes;
 
     for (final day in days) {
-      final stops = day.schedule;
+      final stops = day.schedule.where((s) => !(unscheduledPlaceIds.contains(s.placeId) && s.startTime == '00:00' && s.endTime == '00:00')).toList();
       for (int i = 1; i < stops.length; i++) {
         final from = stops[i - 1].placeId;
         final to = stops[i].placeId;
@@ -474,4 +485,29 @@ List<AIDaySchedule> parseAiScheduleJson(String rawJson) {
     ));
   }
   return days;
+}
+
+/// Retain verified user choices before validation; never invent unknown places
+/// or move a choice to a day assigned to a different destination.
+List<AIDaySchedule> retainUnscheduledMustVisits({
+  required List<AIDaySchedule> days,
+  required Map<String, int> durations,
+  required Map<String, int> targetDays,
+}) {
+  final seen = days.expand((d) => d.schedule).map((s) => s.placeId).toSet();
+  return days.map((day) {
+    final stops = [...day.schedule];
+    for (final entry in durations.entries) {
+      if (targetDays[entry.key] != day.dayIndex || !seen.add(entry.key)) continue;
+      stops.add(AIScheduleStop(stopOrder: stops.length + 1,
+        placeId: entry.key, startTime: '00:00', endTime: '00:00',
+        visitDurationMinutes: entry.value > 0 ? entry.value : 60,
+        travelFromPreviousMinutes: 0,
+        scheduleReason: 'Unscheduled — selected place retained; tap to set time.',
+        weatherNote: ''));
+    }
+    return AIDaySchedule(dayIndex: day.dayIndex, date: day.date,
+      schedule: stops, warnings: day.warnings, needsRepair: day.needsRepair,
+      reason: day.reason);
+  }).toList();
 }

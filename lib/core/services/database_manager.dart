@@ -9,6 +9,15 @@ import 'package:narrate_my/model/repositories/adapters/itinerary/itinerary_repos
 import 'package:narrate_my/model/repositories/adapters/itinerary/itinerary_selected_destination_repository_adapter.dart';
 import 'package:narrate_my/model/repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
 import 'package:narrate_my/model/repositories/adapters/itinerary/place_repository_adapter.dart';
+import 'package:narrate_my/model/repositories/interfaces/bookmark/bookmark_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/destination_hotspot_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/destination_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_destination_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_must_visit_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_selected_destination_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_stop_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/place_repository.dart';
 
 class DatabaseManager {
   static final DatabaseManager _instance = DatabaseManager._internal();
@@ -19,27 +28,27 @@ class DatabaseManager {
   final RemoteDatabaseService remote = RemoteDatabaseService();
 
   // ─── Repositories (singleton per instance, instantiated lazily) ───
-  late final PlaceRepositoryAdapter placeRepository =
+  late final PlaceRepository placeRepository =
       PlaceRepositoryAdapter();
-  late final BookmarkRepositoryImpl bookmarkRepository =
+  late final BookmarkRepository bookmarkRepository =
       BookmarkRepositoryImpl();
-  late final DestinationHotspotRepositoryImpl
+  late final DestinationHotspotRepository
       destinationHotspotRepository =
       DestinationHotspotRepositoryImpl();
-  late final DestinationRepositoryImpl destinationRepository =
+  late final DestinationRepository destinationRepository =
       DestinationRepositoryImpl();
-  late final ItineraryDestinationRepositoryImpl
+  late final ItineraryDestinationRepository
       itineraryDestinationRepository =
       ItineraryDestinationRepositoryImpl();
-  late final ItineraryMustVisitRepositoryImpl
+  late final ItineraryMustVisitRepository
       itineraryMustVisitRepository =
       ItineraryMustVisitRepositoryImpl();
-  late final ItineraryRepositoryImpl itineraryRepository =
+  late final ItineraryRepository itineraryRepository =
       ItineraryRepositoryImpl();
-  late final ItinerarySelectedDestinationRepositoryImpl
+  late final ItinerarySelectedDestinationRepository
       itinerarySelectedDestinationRepository =
       ItinerarySelectedDestinationRepositoryImpl();
-  late final ItineraryStopRepositoryImpl itineraryStopRepository =
+  late final ItineraryStopRepository itineraryStopRepository =
       ItineraryStopRepositoryImpl();
 
   bool _initialized = false;

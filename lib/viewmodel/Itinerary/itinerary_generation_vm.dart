@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/config/api_keys.dart';
 import '../../core/services/database_manager.dart';
 import '../../core/services/google_maps_service.dart';
@@ -11,12 +12,6 @@ import '../../model/entities/itinerary_destination.dart';
 import '../../model/entities/itinerary_must_visit.dart';
 import '../../model/entities/itinerary_stop.dart';
 import '../../model/entities/trip_draft.dart';
-import '../../model/repositories/adapters/itinerary/destination_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary/itinerary_destination_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary/itinerary_must_visit_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary/itinerary_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
-import '../../model/repositories/adapters/itinerary/place_repository_adapter.dart';
 
 /// ViewModel for Step 5 (Generate My Itinerary).
 ///
@@ -38,9 +33,10 @@ class Step5GenerationVM extends ChangeNotifier {
   String? savedItineraryId;
 
   Step5GenerationVM(this.draft,
-      {this.userId = '252f0924-192c-42fe-8643-881da7bbf285',
+      {String? userId,
         GoogleMapsService? mapsService})
-      : _mapsService = mapsService ?? GoogleMapsService();
+      : userId = userId ?? Supabase.instance.client.auth.currentUser?.id ?? '',
+        _mapsService = mapsService ?? GoogleMapsService();
 
   int get totalDays => draft.totalDays;
 
@@ -50,13 +46,13 @@ class Step5GenerationVM extends ChangeNotifier {
   /// The pipeline's own stage list shown by the loading UI.
   static const List<String> progressStages = [
     'Finding attractions...',
+    'Filtering candidates...',
     'Scoring places...',
     'Grouping by location...',
-    'Building daily plans...',
     'Creating schedule...',
     'Validating...',
     'Fetching weather...',
-    'Getting AI feedback...',
+    'Checking results...',
     'Finalizing your itinerary...',
   ];
 
@@ -192,9 +188,16 @@ class Step5GenerationVM extends ChangeNotifier {
       }
 
       final now = DateTime.now();
+      final authUser = Supabase.instance.client.auth.currentUser;
+      final effectiveUserId = authUser?.id ?? (userId.isNotEmpty ? userId : null);
+      if (effectiveUserId == null || effectiveUserId.isEmpty) {
+        debugPrint('[SAVE] No authenticated user found — cannot persist itinerary.');
+        return;
+      }
+
       final itinerary = Itinerary(
         itineraryId: _generateId('itin'),
-        userId: userId,
+        userId: effectiveUserId,
         title: draft.tripName.isEmpty ? 'My Trip' : draft.tripName,
         description: draft.additionalNotes,
         startDate: draft.startDate ?? now,
@@ -218,6 +221,31 @@ class Step5GenerationVM extends ChangeNotifier {
       final saved = await itineraryRepo.createItinerary(itinerary);
       savedItineraryId = saved.itineraryId;
 
+      // Resolve destination names → DB destination_id (e.g. "D001") BEFORE saving stops
+      final destRepo = DatabaseManager().itineraryDestinationRepository;
+      final destIdByName = <String, String>{};
+      final allDest = <dynamic>[];
+      try {
+        final fetched = await DatabaseManager().destinationRepository.getAllDestinations();
+        allDest.addAll(fetched);
+        for (final d in fetched) {
+          destIdByName[d.destinationName.trim().toLowerCase()] = d.destinationId;
+        }
+      } catch (e) {
+        debugPrint('[STEP 5 - PERSIST] Destination ID resolution failed: $e');
+      }
+
+      String defaultDestId = allDest.isNotEmpty ? allDest.first.destinationId : 'D001';
+      if (draft.destinationNames.isNotEmpty) {
+        for (final name in draft.destinationNames) {
+          final key = name.trim().toLowerCase();
+          if (destIdByName.containsKey(key)) {
+            defaultDestId = destIdByName[key]!;
+            break;
+          }
+        }
+      }
+
       // Build stops + save places so the edit screen can join them.
       final stopRepo = DatabaseManager().itineraryStopRepository;
       final placeRepo = DatabaseManager().placeRepository;
@@ -236,7 +264,7 @@ class Step5GenerationVM extends ChangeNotifier {
             stopId: 0,
             itineraryId: saved.itineraryId,
             placeId: place.placeId,
-            destinationId: place.destinationId,
+            destinationId: place.destinationId ?? defaultDestId,
             // DB schema is 1-based: day_index > 0, stop_order > 0.
             dayIndex: day.dayIndex + 1,
             stopOrder: i + 1,
@@ -249,6 +277,7 @@ class Step5GenerationVM extends ChangeNotifier {
                     .inMinutes
                     .abs()
                 : 0,
+            weatherNote: scheduledStop.weatherNote,
             createdAt: now,
             updatedAt: now,
           ));
@@ -260,19 +289,8 @@ class Step5GenerationVM extends ChangeNotifier {
           '${saved.itineraryId}');
 
       // Persist selected destinations (itinerary_selected_destinations).
-      // Resolve destination names → DB destination_id (e.g. "D001").
-      final destRepo = DatabaseManager().itineraryDestinationRepository;
-      final destIdByName = <String, String>{};
-      try {
-        final allDest = await DatabaseManager().destinationRepository.getAllDestinations();
-        for (final d in allDest) {
-          destIdByName[d.destinationName.trim().toLowerCase()] = d.destinationId;
-        }
-      } catch (e) {
-        debugPrint('[STEP 5 - PERSIST] Destination ID resolution failed: $e');
-      }
       for (final destName in draft.destinationNames) {
-        final destId = destIdByName[destName.trim().toLowerCase()] ?? destName;
+        final destId = destIdByName[destName.trim().toLowerCase()] ?? defaultDestId;
         final allocated =
             draft.daySplit[destName] ?? (draft.totalDays / draft.destinations.length).ceil();
         try {

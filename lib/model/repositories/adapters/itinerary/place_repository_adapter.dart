@@ -2,18 +2,29 @@ import 'package:flutter/foundation.dart';
 
 import '../../../data_sources/local/places_local_data_source.dart';
 import '../../../data_sources/remote/place_remote_source.dart';   // ✅ Supabase source
+import '../../../data_sources/remote/places_remote_data_source.dart'; // ✅ Google Places source
 import '../../../entities/place.dart';
 import '../../interfaces/itinerary/place_repository.dart';
 
 class PlaceRepositoryAdapter implements PlaceRepository {
   final PlaceLocalSource _local;
-  final PlaceRemoteSource _remote; // ✅ Supabase, not PlacesRemoteDataSource
+  final PlaceRemoteSource _remote; // ✅ Supabase
+  final PlacesRemoteDataSource _googlePlaces; // ✅ Google Places
 
   PlaceRepositoryAdapter({
     PlaceLocalSource? local,
-    PlaceRemoteSource? remote, // ✅ correct type
+    PlaceRemoteSource? remote,
+    PlacesRemoteDataSource? googlePlaces,
   })  : _local = local ?? PlaceLocalSource(),
-        _remote = remote ?? PlaceRemoteSource(); // ✅ default to Supabase source
+        _remote = remote ?? PlaceRemoteSource(),
+        _googlePlaces = googlePlaces ?? PlacesRemoteDataSource();
+
+  @override
+  Future<Place?> getPlaceDetails(String placeId) => _googlePlaces.getPlaceDetails(placeId);
+
+  @override
+  Future<List<Place>> searchPlacesByText(String query, {double? latitude, double? longitude}) =>
+      _googlePlaces.searchPlacesByText(query, latitude: latitude, longitude: longitude);
 
   @override
   Future<void> savePlace(Place place) async {
@@ -108,5 +119,35 @@ class PlaceRepositoryAdapter implements PlaceRepository {
   @override
   Future<bool> exists(String placeId) async {
     return await _local.exists(placeId);
+  }
+
+  @override
+  Future<List<Place>> searchNearbyPlaces({
+    required double latitude,
+    required double longitude,
+    required double radiusMeters,
+    List<String>? types,
+  }) async {
+    return await _googlePlaces.searchNearbyPlaces(
+      latitude: latitude,
+      longitude: longitude,
+      radiusMeters: radiusMeters,
+      types: types ?? const [],
+    );
+  }
+
+  @override
+  Future<List<Place>> searchDatabaseNearbyPlaces({
+    required double latitude,
+    required double longitude,
+    required double radiusMeters,
+    List<String>? types,
+  }) async {
+    return await _remote.searchNearbyPlaces(
+      latitude: latitude,
+      longitude: longitude,
+      radiusMeters: radiusMeters,
+      types: types ?? const [],
+    );
   }
 }

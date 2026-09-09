@@ -52,7 +52,7 @@ class _Step5GenerationBody extends StatelessWidget {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final result = vm.result;
         if (result == null || !result.success || !context.mounted) return;
-        Navigator.pushReplacement(
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
             builder: (_) => ItineraryFinalScreen(
@@ -67,6 +67,7 @@ class _Step5GenerationBody extends StatelessWidget {
               draft: vm.draft,
             ),
           ),
+          (route) => route.isFirst,
         );
       });
       // Return a placeholder while navigation happens.

@@ -36,6 +36,7 @@ class ScheduledDay {
   final List<ScheduledStop> stops;
   final int totalDuration;
   final double totalTravelTime;
+  final String reason;
 
   const ScheduledDay({
     required this.dayIndex,
@@ -43,6 +44,7 @@ class ScheduledDay {
     required this.stops,
     required this.totalDuration,
     required this.totalTravelTime,
+    this.reason = '',
   });
 }
 
@@ -565,4 +567,94 @@ class ScheduleConstructionService {
     final m = (minutesOfDay % 60).toString().padLeft(2, '0');
     return '$h:$m';
   }
+}
+
+/// Last boundary before displaying or saving an automatically proposed day.
+/// Retains every unique place, but never assigns overflow to the next day.
+ScheduledDay normalizeProposedDay(ScheduledDay day, String explorationTime) {
+  final window = ItineraryConstants.explorationWindowFor(explorationTime);
+  final midnight = DateTime(day.date.year, day.date.month, day.date.day);
+  final limit = midnight.add(Duration(minutes: window.endMinutes));
+  final earliest = midnight.add(Duration(minutes: window.startMinutes));
+  final scheduled = <ScheduledStop>[];
+  final pending = <ScheduledStop>[];
+  final seen = <String>{};
+  DateTime? previousEnd;
+
+  for (final stop in day.stops) {
+    if (!seen.add(stop.attraction.place.placeId)) continue;
+
+    // Check if this stop was explicitly unscheduled from the start
+    final isExplicitlyUnscheduled =
+        (stop.startTime.hour == 0 && stop.startTime.minute == 0 &&
+         stop.endTime.hour == 0 && stop.endTime.minute == 0);
+
+    if (isExplicitlyUnscheduled) {
+      pending.add(ScheduledStop(
+        attraction: stop.attraction,
+        startTime: midnight,
+        endTime: midnight,
+        durationMinutes: stop.durationMinutes,
+        travelFromPreviousMinutes: 0,
+        scheduleReason: stop.scheduleReason.isNotEmpty
+            ? stop.scheduleReason
+            : 'Unscheduled — tap to set time.',
+        weatherNote: stop.weatherNote,
+      ));
+      continue;
+    }
+
+    var start = stop.startTime;
+    var end = stop.endTime;
+
+    // If there's an overlap with the previous scheduled stop, attempt to ripple/shift it forward
+    if (previousEnd != null) {
+      final minStart = previousEnd.add(Duration(minutes: stop.travelFromPreviousMinutes));
+      if (start.isBefore(minStart)) {
+        start = minStart;
+        end = start.add(Duration(minutes: stop.durationMinutes));
+      }
+    }
+
+    // Check whether this stop fits within the valid day window
+    final fits = !start.isBefore(earliest) &&
+        end.isAfter(start) &&
+        !end.isAfter(limit) &&
+        end.isBefore(midnight.add(const Duration(days: 1)));
+
+    if (fits) {
+      scheduled.add(ScheduledStop(
+        attraction: stop.attraction,
+        startTime: start,
+        endTime: end,
+        durationMinutes: stop.durationMinutes,
+        travelFromPreviousMinutes: stop.travelFromPreviousMinutes,
+        scheduleReason: stop.scheduleReason,
+        weatherNote: stop.weatherNote,
+      ));
+      previousEnd = end;
+    } else {
+      // If it genuinely cannot fit within the day limit, only THIS stop becomes pending,
+      // and we do NOT break the chain for existing stops if they were previously valid.
+      pending.add(ScheduledStop(
+        attraction: stop.attraction,
+        startTime: midnight,
+        endTime: midnight,
+        durationMinutes: stop.durationMinutes,
+        travelFromPreviousMinutes: 0,
+        scheduleReason: 'Unscheduled — no available time slot. Tap to set time.',
+        weatherNote: stop.weatherNote,
+      ));
+    }
+  }
+
+  final stops = [...scheduled, ...pending];
+  return ScheduledDay(
+    dayIndex: day.dayIndex,
+    date: day.date,
+    stops: stops,
+    totalDuration: scheduled.fold<int>(0, (sum, s) => sum + s.durationMinutes),
+    totalTravelTime: scheduled.fold<double>(0, (sum, s) => sum + s.travelFromPreviousMinutes),
+    reason: pending.isEmpty ? day.reason : '${day.reason} unscheduled',
+  );
 }

@@ -81,6 +81,12 @@ class RecommendedPlacesVM extends ChangeNotifier {
   List<NearbyPlaceResult> _attractions = const [];
   List<NearbyPlaceResult> _restaurants = const [];
 
+  String _searchQuery = '';
+  bool isSearchingExternal = false;
+  List<NearbyPlaceResult> _externalAttractions = const [];
+  List<NearbyPlaceResult> _externalRestaurants = const [];
+  String? searchError;
+
   Place? _selectedPlace;
   bool isPlanning = false;
   String? planError;
@@ -91,6 +97,7 @@ class RecommendedPlacesVM extends ChangeNotifier {
   bool get recommendationsLoaded => _recommendationsLoaded;
   Place? get selectedPlace => _selectedPlace;
   CustomPlacePlanResult? get planResult => _planResult;
+  String get searchQuery => _searchQuery;
 
   // Keep this API for the existing screen.
   // Bookmark state is intentionally not changed by this DB-first rewrite.
@@ -99,9 +106,160 @@ class RecommendedPlacesVM extends ChangeNotifier {
   List<NearbyPlaceResult> forCategory(
       RecommendationCategory category,
       ) {
-    return category == RecommendationCategory.attractions
+    final list = category == RecommendationCategory.attractions
         ? _attractions
         : _restaurants;
+    if (_searchQuery.trim().isEmpty) return list;
+    final q = _searchQuery.trim().toLowerCase();
+    final localMatches = list.where((item) {
+      final name = item.place.placeName.toLowerCase();
+      final addr = item.place.placeAddress.toLowerCase();
+      final cat = (item.place.category ?? '').toLowerCase();
+      return name.contains(q) || addr.contains(q) || cat.contains(q);
+    }).toList();
+
+    final externalList = category == RecommendationCategory.attractions
+        ? _externalAttractions
+        : _externalRestaurants;
+
+    final seenIds = localMatches.map((e) => e.place.placeId).toSet();
+    return [
+      ...localMatches,
+      ...externalList.where((e) => !seenIds.contains(e.place.placeId)),
+    ];
+  }
+
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+  }
+
+  Future<void> searchExternal(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      clearExternalSearch();
+      return;
+    }
+
+    isSearchingExternal = true;
+    searchError = null;
+    notifyListeners();
+
+    try {
+      final bias = destinationCenter ?? _centroidOfStops();
+      final found = await _customPlaceService.searchPlaces(
+        query: trimmed,
+        locationBias: bias,
+      );
+
+      final extAttractions = <NearbyPlaceResult>[];
+      final extRestaurants = <NearbyPlaceResult>[];
+      final anchor = bias ??
+          (existingStops.isNotEmpty
+              ? existingStops.first.place.coordinates
+              : null);
+
+      for (final place in found) {
+        final id = place.placeId.trim();
+        if (id.isEmpty) continue;
+        if (usedPlaceIds.contains(id)) continue;
+        if (!_hasValidCoordinates(place)) continue;
+
+        final distKm =
+            anchor != null ? anchor.distanceTo(place.coordinates) : 0.0;
+        final travelMins = _estimateTravelMinutes(distKm, transportMode);
+
+        final item = NearbyPlaceResult(
+          place: place,
+          distanceFromPreviousKm: distKm,
+          distanceToNextKm: null,
+          estimatedAdditionalTravelMinutes: travelMins,
+          rankScore: place.rating,
+        );
+
+        final isFood = _isFoodOrDining(place);
+        if (isFood) {
+          extRestaurants.add(item);
+        } else {
+          extAttractions.add(item);
+        }
+
+        // Multi-category place (e.g. night market, mall with food) can show in both
+        if (_isMarketOrAttractionFood(place)) {
+          if (!isFood) extRestaurants.add(item);
+          if (isFood) extAttractions.add(item);
+        }
+      }
+
+      _externalAttractions = extAttractions;
+      _externalRestaurants = extRestaurants;
+    } catch (e) {
+      debugPrint('[Recommended Places External Search] error: $e');
+      searchError = 'External search encountered an issue.';
+    } finally {
+      isSearchingExternal = false;
+      notifyListeners();
+    }
+  }
+
+  void clearExternalSearch() {
+    _externalAttractions = const [];
+    _externalRestaurants = const [];
+    isSearchingExternal = false;
+    notifyListeners();
+  }
+
+  double _estimateTravelMinutes(double distanceKm, String transportMode) {
+    final speedKph = switch (transportMode.toLowerCase()) {
+      'walking' => 5.0,
+      'driving' => 40.0,
+      'transit' => 30.0,
+      _ => 5.0,
+    };
+    return (distanceKm / speedKph) * 60.0;
+  }
+
+  bool _isFoodOrDining(Place place) {
+    final types = place.types.map((e) => e.toLowerCase()).toSet();
+    const foodTypes = {
+      'restaurant',
+      'cafe',
+      'coffee_shop',
+      'bakery',
+      'bar',
+      'meal_takeaway',
+      'meal_delivery',
+      'food',
+    };
+    if (types.any((t) => foodTypes.contains(t))) return true;
+
+    final name = place.placeName.toLowerCase();
+    return name.contains('restaurant') ||
+        name.contains('cafe') ||
+        name.contains('coffee') ||
+        name.contains('kopi') ||
+        name.contains('kopitiam') ||
+        name.contains('food') ||
+        name.contains('bakery') ||
+        name.contains('bistro') ||
+        name.contains('cendol') ||
+        name.contains('laksa') ||
+        name.contains('nyonya') ||
+        name.contains('chicken rice');
+  }
+
+  bool _isMarketOrAttractionFood(Place place) {
+    final types = place.types.map((e) => e.toLowerCase()).toSet();
+    if (types.contains('tourist_attraction') ||
+        types.contains('shopping_mall') ||
+        types.contains('point_of_interest')) {
+      return true;
+    }
+    final name = place.placeName.toLowerCase();
+    return name.contains('market') ||
+        name.contains('walk') ||
+        name.contains('mall') ||
+        name.contains('square');
   }
 
   Future<void> loadRecommendations() async {
@@ -213,59 +371,58 @@ class RecommendedPlacesVM extends ChangeNotifier {
         timeout: aiTimeout,
       );
 
-      if (aiResult == null) {
-        planError =
-        'The AI validation timed out or failed. Please try another place.';
-        _planResult = null;
-        return;
-      }
+      int insertIndex;
+      DateTime startTime;
+      DateTime endTime;
+      int duration = defaultDuration;
+      int travel = 20;
+      String reason = 'Added to itinerary';
+      bool usedAi = false;
 
-      if (!aiResult.accepted) {
-        planError = aiResult.reason.isEmpty
-            ? 'The AI determined that this place does not fit this day.'
-            : aiResult.reason;
-
-        _planResult = CustomPlacePlanResult.problem(planError!);
-        return;
-      }
-
-      final insertIndex = _resolveInsertIndex(aiResult);
-
-      if (insertIndex == null) {
-        planError =
-        'The AI returned an invalid insertion position. Please try again.';
-        _planResult = null;
-        return;
-      }
-
-      // The AI parser guarantees these are present for ACCEPT.
-      final startTime = aiResult.startTime;
-      final endTime = aiResult.endTime;
-
-      if (startTime == null || endTime == null) {
-        planError =
-        'The AI returned an incomplete schedule. Please try again.';
-        _planResult = null;
-        return;
+      final resolvedIndex = aiResult != null ? _resolveInsertIndex(aiResult) : null;
+      if (aiResult != null &&
+          aiResult.accepted &&
+          aiResult.startTime != null &&
+          aiResult.endTime != null &&
+          resolvedIndex != null) {
+        insertIndex = resolvedIndex;
+        startTime = aiResult.startTime!;
+        endTime = aiResult.endTime!;
+        duration = aiResult.durationMinutes;
+        travel = aiResult.travelFromPreviousMinutes ?? 20;
+        reason = aiResult.reason;
+        usedAi = true;
+      } else {
+        // Deterministic fallback: append after last stop or start at 10:00
+        insertIndex = existingStops.length;
+        if (existingStops.isEmpty) {
+          startTime = DateTime(dayDate.year, dayDate.month, dayDate.day, 10, 0);
+          travel = 0;
+        } else {
+          final last = existingStops.last;
+          travel = 20;
+          startTime = last.endTime.add(Duration(minutes: travel));
+        }
+        endTime = startTime.add(Duration(minutes: duration));
+        usedAi = false;
       }
 
       final proposedDay = _buildAiScheduledDay(
         insertIndex: insertIndex,
         place: place,
-        durationMinutes: aiResult.durationMinutes,
+        durationMinutes: duration,
         startTime: startTime,
         endTime: endTime,
-        travelFromPreviousMinutes:
-        aiResult.travelFromPreviousMinutes ?? 0,
-        reason: aiResult.reason,
+        travelFromPreviousMinutes: travel,
+        reason: reason,
       );
 
       _planResult = CustomPlacePlanResult(
         success: true,
-        proposedDay: proposedDay,
+        proposedDay: normalizeProposedDay(proposedDay, explorationTime),
         validation: null,
         insertIndex: insertIndex,
-        usedAi: true,
+        usedAi: usedAi,
       );
     } catch (e, stack) {
       debugPrint('[Recommended Places AI] planning failed: $e');

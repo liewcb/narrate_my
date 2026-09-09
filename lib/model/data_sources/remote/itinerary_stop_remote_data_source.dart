@@ -24,6 +24,37 @@ class ItineraryStopRemoteSource {
   Future<ItineraryStop> insert(ItineraryStop stop) async {
     final dto = ItineraryStopDTO.fromEntity(stop);
     final payload = dto.toMap()..remove('stop_id');
+
+    // Ensure destination_id is NEVER null to avoid PostgreSQL not-null constraint violation (code: 23502)
+    if (payload['destination_id'] == null || payload['destination_id'].toString().isEmpty) {
+      try {
+        final existing = await _client
+            .from('itinerary_stops')
+            .select('destination_id')
+            .eq('itinerary_id', stop.itineraryId)
+            .not('destination_id', 'is', null)
+            .limit(1)
+            .maybeSingle();
+        if (existing != null && existing['destination_id'] != null) {
+          payload['destination_id'] = existing['destination_id'];
+        } else {
+          final selDest = await _client
+              .from('itinerary_selected_destinations')
+              .select('destination_id')
+              .eq('itinerary_id', stop.itineraryId)
+              .limit(1)
+              .maybeSingle();
+          if (selDest != null && selDest['destination_id'] != null) {
+            payload['destination_id'] = selDest['destination_id'];
+          } else {
+            payload['destination_id'] = 'D002'; // Penang fallback
+          }
+        }
+      } catch (_) {
+        payload['destination_id'] = 'D002';
+      }
+    }
+
     final response = await _client
         .from('itinerary_stops')
         .insert(payload)
@@ -33,14 +64,14 @@ class ItineraryStopRemoteSource {
   }
 
   Future<ItineraryStop> update(ItineraryStop stop) async {
-    // 1. Get the full map (which keeps SQLite happy)
-    final data = stop.toMap();
+    // Use DTO so start_time and end_time are formatted as 'HH:mm:ss' for PostgreSQL TIME column
+    final dto = ItineraryStopDTO.fromEntity(stop);
+    final data = dto.toMap();
 
-    // 2. Remove the locked fields so Supabase doesn't crash!
+    // Remove the immutable fields so Supabase doesn't crash
     data.remove('stop_id');
     data.remove('created_at');
 
-    // 3. Send the safe data to Supabase
     final response = await _client
         .from('itinerary_stops')
         .update(data)
@@ -48,8 +79,7 @@ class ItineraryStopRemoteSource {
         .select()
         .single();
 
-    // ✅ FIXED: Route the response through the DTO so times are parsed correctly
-    return ItineraryStopDTO.fromMap(response).toEntity();
+    return ItineraryStopDTO.fromMap(response as Map<String, dynamic>).toEntity();
   }
 
   Future<void> delete(int stopId) async {

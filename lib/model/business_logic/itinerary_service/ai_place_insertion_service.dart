@@ -20,7 +20,6 @@ import '../../../core/services/ai_service.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
 import 'custom_place_service.dart';
-import 'schedule_construction_service.dart';
 
 class AiPlaceInsertionResult {
   final bool accepted;
@@ -110,17 +109,14 @@ class AiPlaceInsertionService {
     final b = StringBuffer();
 
     b
-      ..writeln('You are the final validator and planner for adding ONE place')
-      ..writeln('to an existing travel itinerary day.')
+      ..writeln('You are the assistant for scheduling a NEW PLACE requested by the traveler')
+      ..writeln('into an existing itinerary day.')
       ..writeln()
-      ..writeln('Use ONLY the supplied places.')
+      ..writeln('The traveler explicitly CHOSE this place to add to their day.')
+      ..writeln('Therefore, ALWAYS PREFER TO ACCEPT. Only REJECT if the place is geographically impossible (e.g. > 60 km away from the day route).')
+      ..writeln('If daytime stops are full, schedule this new place after the last stop or during a suitable gap (evening dining, cafes, and night markets can be scheduled up to 22:30).')
       ..writeln('Do not invent, replace, remove, or rename any existing stop.')
-      ..writeln('The selected NEW PLACE is the only place that may be added.')
-      ..writeln()
-      ..writeln('Accept only when the place is suitable for the day,')
-      ..writeln('geographically reasonable, and can fit the exploration period.')
-      ..writeln('Prefer a nearby location because the candidate came from the')
-      ..writeln('database using existing route/destination spatial anchors.')
+      ..writeln('The selected NEW PLACE is the only place being added.')
       ..writeln()
       ..writeln(
         'Traveler interests: '
@@ -178,14 +174,14 @@ class AiPlaceInsertionService {
     b
       ..writeln('Return JSON ONLY. No markdown.')
       ..writeln()
-      ..writeln('If the place should NOT be added:')
+      ..writeln('If the place should NOT be added (ONLY when >60km away or invalid):')
       ..writeln(
         '{"decision":"REJECT","insert_after_place_id":null,'
         '"duration_minutes":0,"start_time":null,"end_time":null,'
         '"travel_from_previous_minutes":0,"reason":"short reason"}',
       )
       ..writeln()
-      ..writeln('If the place SHOULD be added:')
+      ..writeln('If the place SHOULD be added (DEFAULT):')
       ..writeln(
         '{"decision":"ACCEPT","insert_after_place_id":'
         '"<existing placeId or null>","duration_minutes":60,'
@@ -194,14 +190,11 @@ class AiPlaceInsertionService {
       )
       ..writeln()
       ..writeln('Rules:')
+      ..writeln('- ALWAYS PREFER ACCEPTING: find an appropriate time slot (e.g. 18:00–22:30 for evening stops).')
       ..writeln('- null insert_after_place_id means insert at the beginning.')
-      ..writeln('- The ID must exactly match an existing stop ID.')
-      ..writeln('- Keep existing stop times unchanged whenever possible.')
-      ..writeln('- Do not move existing stops.')
-      ..writeln('- Do not create another new place.')
-      ..writeln('- Use the supplied default duration unless clearly inappropriate.')
-      ..writeln('- travel_from_previous_minutes is an estimate.')
-      ..writeln('- Reject when the day is already too full.');
+      ..writeln('- Otherwise, insert_after_place_id should be the existing stop ID that precedes this new stop.')
+      ..writeln('- Use the supplied default duration (or reasonable 45–90 min).')
+      ..writeln('- Only return REJECT if location data is completely invalid or over 60 km away.');
 
     return b.toString();
   }

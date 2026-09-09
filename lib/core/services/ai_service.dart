@@ -24,6 +24,8 @@ import '../../model/entities/place.dart';
 ///     schedule, meal placement, weather-aware planning, travel-pace
 ///     interpretation, daily-flow reasoning, planning explanations.
 class AIService {
+  final String geminiApiKey;
+  final String geminiModel;
   final String baiApiKey;
   final String baiModel;
   final String openRouterApiKey;
@@ -31,51 +33,34 @@ class AIService {
 
   static const String _baiBaseUrl = 'https://api.b.ai/v1/chat/completions';
 
-  /// Timeout for the main (B.AI / GLM-5.3-Flash) itinerary-planning request.
-  ///
-  /// 14s is the authoritative ceiling for the primary request inside the
-  /// 18-second whole-pipeline deadline (preprocessing ≤ 4s + AI ≤ ~12.5s
-  /// preferred / 14s hard + final Dart operations + safety margin).
+  /// Timeout for the main itinerary-planning request.
   static const Duration aiRequestTimeout = Duration(seconds: 15);
 
   /// Timeout for the explicit fallback providers (OpenRouter / Cohere).
-  ///
-  /// This is a PER-CALL ceiling, NOT a guarantee that a slow primary request
-  /// plus several fallbacks can run sequentially. The actual fallback
-  /// timeout used inside [_callAi] is the time remaining from the overall
-  /// budget (see [aiTotalBudget]) so the complete user-facing request never
-  /// exceeds the deadline. NOTE: the itinerary planner never uses these
-  /// providers — it calls B.AI only.
   static const Duration fallbackProviderTimeout = Duration(seconds: 6);
 
-  /// Hard ceiling for ANY single [_callAi] round trip, INCLUDING all
-  /// sequential fallback providers and the structured→plain B.AI retry.
-  ///
-  /// 14s — the authoritative value for the MAIN itinerary planner. The
-  /// timer starts before the first request and is NEVER reset across the
-  /// structured JSON request, the plain-request fallback, or the
-  /// OpenRouter/Cohere provider fallbacks (legacy paths only). Every
-  /// subsequent request gets only the time remaining from this budget.
+  /// Hard ceiling for ANY single [_callAi] round trip.
   static const Duration aiTotalBudget = Duration(seconds: 15);
 
-  /// Short timeout for the best-effort itinerary critic review. The critic
-  /// only produces optional human-comfort feedback (never used to build the
-  /// schedule), so it is allowed to fail fast without degrading the plan.
+  /// Short timeout for the best-effort itinerary critic review.
   static const Duration criticTimeout = Duration(seconds: 15);
 
-  /// Print the full prompt body when enabled (off by default to avoid
-  /// flooding the console). The prompt SIZE is always printed.
+  /// Print the full prompt body when enabled.
   static const bool debugAiPrompt = false;
 
   /// Maximum regeneration attempts for a single failed AI planning day.
   static const int maxAiRegenerationAttempts = 2;
 
   AIService({
+    String? geminiApiKey,
+    String? geminiModel,
     String? baiApiKey,
     String? baiModel,
     String? openRouterApiKey,
     String? cohereApiKey,
-  })  : baiApiKey = (baiApiKey ?? ApiKeys.baiApiKey).trim(),
+  })  : geminiApiKey = (geminiApiKey ?? ApiKeys.geminiApiKey).trim(),
+        geminiModel = (geminiModel ?? ApiKeys.geminiModel).trim(),
+        baiApiKey = (baiApiKey ?? ApiKeys.baiApiKey).trim(),
         baiModel = (baiModel ?? ApiKeys.baiModel).trim(),
         openRouterApiKey = (openRouterApiKey ?? ApiKeys.openRouterApiKey).trim(),
         cohereApiKey = (cohereApiKey ?? ApiKeys.cohereApiKey).trim();
@@ -1014,6 +999,20 @@ Return valid JSON only (no Markdown fences):
       return left.isNegative ? Duration.zero : left;
     }
 
+    // 0. Try Google Gemini — primary provider.
+    if (geminiApiKey.isNotEmpty && geminiApiKey != 'YOUR_GEMINI_API_KEY') {
+      try {
+        final fallbackT = _boundedFallbackTimeout(remainingBudget());
+        debugPrint('Trying: Google Gemini ($geminiModel)');
+        return await _callGemini(prompt, timeout: fallbackT, requestName: requestName);
+      } catch (error) {
+        debugPrint('[AI FALLBACK: $requestName]');
+        debugPrint('Primary provider failed: Gemini — $error');
+        debugPrint('Elapsed: ${requestSw.elapsedMilliseconds}ms');
+        debugPrint('Remaining budget: ${remainingBudget().inMilliseconds}ms');
+      }
+    }
+
     // 1. Try B.AI Gateway (DeepSeek) — shares [budget] so the internal
     //    structured→plain retry is also bounded by the same global deadline.
     if (baiApiKey.isNotEmpty && baiModel.isNotEmpty) {
@@ -1027,7 +1026,19 @@ Return valid JSON only (no Markdown fences):
       }
     }
 
-    // 2. Try OpenRouter — only while time remains in the overall budget.
+    // 2. Try Cohere — active and fast fallback.
+    if (remainingBudget().inSeconds >= 2 && cohereApiKey.isNotEmpty) {
+      try {
+        final fallbackT = _boundedFallbackTimeout(remainingBudget());
+        debugPrint('Trying: Cohere (${fallbackT.inSeconds}s)');
+        return await _callCohere(prompt, timeout: fallbackT, requestName: requestName);
+      } catch (error) {
+        debugPrint('Cohere failed: $error');
+        debugPrint('Elapsed: ${requestSw.elapsedMilliseconds}ms');
+      }
+    }
+
+    // 3. Try OpenRouter — only while time remains in the overall budget.
     if (remainingBudget().inSeconds >= 2 &&
         openRouterApiKey.isNotEmpty &&
         openRouterApiKey.startsWith('sk-or-v1-')) {
@@ -1038,18 +1049,6 @@ Return valid JSON only (no Markdown fences):
       } catch (error) {
         debugPrint('[AI FALLBACK: $requestName]');
         debugPrint('OpenRouter failed: $error');
-        debugPrint('Elapsed: ${requestSw.elapsedMilliseconds}ms');
-      }
-    }
-
-    // 3. Try Cohere — only while time remains in the overall budget.
-    if (remainingBudget().inSeconds >= 2 && cohereApiKey.isNotEmpty) {
-      try {
-        final fallbackT = _boundedFallbackTimeout(remainingBudget());
-        debugPrint('Trying: Cohere (${fallbackT.inSeconds}s)');
-        return await _callCohere(prompt, timeout: fallbackT, requestName: requestName);
-      } catch (error) {
-        debugPrint('Cohere failed: $error');
         debugPrint('Elapsed: ${requestSw.elapsedMilliseconds}ms');
       }
     }
@@ -1379,37 +1378,128 @@ Return valid JSON only (no Markdown fences):
     throw const FormatException('Cohere returned no text content.');
   }
 
+  // ---------- Google Gemini ----------
+
+  Future<String> _callGemini(
+    String prompt, {
+    Duration timeout = aiRequestTimeout,
+    String requestName = 'GENERIC',
+    int maxTokens = 2048,
+    void Function(String?)? onFinishReason,
+  }) async {
+    final key = geminiApiKey.isNotEmpty ? geminiApiKey : ApiKeys.geminiApiKey;
+    if (key.isEmpty || key == 'YOUR_GEMINI_API_KEY') {
+      throw StateError('Gemini API key is not configured.');
+    }
+
+    final modelsToTry = [
+      if (geminiModel.isNotEmpty) geminiModel,
+      'gemini-3.5-flash-lite',  // 15 RPM, 500 RPD
+      'gemini-3.1-flash-lite',  // 15 RPM, 500 RPD
+      'gemini-3.6-flash',       // 5 RPM, 20 RPD
+      'gemini-3.8-flash',       // 5 RPM, 20 RPD
+      'gemini-3.5-flash',       // 5 RPM, 20 RPD
+      'gemini-3.7-flash',       // 5 RPM, 20 RPD
+    ];
+
+    http.Response? response;
+    for (final model in modelsToTry) {
+      for (final version in ['v1beta', 'v1']) {
+        final url = 'https://generativelanguage.googleapis.com/$version/models/$model:generateContent?key=$key';
+        final sw = Stopwatch()..start();
+
+        try {
+          response = await http.post(
+            Uri.parse(url),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'contents': [
+                {
+                  'parts': [
+                    {'text': prompt}
+                  ]
+                }
+              ],
+              'generationConfig': {
+                'temperature': 0.2,
+                'maxOutputTokens': maxTokens,
+                'responseMimeType': 'application/json',
+              }
+            }),
+          ).timeout(timeout);
+
+          debugPrint('[AI RESPONSE: $requestName]');
+          debugPrint('Provider: Google Gemini ($version)');
+          debugPrint('Model: $model');
+          debugPrint('Status: ${response.statusCode}');
+          debugPrint('Elapsed: ${sw.elapsedMilliseconds}ms');
+
+          if (response.statusCode == 200) {
+            break;
+          }
+          if (response.statusCode == 403) {
+            debugPrint('❌ [Gemini 403] Generative Language API is blocked/disabled for this key in Google Cloud Console. Aborting Gemini.');
+            break;
+          }
+          if (response.statusCode == 404 || response.statusCode == 503) {
+            debugPrint('Gemini model $model ($version) returned ${response.statusCode}, trying next...');
+            continue;
+          }
+          break;
+        } catch (e) {
+          debugPrint('Gemini request to $model ($version) failed: $e, trying next...');
+          continue;
+        }
+      }
+      if (response != null && response.statusCode == 200) {
+        break;
+      }
+      if (response != null && response.statusCode == 403) {
+        break;
+      }
+    }
+
+    if (response == null || response.statusCode != 200) {
+      throw Exception(
+        'Gemini error (${response?.statusCode}): ${response?.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final candidates = data['candidates'] as List?;
+    if (candidates == null || candidates.isEmpty) {
+      throw const FormatException('Gemini returned no candidates.');
+    }
+
+    final first = candidates.first as Map<String, dynamic>;
+    final finish = first['finishReason'] as String?;
+    onFinishReason?.call(finish);
+
+    final content = first['content'] as Map<String, dynamic>?;
+    final parts = content?['parts'] as List?;
+    if (parts == null || parts.isEmpty) {
+      throw const FormatException('Gemini returned empty parts.');
+    }
+
+    final rawText = (parts.first as Map<String, dynamic>)['text'] as String?;
+    if (rawText == null || rawText.trim().isEmpty) {
+      throw const FormatException('Gemini returned empty text content.');
+    }
+
+    return _normaliseModelText(rawText);
+  }
+
   // ============================================================
-  // ITINERARY PLANNER — B.AI / GLM-5.3-FLASH (single provider)
+  // PLANNER RECOMMENDATION (Structured JSON with Fallback Chain)
   // ============================================================
 
-  /// Output budget for the compact itinerary plan (authoritative value —
-  /// used only for the planner request; legacy callers keep the 4096
-  /// default).
-  ///
-  /// IMPORTANT: on glm-5.3-flash `max_tokens` covers BOTH reasoning_content
-  /// and content. At 650 the model spent all 650 tokens reasoning
-  /// (finishReason=length, contentChars=0 → AI_TRUNCATED_RESPONSE).
-  /// 1050 gives headroom for ~600 reasoning tokens PLUS the ~250-token
-  /// minified JSON body. Timing math: 1050 tokens at ~83 tokens/s ≈ 12.6s
-  /// generation + ~3.7s Dart overhead ≈ 16.3s total, safely under the 18s
-  /// pipeline ceiling.
-  static const int plannerMaxTokens = 1050;
+  static const int plannerMaxTokens = 8192;
 
-  /// Sends the reduced candidate context to B.AI / GLM-5.3-Flash — the ONLY
-  /// AI provider used for itinerary generation — and returns the response.
-  ///
-  /// OpenRouter and Cohere are deliberately NOT called here. If GLM fails,
-  /// the outcome is classified and the pipeline uses its deterministic
-  /// fallback. No other provider is ever launched, so no OpenRouter/Cohere
-  /// timeouts can appear in the generation logs.
-  ///
-  /// Classification:
-  ///   HTTP 200 + content              → AI_SUCCESS (pipeline parses it)
-  ///   HTTP 200 + empty/short content  → AI_TRUNCATED_RESPONSE
-  ///   HTTP 200 + unusable content     → AI_INVALID_MODEL_OUTPUT
-  ///   timeout                         → AI_TIMEOUT
-  ///   HTTP/other provider failure     → AI_PROVIDER_ERROR
+  /// Dedicated planner entry-point. Tries Google Gemini first (gemini-2.0-flash)
+  /// with native JSON enforcement. If Gemini is blocked, missing or fails,
+  /// seamlessly falls back to B.AI (GLM-5.3-Flash).
   Future<PlannerRecommendation> generatePlannerRecommendation(
     String prompt, {
     required DateTime deadline,
@@ -1428,77 +1518,146 @@ Return valid JSON only (no Markdown fences):
     final sw = Stopwatch()..start();
     String? finishReason;
 
-    debugPrint('[AI REQUEST: ITINERARY_PLANNER]');
-    debugPrint('provider=B.AI model=$baiModel');
-    debugPrint('maxTokens=$plannerMaxTokens');
-    debugPrint('Deadline: ${totalBudget.inMilliseconds} ms from now');
-
-    String rawText;
-    var outcome = 'AI_SUCCESS';
-    try {
-      rawText = await _callBai(
-        prompt,
-        timeout: totalBudget,
-        totalBudget: totalBudget,
-        requestName: 'ITINERARY_PLANNER',
-        maxTokens: plannerMaxTokens,
-        onFinishReason: (r) => finishReason = r,
-      );
-      attempts.add(ProviderAiAttempt(
-        provider: 'B.AI',
-        status: 'SUCCESS',
-        elapsedMs: sw.elapsedMilliseconds,
-        finishReason: finishReason,
-      ));
-    } on TimeoutException {
-      attempts.add(ProviderAiAttempt(
-        provider: 'B.AI',
-        status: 'TIMEOUT',
-        elapsedMs: sw.elapsedMilliseconds,
-        finishReason: finishReason,
-      ));
-      outcome = 'AI_TIMEOUT';
-      rawText = '';
-    } on FormatException {
-      // Model produced no usable content (e.g. reasoning consumed the whole
-      // budget → finish_reason=length with empty content). HTTP 200 means the
-      // provider responded — this is NOT a timeout and NOT a provider error.
-      attempts.add(ProviderAiAttempt(
-        provider: 'B.AI',
-        status: 'ERROR',
-        elapsedMs: sw.elapsedMilliseconds,
-        finishReason: finishReason,
-      ));
-      outcome = finishReason == 'length'
-          ? 'AI_TRUNCATED_RESPONSE'
-          : 'AI_INVALID_MODEL_OUTPUT';
-      rawText = '';
-    } catch (_) {
-      attempts.add(ProviderAiAttempt(
-        provider: 'B.AI',
-        status: 'ERROR',
-        elapsedMs: sw.elapsedMilliseconds,
-        finishReason: finishReason,
-      ));
-      outcome = 'AI_PROVIDER_ERROR';
-      rawText = '';
+    // ── 1. PRIMARY: GOOGLE GEMINI ──────────────────────────────
+    final activeGeminiKey =
+        geminiApiKey.isNotEmpty ? geminiApiKey : ApiKeys.geminiApiKey;
+    if (activeGeminiKey.isNotEmpty &&
+        activeGeminiKey != 'YOUR_GEMINI_API_KEY') {
+      debugPrint('[AI REQUEST: ITINERARY_PLANNER]');
+      debugPrint('provider=Google Gemini model=$geminiModel');
+      debugPrint('Deadline: ${totalBudget.inMilliseconds} ms from now');
+      try {
+        final geminiTimeout = totalBudget > const Duration(seconds: 8)
+            ? const Duration(seconds: 8)
+            : totalBudget;
+        final geminiText = await _callGemini(
+          prompt,
+          timeout: geminiTimeout,
+          requestName: 'ITINERARY_PLANNER',
+          maxTokens: plannerMaxTokens,
+          onFinishReason: (r) => finishReason = r,
+        );
+        attempts.add(ProviderAiAttempt(
+          provider: 'Gemini',
+          status: 'SUCCESS',
+          elapsedMs: sw.elapsedMilliseconds,
+          finishReason: finishReason,
+        ));
+        debugPrint('[AI: ITINERARY_PLANNER] Gemini SUCCESS in '
+            '${sw.elapsedMilliseconds} ms');
+        return PlannerRecommendation(
+          rawText: geminiText,
+          winningProvider: 'Gemini',
+          attempts: attempts,
+          outcome: 'AI_SUCCESS',
+        );
+      } on TimeoutException {
+        attempts.add(ProviderAiAttempt(
+          provider: 'Gemini',
+          status: 'TIMEOUT',
+          elapsedMs: sw.elapsedMilliseconds,
+          finishReason: finishReason,
+        ));
+        debugPrint('⚠️ [AI PLANNER] Gemini TIMEOUT — trying B.AI fallback...');
+      } catch (e) {
+        attempts.add(ProviderAiAttempt(
+          provider: 'Gemini',
+          status: 'ERROR',
+          elapsedMs: sw.elapsedMilliseconds,
+          finishReason: finishReason,
+        ));
+        debugPrint('⚠️ [AI PLANNER] Gemini failed ($e) — trying B.AI fallback...');
+      }
     }
 
-    // Consolidated single-provider diagnostic (API key never logged).
-    final attempt = attempts.first;
-    debugPrint('[AI: ITINERARY_PLANNER]');
-    debugPrint('provider=B.AI');
-    debugPrint('model=$baiModel');
-    debugPrint('reasoningEffort=low');
-    debugPrint('maxTokens=$plannerMaxTokens');
-    debugPrint('finishReason=${attempt.finishReason ?? 'n/a'}');
-    debugPrint('classification=$outcome');
+    // ── 2. PROVEN FALLBACK: B.AI (GLM-5.3-Flash) ───────────────
+    final baiBudget = deadline.difference(DateTime.now());
+    if (baiBudget.inSeconds >= 2 && baiApiKey.isNotEmpty && baiModel.isNotEmpty) {
+      debugPrint('[AI REQUEST: ITINERARY_PLANNER (B.AI FALLBACK)]');
+      debugPrint('provider=B.AI model=$baiModel');
+      final baiSw = Stopwatch()..start();
+      try {
+        final baiText = await _callBai(
+          prompt,
+          timeout: baiBudget,
+          requestName: 'ITINERARY_PLANNER_BAI',
+          maxTokens: plannerMaxTokens,
+          onFinishReason: (r) => finishReason = r,
+        );
+        attempts.add(ProviderAiAttempt(
+          provider: 'B.AI',
+          status: 'SUCCESS',
+          elapsedMs: baiSw.elapsedMilliseconds,
+          finishReason: finishReason,
+        ));
+        debugPrint('[AI: ITINERARY_PLANNER] B.AI SUCCESS in '
+            '${baiSw.elapsedMilliseconds} ms');
+        return PlannerRecommendation(
+          rawText: baiText,
+          winningProvider: 'B.AI',
+          attempts: attempts,
+          outcome: 'AI_SUCCESS',
+        );
+      } on TimeoutException {
+        attempts.add(ProviderAiAttempt(
+          provider: 'B.AI',
+          status: 'TIMEOUT',
+          elapsedMs: baiSw.elapsedMilliseconds,
+          finishReason: finishReason,
+        ));
+        debugPrint('⚠️ [AI PLANNER] B.AI TIMEOUT');
+      } catch (e) {
+        attempts.add(ProviderAiAttempt(
+          provider: 'B.AI',
+          status: 'ERROR',
+          elapsedMs: baiSw.elapsedMilliseconds,
+          finishReason: finishReason,
+        ));
+        debugPrint('⚠️ [AI PLANNER] B.AI failed ($e)');
+      }
+    }
+
+    // ── 3. EMERGENCY FALLBACK: COHERE (if others failed) ────────
+    final remainingBudget = deadline.difference(DateTime.now());
+    if (remainingBudget.inSeconds >= 2 && cohereApiKey.isNotEmpty) {
+      debugPrint('[AI REQUEST: ITINERARY_PLANNER (COHERE FALLBACK)]');
+      final cohereSw = Stopwatch()..start();
+      try {
+        final cohereText = await _callCohere(
+          prompt,
+          timeout: remainingBudget,
+          requestName: 'ITINERARY_PLANNER_COHERE',
+        );
+        attempts.add(ProviderAiAttempt(
+          provider: 'Cohere',
+          status: 'SUCCESS',
+          elapsedMs: cohereSw.elapsedMilliseconds,
+          finishReason: 'COMPLETE',
+        ));
+        return PlannerRecommendation(
+          rawText: cohereText,
+          winningProvider: 'Cohere',
+          attempts: attempts,
+          outcome: 'AI_SUCCESS',
+        );
+      } catch (e) {
+        attempts.add(ProviderAiAttempt(
+          provider: 'Cohere',
+          status: 'ERROR',
+          elapsedMs: cohereSw.elapsedMilliseconds,
+          finishReason: null,
+        ));
+        debugPrint('Cohere planner fallback failed: $e');
+      }
+    }
 
     return PlannerRecommendation(
-      rawText: outcome == 'AI_SUCCESS' ? rawText : null,
-      winningProvider: outcome == 'AI_SUCCESS' ? 'B.AI' : null,
+      rawText: null,
+      winningProvider: null,
       attempts: attempts,
-      outcome: outcome,
+      outcome: attempts.any((a) => a.status == 'TIMEOUT')
+          ? 'AI_TIMEOUT'
+          : 'AI_PROVIDER_ERROR',
     );
   }
 
@@ -1753,6 +1912,7 @@ class AIDaySchedule {
   final List<AIScheduleStop> schedule;
   final List<String> warnings;
   final bool needsRepair;
+  final String reason;
 
   const AIDaySchedule({
     required this.dayIndex,
@@ -1760,6 +1920,7 @@ class AIDaySchedule {
     required this.schedule,
     this.warnings = const [],
     this.needsRepair = false,
+    this.reason = '',
   });
 
   factory AIDaySchedule.fromJson(String json) {

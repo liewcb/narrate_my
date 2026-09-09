@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import '../../core/services/database_manager.dart';
 import '../../model/entities/itinerary.dart';
+import '../../model/repositories/interfaces/bookmark/bookmark_repository.dart';
 import '../../model/repositories/interfaces/itinerary/itinerary_repository.dart';
 import '../../view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 
@@ -21,8 +22,9 @@ class MyItinerariesVM extends ChangeNotifier {
   String? get error => _error;
   String get activeFilter => _activeFilter;
 
-  MyItinerariesVM({required this.userId})
-      : _repository = DatabaseManager().itineraryRepository;
+  MyItinerariesVM({String? userId, ItineraryRepository? repository, BookmarkRepository? bookmarkRepository})
+      : userId = userId ?? (bookmarkRepository ?? DatabaseManager().bookmarkRepository).currentUserId ?? '',
+        _repository = repository ?? DatabaseManager().itineraryRepository;
 
   void _applyFilters() {
     var filtered = List<Itinerary>.from(_allTrips);
@@ -89,6 +91,13 @@ class MyItinerariesVM extends ChangeNotifier {
   }
 
   Future<void> load() async {
+    if (userId.isEmpty) {
+      _allTrips = [];
+      _filteredTrips = [];
+      _error = 'No user logged in';
+      notifyListeners();
+      return;
+    }
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -113,6 +122,21 @@ class MyItinerariesVM extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Delete an itinerary and remove it from the list
+  Future<bool> deleteItinerary(String itineraryId) async {
+    try {
+      await _repository.deleteItinerary(itineraryId);
+      _allTrips.removeWhere((t) => t.itineraryId == itineraryId);
+      _applyFilters();
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
     }
   }
 

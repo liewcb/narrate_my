@@ -1,4 +1,4 @@
-import '../../../core/config/itinerary_constants.dart';
+
 import './schedule_construction_service.dart';
 
 /// Represents a validation issue.
@@ -73,19 +73,18 @@ class ValidationService {
     final issues = <ValidationIssue>[];
     final warnings = <ValidationIssue>[];
 
-    final window = ItineraryConstants.explorationWindows[explorationTime] ??
-        ItineraryConstants.explorationWindows['Standard']!;
-    final totalWindowMinutes = window.totalMinutes;
+
 
     for (final day in scheduledDays) {
-      // 1. Check daily capacity
+      // 1. Check daily capacity (allow up to 14 hours / 840 mins for full day + evening additions)
       final totalMinutes =
           day.totalDuration + day.totalTravelTime.toInt();
-      if (totalMinutes > totalWindowMinutes) {
+      const maxDailyMinutes = 840;
+      if (totalMinutes > maxDailyMinutes) {
         issues.add(ValidationIssue(
           type: 'daily_capacity',
           severity: 'error',
-          message: 'Day ${day.dayIndex + 1} exceeds available time',
+          message: 'Day ${day.dayIndex + 1} exceeds maximum allowable active time (14h)',
           dayIndex: day.dayIndex,
         ));
       }

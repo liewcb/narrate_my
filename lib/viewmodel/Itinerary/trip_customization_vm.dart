@@ -3,9 +3,9 @@ import '../../model/business_logic/itinerary_service/itinerary_validation_servic
 import '../../model/entities/trip_draft.dart';
 
 class Step2TripStyleVM extends ChangeNotifier {
-  static const int maxTripDaysLimit = 3; // Maximum duration capped at 3 days
+  static const int maxTripDaysLimit = 10; // Up to 10 days duration
   static const int maxPlanningWindowDays = 180; // Half a year (~6 months)
-  static const int maxInterestsLimit = 2;
+  static const int maxInterestsLimit = 5; // Up to 5 interests
 
   final int maxTripDays = maxTripDaysLimit;
   final int maxPlanningWindow = maxPlanningWindowDays;
@@ -48,8 +48,8 @@ class Step2TripStyleVM extends ChangeNotifier {
   WeatherCoverage get weatherCoverage =>
       ItineraryValidationService.getWeatherCoverage(_draft.startDate, _draft.endDate);
 
-  // Suppressed weather warning message completely
-  String? get weatherWarning => null;
+  String? get weatherWarning =>
+      ItineraryValidationService.getWeatherWarning(_draft.startDate, _draft.endDate);
 
   bool get canProceed => _validationErrors.isEmpty;
 
@@ -75,12 +75,14 @@ class Step2TripStyleVM extends ChangeNotifier {
     final todayOnly = DateTime(today.year, today.month, today.day);
     final maxStart = maxSelectableStartDate();
 
+    final maxEndDate = maxStart.add(Duration(days: maxTripDays));
+
     if (startDate == null || endDate == null) {
       errors['dates'] = 'Pick your travel dates.';
     } else if (startDate!.isBefore(todayOnly)) {
       errors['dates'] = 'Start date cannot be in the past.';
-    } else if (startDate!.isAfter(maxStart) || endDate!.isAfter(maxStart)) {
-      errors['dates'] = 'Travel dates must be within 6 months (180 days).';
+    } else if (startDate!.isAfter(maxStart) || endDate!.isAfter(maxEndDate)) {
+      errors['dates'] = 'Travel dates must be within 6 months.';
     } else if (totalDays > maxTripDays) {
       errors['dates'] = 'Trip duration is limited to a maximum of $maxTripDays days.';
     } else if (destinations.length > 1 && totalDays < 2) {

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/shared_services/trip_draft_notifier.dart';
 import '../../viewmodel/Itinerary/my_itineraries_vm.dart';
 import './manage_itinerary/manage_display_plan_screen.dart';
@@ -27,22 +27,8 @@ class _MyItinerariesScreenState extends State<MyItinerariesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = Supabase.instance.client.auth.currentUser;
-
-    print('CURRENT USER: ${user?.id}');
-
-    if (user == null) {
-      return const Scaffold(
-        body: Center(
-          child: Text('No user logged in'),
-        ),
-      );
-    }
-
     return ChangeNotifierProvider<MyItinerariesVM>(
-      create: (_) => MyItinerariesVM(
-        userId: user.id,
-      )..load(),
+      create: (_) => MyItinerariesVM()..load(),
       child: _ItinerariesView(
         searchController: _searchController,
       ),
@@ -257,6 +243,28 @@ class _ItinerariesView extends StatelessWidget {
                                 ),
                               ),
                             );
+                          },
+                          onDelete: () async {
+                            final confirmed = await showConfirmationDialog(
+                              context: context,
+                              title: 'Delete Itinerary?',
+                              message: 'Are you sure you want to permanently delete "${trip.title}"? This cannot be undone.',
+                              confirmLabel: 'Delete',
+                              icon: Icons.delete_forever_rounded,
+                              iconColor: AppColors.error,
+                              confirmColor: AppColors.error,
+                            );
+                            if (confirmed == true && context.mounted) {
+                              final success = await context.read<MyItinerariesVM>().deleteItinerary(trip.itineraryId);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(success ? 'Itinerary deleted.' : 'Failed to delete itinerary.'),
+                                    backgroundColor: success ? AppColors.ink : AppColors.error,
+                                  ),
+                                );
+                              }
+                            }
                           },
                         );
                       },

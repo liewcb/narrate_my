@@ -5,21 +5,21 @@
 // Candidate source: Supabase `places` table.
 // No Google Places request is made by this service.
 
-import '../../../core/config/itinerary_constants.dart';
-import '../../data_sources/remote/place_remote_source.dart';
+import '../../../core/services/database_manager.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
+import '../../repositories/interfaces/itinerary/place_repository.dart';
 import 'custom_place_service.dart';
 import 'scoring_service.dart';
 
 class DatabaseRecommendedPlacesService {
-  final PlaceRemoteSource _placeSource;
+  final PlaceRepository _placeRepository;
   final ScoringService _scoringService;
 
   DatabaseRecommendedPlacesService({
-    PlaceRemoteSource? placeSource,
+    PlaceRepository? placeRepository,
     ScoringService? scoringService,
-  })  : _placeSource = placeSource ?? PlaceRemoteSource(),
+  })  : _placeRepository = placeRepository ?? DatabaseManager().placeRepository,
         _scoringService = scoringService ?? ScoringService();
 
   static const double defaultRadiusMeters = 5000;
@@ -31,6 +31,7 @@ class DatabaseRecommendedPlacesService {
     required Coordinates? destinationCenter,
     required Set<String> usedPlaceIds,
     required String transportMode,
+    String travelerType = 'Solo',
     int maxPerCategory = defaultMaxPerCategory,
     double radiusMeters = defaultRadiusMeters,
   }) async {
@@ -45,7 +46,7 @@ class DatabaseRecommendedPlacesService {
 
     final responses = await Future.wait(
       anchors.map(
-        (anchor) => _placeSource.searchNearbyPlaces(
+        (anchor) => _placeRepository.searchDatabaseNearbyPlaces(
           latitude: anchor.latitude,
           longitude: anchor.longitude,
           radiusMeters: radiusMeters,
@@ -89,6 +90,8 @@ class DatabaseRecommendedPlacesService {
       mustVisitIds: const [],
       explorationTime: 'Standard',
       tripLocation: destinationCenter ?? anchors.first,
+      travelerType: travelerType,
+      transportMode: transportMode,
       strictInterestFilter: false,
     );
 
@@ -258,25 +261,23 @@ class DatabaseRecommendedPlacesService {
     required List<ExistingStopContext> existingStops,
     required String explorationTime,
   }) {
-    // 1. Get the total minutes available in the day (e.g., 9am to 8pm = 660 mins)
-    final window = ItineraryConstants.explorationWindows[explorationTime] ??
-        ItineraryConstants.explorationWindows['Standard']!;
-
-    final totalWindowMinutes = window.endMinutes - window.startMinutes;
+    // 1. For user manual recommendations and additions, allow the full active day
+    // (up to 23:00, i.e. 14 hours / 840 mins) rather than strictly capping at 10:00-18:00 (480 mins).
+    const maxDailyActiveMinutes = 840; // 14 hours (e.g. 09:00 to 23:00)
 
     // 2. Calculate time already used by existing stops
     int usedMinutes = 0;
     for (final stop in existingStops) {
       usedMinutes += stop.durationMinutes;
-      usedMinutes += stop.travelFromPrevMinutes ?? 0;
+      usedMinutes += stop.travelFromPrevMinutes;
     }
 
     // 3. Get the candidate's required time
     final candidateDuration = place.visitDurationMinutes ?? 60;
     final estimatedTravel = 20; // 20 mins rough travel estimate
 
-    // 4. If the used time + new time exceeds the day's limit, it physically cannot fit
-    return (usedMinutes + candidateDuration + estimatedTravel) <= totalWindowMinutes;
+    // 4. Check against extended day capacity
+    return (usedMinutes + candidateDuration + estimatedTravel) <= maxDailyActiveMinutes;
   }
 
 }

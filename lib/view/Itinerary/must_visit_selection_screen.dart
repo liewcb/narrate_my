@@ -4,7 +4,6 @@ import 'package:narrate_my/view/Itinerary/split_days_screen.dart';
 import 'package:narrate_my/view/Itinerary/widgets/view_place_detail_screen.dart';
 import 'package:narrate_my/view/Itinerary/widgets/wizard_app_bar.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/theme/colors.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
@@ -22,22 +21,11 @@ class MustVisitSelectionScreen extends StatefulWidget {
 class _MustVisitSelectionScreenState extends State<MustVisitSelectionScreen> {
   @override
   Widget build(BuildContext context) {
-    final user = Supabase.instance.client.auth.currentUser;
-
-    if (user == null) {
-      return const Scaffold(
-        body: Center(
-          child: Text('No user logged in'),
-        ),
-      );
-    }
-
     final sharedDraft = context.read<TripDraftNotifier>().draft;
 
     return ChangeNotifierProvider<Step3AddPlaceVM>(
       create: (_) => Step3AddPlaceVM(
         sharedDraft,
-        userId: user.id,
       ),
       child: const _Step3AddPlaceBody(),
     );
@@ -633,7 +621,7 @@ class _PlaceCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -686,7 +674,7 @@ class _PlaceCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -694,30 +682,34 @@ class _PlaceCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(color: AppColors.brandGreenLight, borderRadius: BorderRadius.circular(6)),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.star, size: 14, color: AppColors.brandTerracotta),
                       const SizedBox(width: 4),
-                      Text(place.rating.toStringAsFixed(1), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.brandCharcoal)),
+                      Text(place.rating.toStringAsFixed(1), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.brandCharcoal)),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    alignment: WrapAlignment.start,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       _infoChip(place.travelIcon, place.travelTime),
-                      if (place.duration != null) _infoChip(Icons.hourglass_bottom, place.duration!),
+                      if (place.duration != null) ...[
+                        const SizedBox(height: 2),
+                        _infoChip(Icons.hourglass_bottom, place.duration!),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: onToggle,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                       color: isAdded ? AppColors.brandGreen : AppColors.outlineLight,
                       borderRadius: BorderRadius.circular(8),
@@ -740,9 +732,16 @@ class _PlaceCard extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: AppColors.outline),
+        Icon(icon, size: 14, color: AppColors.outline),
         const SizedBox(width: 4),
-        Text(label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.normal, color: AppColors.outline)),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: AppColors.outline),
+          ),
+        ),
       ],
     );
   }

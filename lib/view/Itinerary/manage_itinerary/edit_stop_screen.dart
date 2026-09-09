@@ -9,7 +9,6 @@ import '../../../core/config/api_keys.dart';
 import '../../../core/services/google_maps_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_confirmation_dialog.dart';
-import '../../../core/services/database_manager.dart';
 import '../../../model/business_logic/itinerary_service/change_location_service.dart';
 import '../../../model/entities/itinerary_stop.dart';
 import '../../../model/entities/place.dart';
@@ -27,14 +26,11 @@ class EditStopScreen extends StatefulWidget {
   final ItineraryStop stop;
   final DateTime itineraryStartDate;
   final bool isReadOnly;
-  final String userId;
-
   const EditStopScreen({
     Key? key,
     required this.stop,
     required this.itineraryStartDate,
     this.isReadOnly = false,
-    this.userId = '252f0924-192c-42fe-8643-881da7bbf285',
   }) : super(key: key);
 
   @override
@@ -210,6 +206,8 @@ class _EditStopScreenState extends State<EditStopScreen> {
       message = 'This stop has been marked as completed and cannot be modified.';
     } else if (_viewModel.isSkipped) {
       message = 'This stop has been marked as skipped and cannot be modified.';
+    } else if (_viewModel.isTimeOver) {
+      message = 'This place can no longer be changed, schedule time already passed.';
     } else {
       message = 'This stop is locked and cannot be modified.';
     }
@@ -503,7 +501,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
       ),
       builder: (_) => _ChangeLocationSheet(
         stop: _viewModel.stop,
-        userId: widget.userId,
       ),
     );
     if (confirmed == true && mounted) {
@@ -603,6 +600,15 @@ class _EditStopScreenState extends State<EditStopScreen> {
                     color: AppColors.ink,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
+                  ),
+                )
+              else if (options.isEmpty)
+                const Text(
+                  'No alternative start times available',
+                  style: TextStyle(
+                    color: AppColors.inkFaint,
+                    fontSize: 14,
+                    fontStyle: FontStyle.italic,
                   ),
                 )
               else
@@ -1241,35 +1247,6 @@ class _EditStopScreenState extends State<EditStopScreen> {
     );
   }
 
-  Future<void> _save(BuildContext context) async {
-    if (_viewModel.isSkipped) {
-      final reasonSaved = await _viewModel.saveSkipReason(
-        _skipReasonController.text.trim(),
-      );
-      if (!reasonSaved) {
-        _showMessage(context, _viewModel.error ?? 'Unable to save.');
-        return;
-      }
-      _hasChanges = true;
-    }
-
-    if (_viewModel.hasTimeChanges) {
-      final confirmed = await _confirmTimeChange(context);
-      if (confirmed != true) {
-        return;
-      }
-      final timeSaved = await _viewModel.saveTimeChanges();
-      if (!timeSaved) {
-        _showMessage(context, _viewModel.error ?? 'Unable to update time.');
-        return;
-      }
-      _hasChanges = true;
-      _showMessage(context, 'Stop time updated successfully.');
-    }
-
-    Navigator.maybePop(context, _hasChanges);
-  }
-
   Future<bool?> _confirmTimeChange(BuildContext context) {
     final timeFormat = DateFormat('hh:mm a');
     final from = '${timeFormat.format(_viewModel.stop.startTime)} – '
@@ -1301,9 +1278,8 @@ class _EditStopScreenState extends State<EditStopScreen> {
 
 class _ChangeLocationSheet extends StatefulWidget {
   final ItineraryStop stop;
-  final String userId;
 
-  const _ChangeLocationSheet({required this.stop, required this.userId});
+  const _ChangeLocationSheet({required this.stop});
 
   @override
   State<_ChangeLocationSheet> createState() => _ChangeLocationSheetState();
@@ -1318,40 +1294,25 @@ class _ChangeLocationSheetState extends State<_ChangeLocationSheet> {
   bool _isSearching = false;
   String? _searchError;
 
-  List<Place> _bookmarks = [];
-  bool _isLoadingBookmarks = true;
-  String? _bookmarksError;
+  List<Place> get _bookmarks => _vm.bookmarks;
+  bool get _isLoadingBookmarks => _vm.isLoadingBookmarks;
+  String? get _bookmarksError => _vm.bookmarksError;
 
   @override
   void initState() {
     super.initState();
     _vm = ChangeLocationViewModel(stop: widget.stop);
+    _vm.addListener(_refreshBookmarks);
     _vm.loadRecommendations();
     _loadBookmarks();
   }
 
-  Future<void> _loadBookmarks() async {
-    try {
-      final repo = DatabaseManager().bookmarkRepository;
-      final dtos = await repo.getBookmarksWithPlaces(widget.userId);
-      if (mounted) {
-        setState(() {
-          _bookmarks = dtos.map((d) => d.place).toList();
-          _isLoadingBookmarks = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _bookmarksError = 'Could not load bookmarks.';
-          _isLoadingBookmarks = false;
-        });
-      }
-    }
-  }
+  void _refreshBookmarks() { if (mounted) setState(() {}); }
+  Future<void> _loadBookmarks() => _vm.loadBookmarks();
 
   @override
   void dispose() {
+    _vm.removeListener(_refreshBookmarks);
     _vm.dispose();
     _queryController.dispose();
     super.dispose();

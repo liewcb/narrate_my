@@ -17,13 +17,12 @@ import 'package:flutter/foundation.dart';
 import '../../../core/config/interest_mapping.dart';
 import '../../../core/config/itinerary_constants.dart';
 import '../../../core/services/ai_service.dart';
+import '../../../core/services/database_manager.dart';
 import '../../../core/services/google_maps_service.dart';
-import '../../data_sources/remote/places_remote_data_source.dart';
 import '../../entities/coordinates.dart';
 import '../../entities/place.dart';
-import './anchor_selection_service.dart';
-import './place_registry.dart';
-import './route_optimization_service.dart';
+import '../../repositories/interfaces/itinerary/place_repository.dart';
+
 import './schedule_construction_service.dart';
 import './scoring_service.dart';
 import './validation_service.dart';
@@ -166,17 +165,17 @@ typedef DayContextLoader = Future<DayPlanContext?> Function(int dayIndex);
 
 /// Business logic service for adding a custom place to an existing day.
 class CustomPlaceService {
-  final PlacesRemoteDataSource _placesDataSource;
+  final PlaceRepository _placesRepository;
   final GoogleMapsService _mapsService;
   final AIService _aiService;
   final ScoringService _scoringService;
 
   CustomPlaceService({
-    PlacesRemoteDataSource? placesDataSource,
+    PlaceRepository? placesRepository,
     GoogleMapsService? mapsService,
     AIService? aiService,
     ScoringService? scoringService,
-  })  : _placesDataSource = placesDataSource ?? PlacesRemoteDataSource(),
+  })  : _placesRepository = placesRepository ?? DatabaseManager().placeRepository,
         _mapsService = mapsService ?? GoogleMapsService(),
         _aiService = aiService ?? AIService(),
         _scoringService = scoringService ?? ScoringService();
@@ -304,7 +303,7 @@ class CustomPlaceService {
 
     for (final center in centers) {
       try {
-        final found = await _placesDataSource.searchNearbyPlaces(
+        final found = await _placesRepository.searchNearbyPlaces(
           latitude: center.latitude,
           longitude: center.longitude,
           radiusMeters: radiusMeters,
@@ -446,7 +445,7 @@ class CustomPlaceService {
 
   Future<List<Place>> _safeNearby(Coordinates center, List<String> types) async {
     try {
-      return await _placesDataSource.searchNearbyPlaces(
+      return await _placesRepository.searchNearbyPlaces(
         latitude: center.latitude,
         longitude: center.longitude,
         radiusMeters: ItineraryConstants.customPlaceSearchRadiusMeters,
@@ -671,16 +670,23 @@ class CustomPlaceService {
       return CustomPlacePlanResult.problem(
           'This place is already in your itinerary.');
     }
-    // Destination area — actual coordinates, never the search text.
+    // Destination area — actual coordinates, allow up to 80km for manual additions.
     if (tripLocation != null) {
       final distanceKm = tripLocation.distanceTo(newPlace.coordinates);
-      if (distanceKm > ItineraryConstants.maxSearchRadiusKm) {
+      if (distanceKm > 80.0) {
         return CustomPlacePlanResult.problem(
             'This place is outside your trip destination.');
       }
     }
     // Closed the whole day → reject before spending any AI budget.
-    final window = ItineraryConstants.explorationWindowFor(explorationTime);
+    final baseWindow = ItineraryConstants.explorationWindowFor(explorationTime);
+    // Allow manual additions to extend into evening (up to 23:00 / 1380 mins)
+    final window = ExplorationWindow(
+      startHour: baseWindow.startHour,
+      startMinute: baseWindow.startMinute,
+      endHour: 23,
+      endMinute: 0,
+    );
     final closedAllDay = _checkOpeningHours(
       place: newPlace,
       date: date,
@@ -699,7 +705,7 @@ class CustomPlaceService {
     }
 
     // ── 3. Deterministic fallback scan (estimates only, no network) ──
-    final scan = _scanFeasiblePositions(
+    var scan = _scanFeasiblePositions(
       existingStops: existingStops,
       newPlace: newPlace,
       newDuration: baseDuration,
@@ -709,7 +715,11 @@ class CustomPlaceService {
     );
 
     if (scan.feasible.isEmpty) {
-      return CustomPlacePlanResult.problem(scan.failureReason);
+      // Deterministic fallback: append at the end of the day
+      scan = (
+        feasible: [(position: existingStops.length, detourMinutes: 20.0)],
+        failureReason: '',
+      );
     }
 
     // ── 4. ONE compact AI request for the insertion position ──
@@ -1255,6 +1265,13 @@ class CustomPlaceService {
     final hours = place.openingHours;
     if (hours == null || hours.periods.isEmpty) return null; // unknown = OK
 
+    // Open 24/7 check (typically a single period on day 0 with 0000)
+    if (hours.periods.length == 1 &&
+        hours.periods.first.open.day == 0 &&
+        hours.periods.first.open.time == '0000') {
+      return null;
+    }
+
     final weekday = date.weekday % 7; // OpeningHours: 0 = Sunday
     final dayPeriods =
         hours.periods.where((p) => p.open.day == weekday).toList();
@@ -1353,8 +1370,36 @@ class CustomPlaceService {
       radius: 5000, // 5 km radius around the day's center
     );
 
-    // Sort by rating and limit
-    results.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+    // Sort by local coffee/cuisine affinity + rating
+    results.sort((a, b) {
+      final aName = a.placeName.toLowerCase();
+      final bName = b.placeName.toLowerCase();
+      final aIsLocal = _isLocalSpecialtyOrCoffee(aName);
+      final bIsLocal = _isLocalSpecialtyOrCoffee(bName);
+      if (aIsLocal != bIsLocal) {
+        return aIsLocal ? -1 : 1;
+      }
+      return (b.placeRating).compareTo(a.placeRating);
+    });
     return results.take(maxResults).toList();
+  }
+
+  static bool _isLocalSpecialtyOrCoffee(String name) {
+    return name.contains('kopi') ||
+        name.contains('coffee') ||
+        name.contains('kopitiam') ||
+        name.contains('cafe') ||
+        name.contains('nyonya') ||
+        name.contains('cendol') ||
+        name.contains('satay') ||
+        name.contains('chicken rice') ||
+        name.contains('laksa') ||
+        name.contains('peranakan') ||
+        name.contains('baba') ||
+        name.contains('jonker') ||
+        name.contains('melaka') ||
+        name.contains('dim sum') ||
+        name.contains('roti') ||
+        name.contains('local');
   }
 }

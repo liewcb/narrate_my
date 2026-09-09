@@ -93,18 +93,32 @@ class _ARPlacementContentState extends State<_ARPlacementContent>
     WidgetsBinding.instance.addObserver(this);
   }
 
+  void _onAssistantChanged() {
+    if (!mounted) return;
+    final vm = context.read<ARPlacementViewModel>();
+    if (_assistantController?.isAssistantOpen == true) {
+      vm.pauseStorytelling();
+      vm.pauseARSession();
+    } else {
+      vm.resumeARSession();
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_assistantController != null) return;
-    _assistantController = context.read<GlobalAiAssistantController>();
+    final controller = context.read<GlobalAiAssistantController>();
+    _assistantController = controller;
+    controller.addListener(_onAssistantChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _assistantController?.setArPlacementActive(true);
+      if (mounted) controller.setArPlacementActive(true);
     });
   }
 
   @override
   void dispose() {
+    _assistantController?.removeListener(_onAssistantChanged);
     _assistantController?.setArPlacementActive(false);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();

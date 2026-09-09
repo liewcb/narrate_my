@@ -19,7 +19,7 @@ class LocalDatabaseService {
     final path = join(await getDatabasesPath(), 'narratemy.db');
     return openDatabase(
       path,
-      version: 5, // ✅ Incremented to 5 to trigger migration for the new table
+      version: 6, // ✅ Incremented to 6 to add itinerary_must_visits table
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -38,9 +38,11 @@ class LocalDatabaseService {
     if (oldVersion < 4) {
       await _upgradeItineraryV4(db);
     }
-    // ✅ NEW: Migration for version 5 to add itinerary_selected_destinations table
     if (oldVersion < 5) {
       await _upgradeItineraryV5(db);
+    }
+    if (oldVersion < 6) {
+      await _upgradeItineraryV6(db);
     }
   }
 
@@ -66,6 +68,22 @@ class LocalDatabaseService {
         created_at TEXT,
         updated_at TEXT,
         PRIMARY KEY (itinerary_id, destination_id)
+      )
+    ''');
+  }
+
+  /// ✅ NEW: Creates the itinerary_must_visits table for existing users upgrading to v6
+  Future<void> _upgradeItineraryV6(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS itinerary_must_visits (
+        must_visit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        itinerary_id TEXT NOT NULL,
+        place_id TEXT NOT NULL,
+        place_name TEXT NOT NULL,
+        destination_id TEXT,
+        source TEXT,
+        is_verified INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL
       )
     ''');
   }
@@ -166,6 +184,19 @@ class LocalDatabaseService {
         created_at TEXT,
         updated_at TEXT,
         PRIMARY KEY (itinerary_id, destination_id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE ${guard}itinerary_must_visits (
+        must_visit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        itinerary_id TEXT NOT NULL,
+        place_id TEXT NOT NULL,
+        place_name TEXT NOT NULL,
+        destination_id TEXT,
+        source TEXT,
+        is_verified INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL
       )
     ''');
   }

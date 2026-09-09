@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -335,6 +337,9 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
         dayDate: day.date,
         existingStops: existingStops,
         allDayPlaceIds: allDayPlaceIds,
+        defaultTravelIcon: day.places.isNotEmpty
+            ? day.places.first.travelIcon
+            : Icons.directions_car_rounded,
         onInsert: (result) {
           setState(() {
             final places = _editedDays[dayIndex].places;
@@ -676,6 +681,15 @@ class _ManageEditItineraryScreenState extends State<ManageEditItineraryScreen> {
           ),
           markers: _buildMarkersForDay(dayIndex),
           polylines: _buildPolylinesForDay(dayIndex),
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<OneSequenceGestureRecognizer>(
+              () => EagerGestureRecognizer(),
+            ),
+          },
+          scrollGesturesEnabled: true,
+          zoomGesturesEnabled: true,
+          rotateGesturesEnabled: true,
+          tiltGesturesEnabled: true,
           onMapCreated: (controller) {
             _mapController = controller;
             _fitMapBoundsForDay(dayIndex);
@@ -932,6 +946,7 @@ class _AddPlaceToDaySheet extends StatefulWidget {
   final DateTime dayDate;
   final List<AddPlaceExistingStop> existingStops;
   final Set<String> allDayPlaceIds;
+  final IconData defaultTravelIcon;
   final ValueChanged<AddPlaceInsertResult> onInsert;
 
   const _AddPlaceToDaySheet({
@@ -939,6 +954,7 @@ class _AddPlaceToDaySheet extends StatefulWidget {
     required this.dayDate,
     required this.existingStops,
     required this.allDayPlaceIds,
+    this.defaultTravelIcon = Icons.directions_car_rounded,
     required this.onInsert,
   });
 
@@ -1286,7 +1302,7 @@ class _AddPlaceToDaySheetState extends State<_AddPlaceToDaySheet> {
       travelTime: latest.travelFromPreviousMinutes > 0
           ? '${latest.travelFromPreviousMinutes} min'
           : '',
-      travelIcon: Icons.directions_car,
+      travelIcon: widget.defaultTravelIcon,
       duration: '${latest.visitDurationMinutes} min',
       location: place.placeAddress,
       latitude: place.placeLatitude,
@@ -1352,7 +1368,7 @@ class _EditableStopItem extends StatelessWidget {
             padding: const EdgeInsets.only(left: 20, bottom: 4),
             child: Row(
               children: [
-                const Icon(Icons.directions_car, size: 14, color: AppColors.inkFaint),
+                Icon(place.travelIcon, size: 14, color: AppColors.inkFaint),
                 const SizedBox(width: 6),
                 Text(
                   transitTime!,

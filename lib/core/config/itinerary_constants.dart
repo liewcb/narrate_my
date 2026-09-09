@@ -553,7 +553,7 @@ MANDATORY TIME & PLACEMENT RULES — FAST PACE
 
   /// Maximum route travel time before the route becomes
   /// a validation concern.
-  static const int hardMaxTravelMinutes = 60;
+  static const int hardMaxTravelMinutes = 180;
 
   // ============================================================
   // 9. CLUSTERING

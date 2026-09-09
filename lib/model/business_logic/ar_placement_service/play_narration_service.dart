@@ -5,7 +5,6 @@ import '../../entities/ar_placement.dart';
 import '../../repositories/interfaces/ar_heritage/ar_heritage_repository.dart';
 import '../ar_heritage_interpretation_service/get_attraction_content_service.dart';
 import '../ar_heritage_interpretation_service/translation_service.dart';
-import '../../data_sources/remote/auth_remote_data_source.dart';
 import '../../../core/localization/app_localizations.dart';
 
 /// Business logic service matching `PlayNarrationService` in architecture diagram.
@@ -16,7 +15,6 @@ import '../../../core/localization/app_localizations.dart';
 class PlayNarrationService {
   final FlutterTts? _flutterTts;
   final GetAttractionContentService _contentService;
-  final AuthRemoteDataSource _authDataSource;
   final TranslationService _translationService;
 
   StoryScript? _originalScript; // Untranslated script from database
@@ -43,14 +41,12 @@ class PlayNarrationService {
     FlutterTts? flutterTts,
     GetAttractionContentService? contentService,
     ARHeritageRepository? heritageRepo,
-    AuthRemoteDataSource? authDataSource,
     TranslationService? translationService,
   })  : _flutterTts = flutterTts ?? FlutterTts(),
         _contentService = contentService ??
             (heritageRepo != null
                 ? GetAttractionContentService(repository: heritageRepo)
                 : GetAttractionContentService()),
-        _authDataSource = authDataSource ?? AuthRemoteDataSource(),
         _translationService = translationService ?? TranslationService() {
     _initTts();
   }
@@ -146,11 +142,8 @@ class PlayNarrationService {
   /// Loads story script for the given marker and retrieves user's preferred_language from `profiles`
   /// REQ_201_4: Automatically translates the attraction content into the user's preferred language before narration generation.
   Future<void> loadScriptForMarker(String markerId, String landmarkName, {StoryScript? initialScript}) async {
-    // 1. Fetch preferred_language from Supabase profiles (if logged in, else AppLocalizations.currentCode)
-    String langCode = await _authDataSource.fetchCurrentPreferredLanguage();
-    if (langCode == 'en' && AppLocalizations.currentCode != 'en') {
-      langCode = AppLocalizations.currentCode;
-    }
+    // Use the active app language; profile synchronization belongs to the profile layer.
+    final langCode = AppLocalizations.currentCode;
     _currentLanguage = TTSLanguageOption.fromCode(langCode);
 
     try {

@@ -1,10 +1,12 @@
-﻿import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
+import '../../core/config/api_keys.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/custom_place_service.dart';
@@ -12,9 +14,11 @@ import '../../model/business_logic/itinerary_service/generation_pipeline_service
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
 import '../../model/entities/coordinates.dart';
 import '../../model/entities/itinerary_stop.dart';
+import '../../model/entities/place.dart';
 import '../../viewmodel/Itinerary/edit_itinerary_vm.dart';
 import './recommended_places_screen.dart';
 import './widgets/change_location_picker_sheet.dart';
+import './widgets/view_place_detail_screen.dart';
 
 /// Edits a single day of the generated itinerary during preview/review.
 class EditItineraryScreen extends StatefulWidget {
@@ -46,6 +50,9 @@ class EditItineraryScreen extends StatefulWidget {
 class _EditItineraryScreenState extends State<EditItineraryScreen> {
   late EditItineraryViewModel _vm;
   bool _changesApplied = false;
+  bool _allowPop = false;
+  bool _dialogOpen = false;
+  bool _removing = false;
   GoogleMapController? _mapController;
 
   late int _selectedDayIndex;
@@ -62,7 +69,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     _selectedDayIndex = _totalDays > 0
         ? (widget.dayNumber - 1).clamp(0, _totalDays - 1)
         : -1;
-    _tabKeys = List.generate(_totalDays, (_) => GlobalKey());
+    _tabKeys = List.generate(_totalDays + 1, (_) => GlobalKey());
     _initViewModel();
   }
 
@@ -92,8 +99,9 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     super.dispose();
   }
 
-  void _selectDay(int index) {
-    if (index == _selectedDayIndex) return;
+  Future<void> _selectDay(int index) async {
+    if (index == _selectedDayIndex || _removing) return;
+    if (!await _confirmDiscard() || !mounted) return;
 
     try {
       final oldVm = _selectedDayIndex >= 0 ? _vm : null;
@@ -126,7 +134,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
             curve: Curves.easeOut,
           );
         }
-        final tabKeyIndex = index;
+        final tabKeyIndex = index == -1 ? 0 : index + 1;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _centerSelectedTab(tabKeyIndex);
         });
@@ -159,7 +167,9 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           position: LatLng(stop.place.latitude, stop.place.longitude),
           infoWindow: InfoWindow(
             title: 'Stop ${i + 1}: ${stop.name}',
-            snippet: '${_fmt(stop.startTime)} – ${_fmt(stop.endTime)}',
+            snippet: (stop.startTime.hour == 0 && stop.startTime.minute == 0 && stop.endTime.hour == 0 && stop.endTime.minute == 0)
+                ? 'Unscheduled'
+                : '${_fmt(stop.startTime)} – ${_fmt(stop.endTime)}',
           ),
           icon: BitmapDescriptor.defaultMarkerWithHue(
             i == 0 ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueRed,
@@ -222,30 +232,40 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
   }
 
-  Future<void> _handleBack() async {
-    if (_selectedDayIndex < 0 || !_vm.hasChanges || _changesApplied) {
-      Navigator.pop(context, null);
-      return;
-    }
-    final discard = await showConfirmationDialog(
-      context: context,
-      title: 'Discard changes?',
-      message: 'Your itinerary edits have not been applied.',
-      confirmLabel: 'Discard',
-      icon: Icons.warning_amber_rounded,
-      iconBgColor: AppColors.error.withOpacity(0.12),
-      iconColor: AppColors.error,
-      confirmColor: AppColors.error,
-    );
-    if (discard == true && mounted) {
-      Navigator.pop(context, null);
+  Future<bool> _confirmDiscard() async {
+    if (_dialogOpen) return false;
+    if (_selectedDayIndex < 0 || !_vm.hasChanges || _changesApplied) return true;
+    _dialogOpen = true;
+    try {
+      return await showConfirmationDialog(
+        context: context,
+        title: 'Discard unsaved changes?',
+        message: 'Your edits have not been saved. Tap Review & Save to keep them, or discard them to leave.',
+        confirmLabel: 'Discard changes',
+        cancelLabel: 'Keep editing',
+        confirmColor: AppColors.error,
+      ) == true;
+    } finally {
+      _dialogOpen = false;
     }
   }
 
-  void _reviewChanges() {
-    if (_selectedDayIndex < 0) return;
+  void _leaveEditor([ItineraryResult? result]) {
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.pop(context, result);
+    });
+  }
 
-    final errors = _vm.validate();
+  Future<void> _handleBack() async {
+    if (_removing) return;
+    if (await _confirmDiscard() && mounted) _leaveEditor();
+  }
+
+  void _reviewChanges() {
+    if (_selectedDayIndex < 0 || _removing) return;
+
+    final errors = _vm.validateStructural();
     if (errors.isNotEmpty) {
       _showProblem(_friendlyValidationError(errors.first));
       return;
@@ -253,7 +273,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     _vm.applyChanges();
     if (_vm.appliedResult != null) {
       _changesApplied = true;
-      Navigator.pop(context, _vm.appliedResult);
+      _leaveEditor(_vm.appliedResult);
     }
   }
 
@@ -355,7 +375,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.bg,
+      backgroundColor: const Color(0xFFF8F5EF),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
       ),
@@ -394,6 +414,19 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     }
   }
 
+  Future<void> _openPlaceDetails(EditableStop stop) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ViewPlaceDetailScreen(
+          placeId: stop.placeId,
+          initialPlace: stop.place,
+          showStatusToggle: false,
+        ),
+      ),
+    );
+  }
+
   Future<void> _removeStop(int index) async {
     if (index < 0 || index >= _vm.stops.length) return;
     final stop = _vm.stops[index];
@@ -415,9 +448,19 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     );
     if (confirmed != true || !mounted) return;
 
-    final ok = await _vm.removeStopByPlaceId(stop.placeId);
-    if (mounted && ok) {
-      _fitMapBounds();
+    setState(() => _removing = true);
+    try {
+      final ok = await _vm.removeStopByPlaceId(stop.placeId);
+      if (!mounted) return;
+      if (ok) {
+        _fitMapBounds();
+      } else {
+        _showProblem(_vm.error ?? 'Unable to remove this place. Please try again.');
+      }
+    } catch (_) {
+      if (mounted) _showProblem('Unable to remove this place. Please try again.');
+    } finally {
+      if (mounted) setState(() => _removing = false);
     }
   }
 
@@ -637,8 +680,12 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       final ok = _vm.setTimeRange(index, selectedRange[0], selectedRange[1]);
       if (ok) {
         _fitMapBounds();
+        final conflict = _vm.getStopConflict(index);
+        if (conflict != null) {
+          _showProblem('Time updated. Conflict detected: $conflict');
+        }
       } else {
-        _showProblem(_vm.error ?? 'Schedule conflict detected. Try shortening duration or adjusting adjacent stops.');
+        _showProblem(_vm.error ?? 'Unable to update time.');
       }
     }
   }
@@ -650,8 +697,15 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
     return ListenableBuilder(
       listenable: _selectedDayIndex >= 0 ? _vm : Listenable.merge([]),
       builder: (context, _) {
-        return Scaffold(
-          backgroundColor: AppColors.bg,
+        return PopScope<ItineraryResult>(
+          canPop: _allowPop,
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop) _handleBack();
+          },
+          child: AbsorbPointer(
+            absorbing: _removing,
+            child: Scaffold(
+          backgroundColor: const Color(0xFFF8F5EF),
           appBar: _buildAppBar(),
           body: _totalDays == 0
               ? Center(
@@ -672,6 +726,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_removing) const LinearProgressIndicator(),
                     _buildCompactHero(), // ✅ Added compact hero section
                     const SizedBox(height: 16),
                     _buildDaySelector(),
@@ -682,6 +737,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
                       _buildMapPreview(),
                       const SizedBox(height: AppSpacing.cardPadding),
                       _buildStopsList(),
+                    ] else ...[
+                      _buildAllDaysOverview(),
                     ],
                     const SizedBox(height: 120),
                   ],
@@ -693,6 +750,8 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               ],
             ],
           ),
+        ),
+          ),
         );
       },
     );
@@ -700,7 +759,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: AppColors.bg,
+      backgroundColor: const Color(0xFFF8F5EF),
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: AppColors.ink),
@@ -807,15 +866,16 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
       child: ListView.separated(
         controller: _tabScrollController,
         scrollDirection: Axis.horizontal,
-        itemCount: _totalDays,
+        itemCount: _totalDays + 1,
         separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.componentGap),
         itemBuilder: (context, index) {
-          final dayIndex = index;
-          final isActive = dayIndex == _selectedDayIndex;
+          final isAllDays = index == 0;
+          final dayIndex = index - 1;
+          final isActive = isAllDays ? _selectedDayIndex == -1 : dayIndex == _selectedDayIndex;
 
           return GestureDetector(
             key: _tabKeys[index],
-            onTap: () => _selectDay(dayIndex),
+            onTap: () => _selectDay(isAllDays ? -1 : dayIndex),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(
@@ -828,7 +888,7 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
               ),
               child: Center(
                 child: Text(
-                  'Day ${dayIndex + 1}',
+                  isAllDays ? 'All Days' : 'Day $index',
                   style: GoogleFonts.nunito(
                     fontSize: 13,
                     fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
@@ -844,21 +904,248 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 
   Widget _buildHeader() {
-    final dateFmt = DateFormat('d MMM');
+    final dateFmt = DateFormat('EEEE, d MMM yyyy');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Day ${_vm.dayNumber} Schedule',
+                style: GoogleFonts.nunito(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.teal.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Text(
+                  '${_vm.stops.length} stops',
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.teal,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            dateFmt.format(_vm.dayDate),
+            style: GoogleFonts.nunito(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.inkFaint,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Reorder, edit or add places to your day.',
+            style: AppTextStyles.labelSm,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAllDaysOverview() {
+    final days = widget.result.scheduledDays ?? const <ScheduledDay>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ✅ Removed the redundant widget.title since it's in the hero now
-        Text(
-          'Day ${_vm.dayNumber} · ${dateFmt.format(_vm.dayDate)}',
-          style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: Border.all(color: AppColors.moduleBorder.withOpacity(0.6)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'All Days Overview',
+                style: GoogleFonts.nunito(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${days.length} Days Trip • Select any day to edit stops and reorder.',
+                style: AppTextStyles.labelSm,
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          'Reorder, edit or add places to your day.',
-          style: AppTextStyles.labelSm,
-        ),
+        const SizedBox(height: AppSpacing.cardPadding),
+        _buildAllDaysMapPreview(),
+        const SizedBox(height: AppSpacing.cardPadding),
+        for (int i = 0; i < days.length; i++) ...[
+          _buildAllDaysDayCard(i, days[i]),
+          const SizedBox(height: 12),
+        ],
       ],
+    );
+  }
+
+  Widget _buildAllDaysDayCard(int dayIndex, ScheduledDay day) {
+    final dateFmt = DateFormat('d MMM');
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.moduleBorder.withOpacity(0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Day ${dayIndex + 1} · ${dateFmt.format(day.date)}',
+                style: GoogleFonts.nunito(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.teal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  minimumSize: const Size(0, 32),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+                onPressed: () => _selectDay(dayIndex),
+                child: Text(
+                  'Edit Day ${dayIndex + 1}',
+                  style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${day.stops.length} stops planned',
+            style: GoogleFonts.nunito(fontSize: 13, color: AppColors.inkFaint),
+          ),
+          if (day.stops.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final s in day.stops.take(4))
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface2,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      s.attraction.place.placeName,
+                      style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.ink),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                if (day.stops.length > 4)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface2,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '+${day.stops.length - 4} more',
+                      style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.teal),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAllDaysMapPreview() {
+    final allStops = <Place>[];
+    final days = widget.result.scheduledDays ?? const <ScheduledDay>[];
+    for (final d in days) {
+      for (final s in d.stops) {
+        if (s.attraction.place.latitude != 0 && s.attraction.place.longitude != 0) {
+          allStops.add(s.attraction.place);
+        }
+      }
+    }
+    final initialPos = allStops.isNotEmpty
+        ? LatLng(allStops.first.latitude, allStops.first.longitude)
+        : const LatLng(3.1390, 101.6869);
+
+    final markers = <Marker>{};
+    for (int d = 0; d < days.length; d++) {
+      final day = days[d];
+      final hue = (d * 55.0) % 360.0;
+      for (int i = 0; i < day.stops.length; i++) {
+        final stop = day.stops[i];
+        final p = stop.attraction.place;
+        if (p.latitude == 0 && p.longitude == 0) continue;
+        markers.add(
+          Marker(
+            markerId: MarkerId('all_${d}_${p.placeId}_$i'),
+            position: LatLng(p.latitude, p.longitude),
+            icon: BitmapDescriptor.defaultMarkerWithHue(hue),
+            infoWindow: InfoWindow(
+              title: 'Day ${d + 1} • Stop ${i + 1}: ${p.placeName}',
+            ),
+          ),
+        );
+      }
+    }
+
+    return Container(
+      height: 200,
+      width: double.infinity,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(AppRadius.card)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: GoogleMap(
+          key: const ValueKey('map_all_days_overview'),
+          initialCameraPosition: CameraPosition(target: initialPos, zoom: 11),
+          markers: markers,
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+          },
+          scrollGesturesEnabled: true,
+          zoomGesturesEnabled: true,
+          rotateGesturesEnabled: true,
+          tiltGesturesEnabled: true,
+          zoomControlsEnabled: false,
+          myLocationButtonEnabled: false,
+        ),
+      ),
     );
   }
 
@@ -878,6 +1165,15 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           initialCameraPosition: CameraPosition(target: initialPos, zoom: 11),
           markers: _buildMarkers(),
           polylines: _buildPolylines(),
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<OneSequenceGestureRecognizer>(
+              () => EagerGestureRecognizer(),
+            ),
+          },
+          scrollGesturesEnabled: true,
+          zoomGesturesEnabled: true,
+          rotateGesturesEnabled: true,
+          tiltGesturesEnabled: true,
           onMapCreated: (controller) {
             _mapController = controller;
             _fitMapBounds();
@@ -891,12 +1187,43 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
 
   Widget _buildStopsList() {
     final stops = _vm.stops;
+    final hasAnyConflict = stops.asMap().entries.any((e) => _vm.getStopConflict(e.key) != null);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'STOPS',
-          style: AppTextStyles.sectionLabel,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'STOPS',
+              style: AppTextStyles.sectionLabel,
+            ),
+            if (hasAnyConflict)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF5E5),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                  border: Border.all(color: const Color(0xFFE6C58B)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, size: 12, color: Color(0xFFE65100)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Conflicts Detected',
+                      style: GoogleFonts.nunito(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF8A5A18),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
         ReorderableListView.builder(
@@ -909,13 +1236,18 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
           },
           itemBuilder: (context, index) {
             final stop = stops[index];
+            final conflict = _vm.getStopConflict(index);
+            final isLast = index == stops.length - 1;
             return _StopItem(
-              key: ValueKey(stop.placeId),
+              key: ValueKey('stop_${stop.placeId}_$index'),
               stop: stop,
               number: index + 1,
+              isLast: isLast,
+              conflict: conflict,
               onEditTimeRange: () => _pickTimeRange(index),
               onReplace: () => _showReplacePicker(index),
               onDelete: () => _removeStop(index),
+              onOpenDetails: () => _openPlaceDetails(stop),
             );
           },
         ),
@@ -924,34 +1256,105 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 
   Widget _buildFloatingAddButton() {
-    return FloatingActionButton(
-      onPressed: _showAddPicker,
-      backgroundColor: AppColors.green,
-      child: const Icon(Icons.add, color: AppColors.bg, size: 26),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.teal.withOpacity(0.35),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _showAddPicker,
+          borderRadius: BorderRadius.circular(30),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0D9488), Color(0xFF14B8A6)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.add_location_alt_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Add Place',
+                  style: GoogleFonts.nunito(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildBottomButton() {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 4.0, sigmaY: 4.0),
-        child: Container(
-          padding: const EdgeInsets.all(AppSpacing.cardPadding),
-          color: AppColors.bg.withOpacity(0.9),
-          child: ElevatedButton(
-            onPressed: _reviewChanges,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: AppColors.bg,
-              minimumSize: const Size(double.infinity, 52),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.pill),
+    return Container(
+      padding: EdgeInsets.only(
+        left: AppSpacing.screenMargin,
+        right: AppSpacing.screenMargin,
+        top: 12,
+        bottom: MediaQuery.of(context).padding.bottom + 12,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+        border: Border(
+          top: BorderSide(
+            color: AppColors.moduleBorder.withOpacity(0.8),
+            width: 1,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.button),
+            ),
+          ),
+          onPressed: _reviewChanges,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Review & Save Day ${_vm.dayNumber}',
+                style: GoogleFonts.nunito(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
               ),
-            ),
-            child: Text(
-              'Review Changes',
-              style: AppTextStyles.button,
-            ),
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward_rounded, size: 18, color: Colors.white),
+            ],
           ),
         ),
       ),
@@ -969,184 +1372,437 @@ class _EditItineraryScreenState extends State<EditItineraryScreen> {
   }
 }
 
-// ─── Refined De-Cluttered Place Card Item ─────────────────────
+// ─── Modern Timeline Place Card Item ──────────────────────────
 
 class _StopItem extends StatelessWidget {
   final EditableStop stop;
   final int number;
+  final bool isLast;
+  final String? conflict;
   final VoidCallback onEditTimeRange;
   final VoidCallback onReplace;
   final VoidCallback onDelete;
+  final VoidCallback onOpenDetails;
 
   const _StopItem({
     super.key,
     required this.stop,
     required this.number,
+    this.isLast = false,
+    this.conflict,
     required this.onEditTimeRange,
     required this.onReplace,
     required this.onDelete,
+    required this.onOpenDetails,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isUnscheduled = (stop.startTime.hour == 0 && stop.startTime.minute == 0 && stop.endTime.hour == 0 && stop.endTime.minute == 0);
     final startTimeStr = _fmt(stop.startTime);
     final endTimeStr = _fmt(stop.endTime);
+    final rating = stop.place.rating;
+    final category = _resolveCategoryLabel(stop.place);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Stack(
         children: [
-          // Step Number Badge
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: stop.isMustVisit ? AppColors.accent : AppColors.surface2,
-            ),
-            child: Center(
-              child: Text(
-                '$number',
-                style: GoogleFonts.nunito(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: stop.isMustVisit ? AppColors.bg : AppColors.ink,
-                ),
+          if (!isLast)
+            Positioned(
+              top: 32,
+              bottom: 0,
+              left: 15,
+              child: Container(
+                width: 2,
+                color: AppColors.moduleBorder,
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(AppRadius.card),
-                border: Border.all(color: AppColors.moduleBorder),
-                boxShadow: const [
-                  BoxShadow(
-                    color: AppShadows.card,
-                    offset: Offset(0, 2),
-                    blurRadius: 8,
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          stop.place.placeImageUrl ?? '',
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            width: 56,
-                            height: 56,
-                            color: AppColors.surface2,
-                            child: const Icon(Icons.place_outlined, color: AppColors.inkFaint),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left Timeline Node
+              SizedBox(
+                width: 32,
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: stop.isMustVisit
+                        ? const LinearGradient(
+                            colors: [Color(0xFFE65100), Color(0xFFC0392B)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : const LinearGradient(
+                            colors: [Color(0xFF2C3E50), Color(0xFF34495E)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                        ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (stop.isMustVisit ? AppColors.accent : Colors.black)
+                            .withOpacity(0.2),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              stop.name,
-                              style: GoogleFonts.nunito(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.ink,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              stop.address,
-                              style: GoogleFonts.nunito(
-                                fontSize: 12,
-                                color: AppColors.inkSoft,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.drag_handle_rounded, color: AppColors.inkFaint, size: 20),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  const Divider(height: 1, thickness: 1, color: AppColors.moduleBorder),
-                  const SizedBox(height: 8),
+                  child: Center(
+                    child: Text(
+                      '$number',
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
 
-                  // Bottom Bar: Tap Time Badge + Clean Actions
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          onTap: onEditTimeRange,
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              // Right Card Content
+              Expanded(
+                child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: stop.isMustVisit
+                        ? AppColors.accent.withOpacity(0.35)
+                        : AppColors.moduleBorder.withOpacity(0.8),
+                    width: stop.isMustVisit ? 1.5 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      offset: const Offset(0, 4),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header Tags & Drag Handle
+                    Row(
+                      children: [
+                        _buildCategoryBadge(category),
+                        if (rating > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: AppColors.teal.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: AppColors.teal.withOpacity(0.2)),
+                              color: const Color(0xFFFFF8E1),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                const Icon(Icons.star_rounded, size: 13, color: Color(0xFFFFA000)),
+                                const SizedBox(width: 2),
                                 Text(
-                                  '$startTimeStr - $endTimeStr',
+                                  rating.toStringAsFixed(1),
                                   style: GoogleFonts.nunito(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.teal,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF8D6E63),
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.edit_outlined, size: 12, color: AppColors.teal),
                               ],
                             ),
                           ),
+                        ],
+                        const Spacer(),
+                        const Icon(Icons.drag_handle_rounded, color: AppColors.inkFaint, size: 20),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Place Image + Info (Clickable for details and full preview)
+                    InkWell(
+                      onTap: onOpenDetails,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: SizedBox(
+                                width: 68,
+                                height: 68,
+                                child: Builder(
+                                  builder: (context) {
+                                    final imgUrl = (stop.place.placeImageUrl != null && stop.place.placeImageUrl!.isNotEmpty)
+                                        ? stop.place.placeImageUrl!
+                                        : (stop.place.placePhotoRef != null && stop.place.placePhotoRef!.isNotEmpty
+                                            ? 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${stop.place.placePhotoRef}&key=${ApiKeys.googleMapsApiKey}'
+                                            : null);
+                                    if (imgUrl != null && imgUrl.isNotEmpty) {
+                                      return Image.network(
+                                        imgUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          color: AppColors.surface2,
+                                          child: const Icon(Icons.photo_outlined, color: AppColors.inkFaint),
+                                        ),
+                                      );
+                                    }
+                                    return Container(
+                                      color: AppColors.surface2,
+                                      child: const Icon(Icons.place_outlined, color: AppColors.inkFaint),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    stop.name,
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.ink,
+                                      height: 1.2,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    stop.address,
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 12,
+                                      color: AppColors.inkSoft,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'View details',
+                                        style: GoogleFonts.nunito(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.teal,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      const Icon(Icons.chevron_right_rounded, size: 14, color: AppColors.teal),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-
-                      // Action Buttons (Swap & Delete)
-                      _ActionButton(
-                        icon: Icons.swap_horiz_rounded,
-                        tooltip: 'Replace Place',
-                        onTap: onReplace,
-                        color: AppColors.inkSoft,
-                        bgColor: AppColors.surface2,
-                      ),
-                      const SizedBox(width: 6),
-                      _ActionButton(
-                        icon: Icons.delete_outline_rounded,
-                        tooltip: 'Delete Place',
-                        onTap: onDelete,
-                        color: AppColors.error,
-                        bgColor: AppColors.error.withOpacity(0.12),
+                    ),
+                    if (conflict != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF5E5),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFE6C58B), width: 1),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFFE65100)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                conflict!,
+                                style: GoogleFonts.nunito(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF8A5A18),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
-                  ),
-                ],
+                    const SizedBox(height: 10),
+                    Divider(height: 1, thickness: 0.8, color: AppColors.moduleBorder.withOpacity(0.6)),
+                    const SizedBox(height: 10),
+
+                    // Bottom Bar: Clickable Time Pill + Modern Actions
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: onEditTimeRange,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: isUnscheduled
+                                    ? const Color(0xFFFFF8E1)
+                                    : conflict != null
+                                        ? const Color(0xFFFFF5E5)
+                                        : const Color(0xFFEAF3EF),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isUnscheduled
+                                      ? const Color(0xFFFFE082)
+                                      : conflict != null
+                                          ? const Color(0xFFE6C58B)
+                                          : AppColors.teal.withOpacity(0.3),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isUnscheduled
+                                        ? Icons.access_time_rounded
+                                        : conflict != null
+                                            ? Icons.warning_amber_rounded
+                                            : Icons.schedule_rounded,
+                                    size: 14,
+                                    color: isUnscheduled
+                                        ? const Color(0xFFE65100)
+                                        : conflict != null
+                                            ? const Color(0xFF8A5A18)
+                                            : AppColors.teal,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      isUnscheduled
+                                          ? 'Unscheduled • Tap to schedule'
+                                          : (conflict != null
+                                              ? '$startTimeStr – $endTimeStr (Conflict)'
+                                              : '$startTimeStr – $endTimeStr'),
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: isUnscheduled
+                                            ? const Color(0xFFE65100)
+                                            : conflict != null
+                                                ? const Color(0xFF8A5A18)
+                                                : AppColors.teal,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.edit_outlined,
+                                    size: 13,
+                                    color: isUnscheduled
+                                        ? const Color(0xFFE65100)
+                                        : conflict != null
+                                            ? const Color(0xFFE65100)
+                                            : AppColors.teal,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        _ActionButton(
+                          icon: Icons.swap_horiz_rounded,
+                          tooltip: 'Replace Place',
+                          onTap: onReplace,
+                          color: AppColors.inkSoft,
+                          bgColor: AppColors.surface2,
+                        ),
+                        const SizedBox(width: 6),
+                        _ActionButton(
+                          icon: Icons.delete_outline_rounded,
+                          tooltip: 'Delete Place',
+                          onTap: onDelete,
+                          color: AppColors.error,
+                          bgColor: AppColors.error.withOpacity(0.1),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+  Widget _buildCategoryBadge(String category) {
+    Color bg;
+    Color fg;
+    IconData icon;
+
+    final lower = category.toLowerCase();
+    if (lower.contains('food') || lower.contains('restaurant') || lower.contains('cafe')) {
+      bg = const Color(0xFFFFF5E5);
+      fg = const Color(0xFFE65100);
+      icon = Icons.restaurant_rounded;
+    } else if (lower.contains('night') || lower.contains('bar') || lower.contains('club')) {
+      bg = const Color(0xFFEDE7F6);
+      fg = const Color(0xFF512DA8);
+      icon = Icons.nightlife_rounded;
+    } else if (lower.contains('nature') || lower.contains('park')) {
+      bg = const Color(0xFFE8F5E9);
+      fg = const Color(0xFF2E7D32);
+      icon = Icons.nature_rounded;
+    } else {
+      bg = const Color(0xFFE3F2FD);
+      fg = const Color(0xFF1565C0);
+      icon = Icons.account_balance_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            category,
+            style: GoogleFonts.nunito(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: fg,
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _resolveCategoryLabel(Place place) {
+    final cat = place.category ?? '';
+    if (cat.isNotEmpty) return cat;
+    final types = place.types.map((t) => t.toLowerCase()).toSet();
+    if (types.contains('night_club') || types.contains('bar')) return 'Nightlife';
+    if (types.contains('restaurant') || types.contains('food')) return 'Restaurant';
+    if (types.contains('cafe') || types.contains('bakery')) return 'Cafe';
+    if (types.contains('park') || types.contains('natural_feature')) return 'Nature';
+    if (types.contains('museum')) return 'Museum';
+    return 'Landmark';
   }
 
   String _fmt(DateTime t) {

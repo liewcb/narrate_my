@@ -10,6 +10,7 @@
 // host editor's working state — nothing is persisted here and no other day is
 // touched.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -56,6 +57,8 @@ class _RecommendedPlacesScreenState extends State<RecommendedPlacesScreen>
     with SingleTickerProviderStateMixin {
   late final RecommendedPlacesVM _vm;
   late final TabController _tabController;
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -77,6 +80,8 @@ class _RecommendedPlacesScreenState extends State<RecommendedPlacesScreen>
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
     _tabController.dispose();
     _vm.dispose();
     super.dispose();
@@ -152,16 +157,87 @@ class _RecommendedPlacesScreenState extends State<RecommendedPlacesScreen>
               ],
             ),
           ),
-          body: Stack(
+          body: Column(
             children: [
-              TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildCategoryList(RecommendationCategory.attractions),
-                  _buildCategoryList(RecommendationCategory.restaurants),
-                ],
+              // Search and Filter Bar
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.outlineLight),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (val) {
+                      _vm.setSearchQuery(val);
+                      _debounce?.cancel();
+                      if (val.trim().length >= 2) {
+                        _debounce = Timer(const Duration(milliseconds: 400), () {
+                          _vm.searchExternal(val);
+                        });
+                      } else if (val.trim().isEmpty) {
+                        _vm.clearExternalSearch();
+                      }
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search attractions or restaurants...',
+                      hintStyle: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: AppColors.mutedText,
+                      ),
+                      prefixIcon: const Icon(Icons.search, size: 20, color: AppColors.mutedText),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18, color: AppColors.mutedText),
+                              onPressed: () {
+                                _debounce?.cancel();
+                                _searchController.clear();
+                                _vm.setSearchQuery('');
+                                _vm.clearExternalSearch();
+                              },
+                            )
+                          : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
               ),
-              if (_vm.isPlanning) _buildPlanningOverlay(),
+              if (_vm.isSearchingExternal)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.all(Radius.circular(2)),
+                    child: LinearProgressIndicator(
+                      minHeight: 2,
+                      color: AppColors.terracottaDark,
+                      backgroundColor: AppColors.surfaceInactive,
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildCategoryList(RecommendationCategory.attractions),
+                        _buildCategoryList(RecommendationCategory.restaurants),
+                      ],
+                    ),
+                    if (_vm.isPlanning) _buildPlanningOverlay(),
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -222,15 +298,18 @@ class _RecommendedPlacesScreenState extends State<RecommendedPlacesScreen>
 
     final items = _vm.forCategory(category);
     if (items.isEmpty) {
+      final isSearching = _vm.searchQuery.trim().isNotEmpty;
       return ListView(
-        children: const [
-          SizedBox(height: 100),
+        children: [
+          const SizedBox(height: 100),
           Padding(
-            padding: EdgeInsets.all(32),
+            padding: const EdgeInsets.all(32),
             child: Text(
-              'No recommendations available for this day.',
+              isSearching
+                  ? 'No places found matching "${_vm.searchQuery.trim()}". Try another search term.'
+                  : 'No recommendations available for this day.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.mutedText, fontSize: 14),
+              style: const TextStyle(color: AppColors.mutedText, fontSize: 14),
             ),
           ),
         ],
@@ -247,11 +326,13 @@ class _RecommendedPlacesScreenState extends State<RecommendedPlacesScreen>
 
   Widget _buildPlaceCard(NearbyPlaceResult candidate) {
     final place = candidate.place;
-    final photoUrl = place.photoReference != null
-        ? 'https://maps.googleapis.com/maps/api/place/photo'
-            '?maxwidth=400&photoreference=${place.photoReference}'
-            '&key=${ApiKeys.googleMapsApiKey}'
-        : null;
+    final photoUrl = (place.imageUrl != null && place.imageUrl!.trim().isNotEmpty)
+        ? place.imageUrl!.trim()
+        : (place.photoReference != null && place.photoReference!.trim().isNotEmpty
+            ? 'https://maps.googleapis.com/maps/api/place/photo'
+                '?maxwidth=400&photoreference=${place.photoReference!.trim()}'
+                '&key=${ApiKeys.googleMapsApiKey}'
+            : null);
     final categoryLabel = place.placeCategory ??
         (place.types.isNotEmpty ? place.types.first : 'Attraction');
 
@@ -286,6 +367,22 @@ class _RecommendedPlacesScreenState extends State<RecommendedPlacesScreen>
                         Icons.place,
                         color: AppColors.mutedText,
                       ),
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: AppColors.surfaceInactive,
+                          child: const Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.terracottaDark,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     )
                   : const Icon(Icons.place, color: AppColors.mutedText),
             ),

@@ -1,4 +1,8 @@
+import '../../../core/utils/schedule_display.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as maps;
 import 'package:intl/intl.dart';
 import '../../../core/config/api_keys.dart';
@@ -258,7 +262,7 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
           ? 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.placePhotoRef}&key=${ApiKeys.googleMapsApiKey}'
           : null,
       travelTime: travelMinutes != null ? '$travelMinutes min' : '',
-      travelIcon: Icons.directions_car,
+      travelIcon: getTransportationIcon(_viewModel.itinerary?.transportationMode),
       duration: '${stop.durationMinutes} min',
       location: place.placeAddress,
       latitude: place.placeLatitude,
@@ -309,10 +313,11 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
         final itinerary = _viewModel.itinerary;
         final stops = _viewModel.stops;
 
-        // Update available days and selected day
+        // Update available days and selected day (0 represents All Days)
         _availableDays = stops.map((s) => s.dayIndex).toSet().toList()..sort();
         if (_availableDays.isNotEmpty &&
-            !_availableDays.contains(_selectedMapDayIndex)) {
+            !_availableDays.contains(_selectedMapDayIndex) &&
+            _selectedMapDayIndex != 0) {
           _selectedMapDayIndex = _availableDays.first;
         }
 
@@ -382,6 +387,17 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
                   stops: stops,
                   dayIndex: _selectedMapDayIndex,
                   onStopTap: _openStopDetail,
+                  onToggleAllDays: () {
+                    setState(() {
+                      if (_selectedMapDayIndex == 0) {
+                        _selectedMapDayIndex = _availableDays.isNotEmpty
+                            ? _availableDays.first
+                            : 1;
+                      } else {
+                        _selectedMapDayIndex = 0;
+                      }
+                    });
+                  },
                 ),
                 const SizedBox(height: 16.0),
 
@@ -416,9 +432,58 @@ class _ManageDisplayPlanScreenState extends State<ManageDisplayPlanScreen> {
       ];
     }
 
-    final days = grouped.keys.toList()..sort();
+    final allDays = grouped.keys.toList()..sort();
+    final days = _selectedMapDayIndex == 0
+        ? allDays
+        : allDays.where((d) => d == _selectedMapDayIndex).toList();
     final itinerary = _viewModel.itinerary;
     final cards = <Widget>[];
+
+    // Prominent section title indicating exactly what day is displayed
+    if (_selectedMapDayIndex > 0) {
+      final date = itinerary?.startDate.add(Duration(days: _selectedMapDayIndex - 1));
+      cards.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 6.0, bottom: 12.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Day $_selectedMapDayIndex Schedule',
+                style: GoogleFonts.nunito(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+              if (date != null)
+                Text(
+                  DateFormat('EEEE, d MMM').format(date),
+                  style: GoogleFonts.nunito(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.inkFaint,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      cards.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 6.0, bottom: 12.0),
+          child: Text(
+            'All Days Schedule (${allDays.length} Days)',
+            style: GoogleFonts.nunito(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+            ),
+          ),
+        ),
+      );
+    }
 
     for (final dayIndex in days) {
       final stops = grouped[dayIndex]!
@@ -486,25 +551,82 @@ class _HeroSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 8.0),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: Text(title, style: AppTextStyles.pageTitle)),
-            const SizedBox(width: 8.0),
-            _StatusBadge(status: status),
-          ],
-        ),
-        const SizedBox(height: 6.0),
-        if (startDate != null && endDate != null)
-          Text(
-            '$totalDays Days • ${DateFormat('d MMM').format(startDate!)} – ${DateFormat('d MMM').format(endDate!)}',
-            style: AppTextStyles.bodySm.copyWith(color: AppColors.inkFaint),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.moduleBorder.withOpacity(0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            offset: const Offset(0, 4),
+            blurRadius: 14,
           ),
-      ],
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _StatusBadge(status: status),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.calendar_today_rounded, size: 12, color: AppColors.accent),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$totalDays ${totalDays == 1 ? 'Day' : 'Days'} Trip',
+                      style: GoogleFonts.nunito(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            style: GoogleFonts.nunito(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+              height: 1.2,
+            ),
+          ),
+          if (startDate != null && endDate != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.date_range_rounded, size: 14, color: AppColors.inkFaint),
+                const SizedBox(width: 6),
+                Text(
+                  '${DateFormat('d MMM yyyy').format(startDate!)} – ${DateFormat('d MMM yyyy').format(endDate!)}',
+                  style: GoogleFonts.nunito(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.inkSoft,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -524,27 +646,27 @@ class _StatusBadge extends StatelessWidget {
 
     switch (status) {
       case ItineraryTemporalStatus.past:
-        bgColor = Colors.orange.shade100;
-        fgColor = Colors.deepOrange.shade900;
-        icon = Icons.history;
+        bgColor = const Color(0xFFFFE0B2);
+        fgColor = const Color(0xFFE65100);
+        icon = Icons.history_rounded;
         label = 'Past';
         break;
       case ItineraryTemporalStatus.ongoing:
-        bgColor = Colors.green.shade600;
-        fgColor = Colors.white;
-        icon = Icons.play_circle_outline;
+        bgColor = const Color(0xFFC8E6C9);
+        fgColor = const Color(0xFF2E7D32);
+        icon = Icons.play_circle_fill_rounded;
         label = 'Ongoing';
         break;
       case ItineraryTemporalStatus.upcoming:
-        bgColor = Colors.yellow.shade400;
-        fgColor = Colors.red.shade800;
-        icon = Icons.event_available;
+        bgColor = const Color(0xFFE0F2F1);
+        fgColor = AppColors.teal;
+        icon = Icons.event_available_rounded;
         label = 'Upcoming';
         break;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -552,13 +674,13 @@ class _StatusBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: fgColor),
-          const SizedBox(width: 4),
+          Icon(icon, size: 13, color: fgColor),
+          const SizedBox(width: 5),
           Text(
             label,
-            style: AppTextStyles.labelSm.copyWith(
+            style: GoogleFonts.nunito(
               color: fgColor,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w800,
               fontSize: 11,
             ),
           ),
@@ -568,7 +690,7 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-/// Horizontal scrollable day selector.
+/// Horizontal scrollable day selector with "All Days" multi-day option.
 class _DaySelector extends StatelessWidget {
   final List<int> days;
   final int selectedDay;
@@ -582,72 +704,123 @@ class _DaySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 0 represents All Days, followed by individual days
+    final items = [0, ...days];
+
     return Container(
-      color: AppColors.bg,
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: SizedBox(
-        height: 40,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: days.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (context, index) {
-            final day = days[index];
-            final isActive = day == selectedDay;
-            return GestureDetector(
-              onTap: () => onDaySelected(day),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+      margin: const EdgeInsets.only(bottom: 12),
+      height: 42,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final day = items[index];
+          final isActive = day == selectedDay;
+          final isAll = day == 0;
+
+          return InkWell(
+            onTap: () => onDaySelected(day),
+            borderRadius: BorderRadius.circular(22),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+              decoration: BoxDecoration(
+                gradient: isActive
+                    ? const LinearGradient(
+                        colors: [Color(0xFF00796B), Color(0xFF004D40)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
+                color: isActive ? null : AppColors.surface,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: isActive ? AppColors.teal : AppColors.moduleBorder,
+                  width: isActive ? 1.5 : 1.0,
                 ),
-                decoration: BoxDecoration(
-                  color: isActive ? AppColors.accent : AppColors.surface,
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                  border: Border.all(
-                    color: isActive ? AppColors.accent : AppColors.moduleBorder,
-                  ),
-                ),
-                child: Text(
-                  'Day $day',
-                  style: AppTextStyles.labelSm.copyWith(
-                    color: isActive ? AppColors.bg : AppColors.inkSoft,
-                    fontWeight: FontWeight.w700,
-                  ),
+                boxShadow: isActive
+                    ? [
+                        BoxShadow(
+                          color: AppColors.teal.withOpacity(0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ]
+                    : const [
+                        BoxShadow(
+                          color: Color(0x05000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isAll) ...[
+                      Icon(
+                        Icons.map_outlined,
+                        size: 14,
+                        color: isActive ? Colors.white : AppColors.inkSoft,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      isAll ? 'All Days' : 'Day $day',
+                      style: GoogleFonts.nunito(
+                        color: isActive ? Colors.white : AppColors.inkSoft,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-/// Google Map card showing stops for a given day.
+/// Google Map card showing stops for a given day or all days.
 class _MapCard extends StatelessWidget {
   final List<ItineraryStop> stops;
-  final int dayIndex;
+  final int dayIndex; // 0 for All Days, or specific day number
   final void Function(ItineraryStop) onStopTap;
+  final VoidCallback? onToggleAllDays;
 
   const _MapCard({
     required this.stops,
     required this.dayIndex,
     required this.onStopTap,
+    this.onToggleAllDays,
   });
 
   @override
   Widget build(BuildContext context) {
-    final stopsForDay = stops.where((s) => s.dayIndex == dayIndex).toList()
-      ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+    final bool isAllDays = dayIndex == 0;
+    final List<ItineraryStop> displayedStops;
 
-    final validStops = _MappableStop.fromStops(stopsForDay);
+    if (isAllDays) {
+      displayedStops = stops.toList()
+        ..sort((a, b) {
+          final dayCmp = a.dayIndex.compareTo(b.dayIndex);
+          return dayCmp != 0 ? dayCmp : a.stopOrder.compareTo(b.stopOrder);
+        });
+    } else {
+      displayedStops = stops.where((s) => s.dayIndex == dayIndex).toList()
+        ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
+    }
 
+    final validStops = _MappableStop.fromStops(displayedStops);
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Container(
-      height: (screenHeight * 0.35).clamp(280.0, 400.0),
+      height: (screenHeight * 0.38).clamp(300.0, 420.0),
       width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.card),
@@ -668,6 +841,7 @@ class _MapCard extends StatelessWidget {
                 stops: validStops,
                 dayIndex: dayIndex,
                 onStopTap: onStopTap,
+                onToggleAllDays: onToggleAllDays,
               ),
       ),
     );
@@ -691,7 +865,9 @@ class _EmptyMapState extends StatelessWidget {
             Icon(Icons.map_outlined, size: 40, color: AppColors.inkFaint),
             const SizedBox(height: 8),
             Text(
-              'No map location available for Day $dayIndex',
+              dayIndex == 0
+                  ? 'No map locations available for this trip'
+                  : 'No map location available for Day $dayIndex',
               style: TextStyle(fontSize: 13, color: AppColors.inkFaint),
             ),
           ],
@@ -701,16 +877,18 @@ class _EmptyMapState extends StatelessWidget {
   }
 }
 
-/// The actual Google Map widget with markers and polyline.
+/// The Google Map widget with movable touch gestures, multi-day routes, and recenter button.
 class _DayMapWidget extends StatefulWidget {
   final List<_MappableStop> stops;
-  final int dayIndex;
+  final int dayIndex; // 0 for All Days
   final void Function(ItineraryStop) onStopTap;
+  final VoidCallback? onToggleAllDays;
 
   const _DayMapWidget({
     required this.stops,
     required this.dayIndex,
     required this.onStopTap,
+    this.onToggleAllDays,
   });
 
   @override
@@ -720,6 +898,37 @@ class _DayMapWidget extends StatefulWidget {
 class _DayMapWidgetState extends State<_DayMapWidget> {
   maps.GoogleMapController? _mapController;
 
+  static const List<Color> _dayRouteColors = [
+    Color(0xFF00796B), // Day 1: Teal
+    Color(0xFFFF6F00), // Day 2: Amber
+    Color(0xFF7B1FA2), // Day 3: Royal Purple
+    Color(0xFF1976D2), // Day 4: Deep Blue
+    Color(0xFFE91E63), // Day 5: Vibrant Pink
+    Color(0xFF00838F), // Day 6: Cyan
+    Color(0xFF388E3C), // Day 7: Forest Green
+  ];
+
+  static const List<double> _dayMarkerHues = [
+    maps.BitmapDescriptor.hueAzure,
+    maps.BitmapDescriptor.hueOrange,
+    maps.BitmapDescriptor.hueViolet,
+    maps.BitmapDescriptor.hueBlue,
+    maps.BitmapDescriptor.hueRose,
+    maps.BitmapDescriptor.hueCyan,
+    maps.BitmapDescriptor.hueGreen,
+  ];
+
+  @override
+  void didUpdateWidget(covariant _DayMapWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.dayIndex != widget.dayIndex ||
+        oldWidget.stops.length != widget.stops.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _fitMapBounds();
+      });
+    }
+  }
+
   @override
   void dispose() {
     _mapController?.dispose();
@@ -728,6 +937,10 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final isAllDays = widget.dayIndex == 0;
+    final totalDaysCount =
+        widget.stops.map((s) => s.stop.dayIndex).toSet().length;
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -736,29 +949,125 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
           markers: _buildMarkers(),
           polylines: _buildPolylines(),
           mapType: maps.MapType.normal,
-          compassEnabled: false,
+          compassEnabled: true,
           mapToolbarEnabled: false,
           myLocationButtonEnabled: false,
           zoomControlsEnabled: false,
+          // ✅ Enable gestures so user can drag, pan, pinch to zoom, and rotate the map freely
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<OneSequenceGestureRecognizer>(
+              () => EagerGestureRecognizer(),
+            ),
+          },
+          scrollGesturesEnabled: true,
+          zoomGesturesEnabled: true,
+          rotateGesturesEnabled: true,
+          tiltGesturesEnabled: true,
           onMapCreated: (controller) {
             _mapController = controller;
             _fitMapBounds();
           },
         ),
+
+        // ─── Top Left: Day & Stop Badge ─────────────────────────
         Positioned(
           top: 12,
           left: 12,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: AppColors.accent.withOpacity(0.9),
+              color: AppColors.ink.withOpacity(0.85),
               borderRadius: BorderRadius.circular(AppRadius.pill),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x25000000),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
-            child: Text(
-              'Day ${widget.dayIndex} • ${widget.stops.length} ${widget.stops.length == 1 ? 'stop' : 'stops'}',
-              style: AppTextStyles.labelSm.copyWith(
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isAllDays ? Icons.alt_route_rounded : Icons.place_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isAllDays
+                      ? 'All Days ($totalDaysCount days) • ${widget.stops.length} stops'
+                      : 'Day ${widget.dayIndex} • ${widget.stops.length} ${widget.stops.length == 1 ? 'stop' : 'stops'}',
+                  style: AppTextStyles.labelSm.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // ─── Top Right: Quick Toggle Chip (All Days / Single Day) ─
+        if (widget.onToggleAllDays != null)
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Material(
+              color: Colors.white.withOpacity(0.92),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+              elevation: 2,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+                onTap: widget.onToggleAllDays,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isAllDays
+                            ? Icons.filter_1_rounded
+                            : Icons.layers_rounded,
+                        size: 14,
+                        color: AppColors.ink,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isAllDays ? 'Single Day' : 'All Days',
+                        style: GoogleFonts.nunito(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // ─── Bottom Right: Recenter route button ─────────────────
+        Positioned(
+          bottom: 12,
+          right: 12,
+          child: Material(
+            color: Colors.white.withOpacity(0.92),
+            shape: const CircleBorder(),
+            elevation: 2,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: _fitMapBounds,
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(
+                  Icons.center_focus_strong_rounded,
+                  size: 20,
+                  color: AppColors.ink,
+                ),
               ),
             ),
           ),
@@ -769,29 +1078,38 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
 
   maps.CameraPosition _initialCameraPosition() {
     if (widget.stops.isEmpty) {
-      return const maps.CameraPosition(target: maps.LatLng(0, 0), zoom: 1);
+      return const maps.CameraPosition(
+        target: maps.LatLng(3.1390, 101.6869),
+        zoom: 11,
+      );
     }
     return maps.CameraPosition(
       target: maps.LatLng(
         widget.stops.first.latitude,
         widget.stops.first.longitude,
       ),
-      zoom: 14,
+      zoom: 13,
     );
   }
 
   Set<maps.Marker> _buildMarkers() {
     return widget.stops.map((item) {
+      final day = item.stop.dayIndex;
+      final hueIndex = (day - 1).clamp(0, _dayMarkerHues.length - 1);
+      final hue = widget.dayIndex == 0
+          ? _dayMarkerHues[hueIndex]
+          : maps.BitmapDescriptor.hueAzure;
+
       return maps.Marker(
-        markerId: maps.MarkerId(item.stop.placeId),
-        position: maps.LatLng(item.latitude, item.longitude),
-        icon: maps.BitmapDescriptor.defaultMarkerWithHue(
-          maps.BitmapDescriptor.hueBlue,
+        markerId: maps.MarkerId(
+          '${item.stop.dayIndex}_${item.stop.placeId}_${item.stop.stopOrder}',
         ),
+        position: maps.LatLng(item.latitude, item.longitude),
+        icon: maps.BitmapDescriptor.defaultMarkerWithHue(hue),
         infoWindow: maps.InfoWindow(
           title: item.stop.place?.name ?? item.stop.placeId,
           snippet:
-              'Day ${widget.dayIndex} • Stop ${item.stop.stopOrder}\n${_formattedTime(item.stop)}',
+              'Day ${item.stop.dayIndex} • Stop ${item.stop.stopOrder}\n${_formattedTime(item.stop)}',
         ),
         onTap: () => widget.onStopTap(item.stop),
       );
@@ -800,13 +1118,45 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
 
   Set<maps.Polyline> _buildPolylines() {
     if (widget.stops.length < 2) return {};
+
+    if (widget.dayIndex == 0) {
+      // Group by dayIndex to create a separate polyline per day with distinct colors
+      final grouped = <int, List<_MappableStop>>{};
+      for (final s in widget.stops) {
+        grouped.putIfAbsent(s.stop.dayIndex, () => []).add(s);
+      }
+
+      final polylines = <maps.Polyline>{};
+      for (final entry in grouped.entries) {
+        final day = entry.key;
+        final dayStops = entry.value;
+        if (dayStops.length < 2) continue;
+
+        final colorIndex = (day - 1).clamp(0, _dayRouteColors.length - 1);
+        final color = _dayRouteColors[colorIndex];
+
+        polylines.add(
+          maps.Polyline(
+            polylineId: maps.PolylineId('day_${day}_route'),
+            points: dayStops
+                .map((s) => maps.LatLng(s.latitude, s.longitude))
+                .toList(),
+            color: color,
+            width: 4,
+          ),
+        );
+      }
+      return polylines;
+    }
+
+    // Single day
     return {
       maps.Polyline(
-        polylineId: const maps.PolylineId('day_route'),
+        polylineId: maps.PolylineId('day_${widget.dayIndex}_route'),
         points: widget.stops
             .map((s) => maps.LatLng(s.latitude, s.longitude))
             .toList(),
-        color: AppColors.accent,
+        color: AppColors.teal,
         width: 4,
       ),
     };
@@ -841,13 +1191,24 @@ class _DayMapWidgetState extends State<_DayMapWidget> {
       if (item.longitude > maxLng) maxLng = item.longitude;
     }
 
+    // Safety check: if min == max (e.g. stops at same location), avoid newLatLngBounds crash
+    if ((maxLat - minLat).abs() < 0.0001 && (maxLng - minLng).abs() < 0.0001) {
+      controller.animateCamera(
+        maps.CameraUpdate.newLatLngZoom(
+          maps.LatLng(minLat, minLng),
+          14,
+        ),
+      );
+      return;
+    }
+
     controller.animateCamera(
       maps.CameraUpdate.newLatLngBounds(
         maps.LatLngBounds(
           southwest: maps.LatLng(minLat, minLng),
           northeast: maps.LatLng(maxLat, maxLng),
         ),
-        60,
+        55,
       ),
     );
   }
@@ -987,75 +1348,104 @@ class _DayCard extends StatelessWidget {
   }
 
   Widget _buildTimeline() {
-    return Stack(
-      children: [
-        Positioned(
-          left: 17,
-          top: 20,
-          bottom: 20,
-          child: SizedBox(
-            width: 2,
-            child: CustomPaint(
-              painter: _DashedLinePainter(color: AppColors.moduleBorder),
-            ),
-          ),
-        ),
-        Column(
-          children: List.generate(stops.length, (index) {
-            final stop = stops[index];
-            return _StopItem(
-              stop: stop,
-              number: index + 1,
-              isFirst: index == 0,
-              isLast: index == stops.length - 1,
-              canEdit: canEdit,
-              onTap: () => onStopTap(stop),
-              onEdit: () => onEditStop(stop),
-            );
-          }),
-        ),
-      ],
+    return Column(
+      children: List.generate(stops.length, (index) {
+        final stop = stops[index];
+        String? conflict;
+        if (index > 0 && !isUnscheduledTime(stop.startTime, stop.endTime, status: stop.stopStatus) &&
+            !isUnscheduledTime(stops[index - 1].startTime, stops[index - 1].endTime,
+                status: stops[index - 1].stopStatus)) {
+          final prev = stops[index - 1];
+          final travel = stop.travelFromPrevMinutes ?? 15;
+          final minStart = prev.endTime.add(Duration(minutes: travel));
+          if (stop.startTime.isBefore(prev.endTime)) {
+            final diff = prev.endTime.difference(stop.startTime).inMinutes;
+            conflict = 'Time overlap: starts ${formatScheduleMinutes(diff)} before previous stop ends';
+          } else if (stop.startTime.isBefore(minStart)) {
+            final available = stop.startTime.difference(prev.endTime).inMinutes;
+            conflict = 'Travel conflict: only ${formatScheduleMinutes(available)} between stops (needs ${formatScheduleMinutes(travel)})';
+          }
+        }
+
+        return _StopItem(
+          stop: stop,
+          number: index + 1,
+          isFirst: index == 0,
+          isLast: index == stops.length - 1,
+          canEdit: canEdit,
+          conflict: conflict,
+          onTap: () => onStopTap(stop),
+          onEdit: () => onEditStop(stop),
+        );
+      }),
     );
   }
 
   Widget _buildAddActions() {
-    return Column(
-      children: [
-        const SizedBox(height: 12.0),
-        GestureDetector(
-          onTap: () => onAddPlace(dayIndex, dayDate),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6.0),
-            child: Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.accent, width: 2),
-                    color: AppColors.surface,
-                  ),
-                  child: const Icon(
-                    Icons.add,
-                    size: 18,
-                    color: AppColors.accent,
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () => onAddPlace(dayIndex, dayDate),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.accent.withOpacity(0.4),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  'Add custom place to ${dayTitle.toLowerCase()}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.accent,
-                  ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.add_location_alt_outlined, size: 18, color: AppColors.accent),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Add Custom Place',
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          InkWell(
+            onTap: () => onAddBookmarks(dayIndex),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.moduleBorder),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.bookmark_outline_rounded, size: 18, color: AppColors.inkSoft),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Bookmarks',
+                    style: GoogleFonts.nunito(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.inkSoft,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1067,6 +1457,7 @@ class _StopItem extends StatelessWidget {
   final bool isFirst;
   final bool isLast;
   final bool canEdit;
+  final String? conflict;
   final VoidCallback onTap;
   final VoidCallback onEdit;
 
@@ -1076,196 +1467,373 @@ class _StopItem extends StatelessWidget {
     required this.isFirst,
     required this.isLast,
     required this.canEdit,
+    this.conflict,
     required this.onTap,
     required this.onEdit,
   });
 
+  String _resolveCategory() {
+    final p = stop.place;
+    if (p == null) return 'ATTRACTION';
+    if (p.placeCategory != null && p.placeCategory!.isNotEmpty) {
+      return p.placeCategory!.toUpperCase();
+    }
+    final types = p.placeTypes.map((t) => t.toLowerCase()).toSet();
+    if (types.contains('restaurant') || types.contains('food')) return 'RESTAURANT';
+    if (types.contains('cafe') || types.contains('bakery')) return 'CAFE';
+    if (types.contains('bar') || types.contains('night_club')) return 'NIGHTLIFE';
+    if (types.contains('museum')) return 'MUSEUM';
+    if (types.contains('park') || types.contains('natural_feature')) return 'NATURE';
+    if (types.contains('place_of_worship')) return 'CULTURE';
+    return 'ATTRACTION';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final place = stop.place;
+    final name = place?.placeName ?? stop.placeId;
+    final address = place?.placeAddress ?? '';
+    final rating = place?.placeRating ?? 0.0;
+    final category = _resolveCategory();
+    final isUnscheduled = stop.stopStatus == 'UNSCHEDULED' ||
+        (stop.startTime.hour == 0 && stop.startTime.minute == 0 && stop.endTime.hour == 0 && stop.endTime.minute == 0);
+    final timeStr = isUnscheduled
+        ? 'Unscheduled'
+        : '${DateFormat('HH:mm').format(stop.startTime)} – ${DateFormat('HH:mm').format(stop.endTime)}';
+
+    final imgUrl = (place?.placeImageUrl != null && place!.placeImageUrl!.isNotEmpty)
+        ? place.placeImageUrl!
+        : (place?.placePhotoRef != null && place!.placePhotoRef!.isNotEmpty
+            ? 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${place.placePhotoRef}&key=${ApiKeys.googleMapsApiKey}'
+            : null);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          _StopNumber(number: number, isFirst: isFirst),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: BorderRadius.circular(16),
+          if (!isLast)
+            Positioned(
+              top: 32,
+              bottom: 0,
+              left: 15,
+              child: Container(
+                width: 2,
+                color: AppColors.moduleBorder,
+              ),
+            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left Node
+              SizedBox(
+                width: 32,
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppColors.moduleBorder.withOpacity(0.8),
-                    ),
-                    boxShadow: const [
+                    shape: BoxShape.circle,
+                    gradient: isFirst
+                        ? const LinearGradient(
+                            colors: [Color(0xFFE65100), Color(0xFFC0392B)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : const LinearGradient(
+                            colors: [Color(0xFF2C3E50), Color(0xFF34495E)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x08000000),
-                        offset: Offset(0, 2),
+                        color: Colors.black.withOpacity(0.18),
                         blurRadius: 6,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                  child: Center(
+                    child: Text(
+                      '$number',
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+
+              // Right Card
+              Expanded(
+                child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.moduleBorder.withOpacity(0.8),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      offset: const Offset(0, 4),
+                      blurRadius: 10,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top Tags: Category & Rating
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2F1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            category,
+                            style: GoogleFonts.nunito(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.teal,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        if (rating > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF8E1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.star_rounded, size: 13, color: Color(0xFFFFA000)),
+                                const SizedBox(width: 2),
+                                Text(
+                                  rating.toStringAsFixed(1),
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF8D6E63),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Place Image + Name + Address
+                    InkWell(
+                      onTap: onTap,
+                      borderRadius: BorderRadius.circular(10),
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox(
+                              width: 64,
+                              height: 64,
+                              child: imgUrl != null && imgUrl.isNotEmpty
+                                  ? Image.network(
+                                      imgUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        color: AppColors.surface2,
+                                        child: const Icon(Icons.photo_outlined, color: AppColors.inkFaint),
+                                      ),
+                                    )
+                                  : Container(
+                                      color: AppColors.surface2,
+                                      child: const Icon(Icons.place_outlined, color: AppColors.inkFaint),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  stop.place?.name ?? stop.placeId,
-                                  style: AppTextStyles.bodyLg.copyWith(
-                                    fontWeight: FontWeight.w600,
+                                  name,
+                                  style: GoogleFonts.nunito(
                                     fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.ink,
+                                    height: 1.2,
                                   ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
+                                if (address.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    address,
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 12,
+                                      color: AppColors.inkSoft,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
-                                    const Icon(
-                                      Icons.access_time,
-                                      size: 14,
-                                      color: AppColors.inkFaint,
-                                    ),
-                                    const SizedBox(width: 6),
                                     Text(
-                                      '${DateFormat('HH:mm').format(stop.startTime)} – ${DateFormat('HH:mm').format(stop.endTime)}',
-                                      style: AppTextStyles.bodySm.copyWith(
-                                        color: AppColors.inkFaint,
-                                        fontSize: 12,
+                                      'View details',
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.teal,
                                       ),
                                     ),
+                                    const SizedBox(width: 2),
+                                    const Icon(Icons.chevron_right_rounded, size: 14, color: AppColors.teal),
                                   ],
                                 ),
                               ],
                             ),
                           ),
-                          const Icon(
-                            Icons.chevron_right,
-                            color: AppColors.inkFaint,
-                            size: 20,
-                          ),
                         ],
                       ),
+                    ),
+                    if (conflict != null) ...[
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.location_on_outlined,
-                            size: 16,
-                            color: AppColors.accent,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              stop.place?.address ?? stop.place?.address ?? '',
-                              style: AppTextStyles.bodySm.copyWith(
-                                color: AppColors.inkFaint,
-                                fontSize: 12,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (canEdit)
-                            GestureDetector(
-                              onTap: onEdit,
-                              child: Container(
-                                width: 36,
-                                height: 36,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.surface2,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.edit_outlined,
-                                  size: 18,
-                                  color: AppColors.inkSoft,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3E0),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFFB74D), width: 1),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFFE65100)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                conflict!,
+                                style: GoogleFonts.nunito(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFFD84315),
                                 ),
                               ),
                             ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 10),
+                    Divider(height: 1, thickness: 0.8, color: AppColors.moduleBorder.withOpacity(0.6)),
+                    const SizedBox(height: 10),
+
+                    // Bottom Bar: Time Pill + Edit Button
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isUnscheduled
+                                ? const Color(0xFFFFF8E1)
+                                : conflict != null
+                                    ? const Color(0xFFFFF3E0)
+                                    : const Color(0xFFE0F2F1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isUnscheduled
+                                  ? const Color(0xFFFFE082)
+                                  : conflict != null
+                                      ? const Color(0xFFFFB74D)
+                                      : AppColors.teal.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isUnscheduled
+                                    ? Icons.access_time_rounded
+                                    : conflict != null
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.schedule_rounded,
+                                size: 14,
+                                color: isUnscheduled
+                                    ? const Color(0xFFE65100)
+                                    : conflict != null
+                                        ? const Color(0xFFD84315)
+                                        : AppColors.teal,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                isUnscheduled
+                                    ? 'Unscheduled • Tap edit'
+                                    : (conflict != null ? '$timeStr (Conflict)' : timeStr),
+                                style: GoogleFonts.nunito(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: isUnscheduled
+                                      ? const Color(0xFFE65100)
+                                      : conflict != null
+                                          ? const Color(0xFFD84315)
+                                          : AppColors.teal,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Spacer(),
+                        if (canEdit)
+                          InkWell(
+                            onTap: onEdit,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface2,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.moduleBorder),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.edit_outlined, size: 14, color: AppColors.inkSoft),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Edit',
+                                    style: GoogleFonts.nunito(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.inkSoft,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Circle with stop number.
-class _StopNumber extends StatelessWidget {
-  final int number;
-  final bool isFirst;
-
-  const _StopNumber({required this.number, required this.isFirst});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: isFirst ? AppColors.accent : AppColors.surface2,
-        border: isFirst ? null : Border.all(color: AppColors.moduleBorder),
-      ),
-      child: Center(
-        child: Text(
-          '$number',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: isFirst ? AppColors.surface : AppColors.ink,
-          ),
+          ],
         ),
-      ),
-    );
-  }
+      ],
+    ),
+  );
 }
-
-/// Dashed line painter for the timeline.
-class _DashedLinePainter extends CustomPainter {
-  final Color color;
-
-  _DashedLinePainter({this.color = AppColors.moduleBorder});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    const dashHeight = 6.0;
-    const dashSpace = 6.0;
-    double startY = 0;
-
-    while (startY < size.height) {
-      canvas.drawLine(
-        Offset(0, startY),
-        Offset(0, (startY + dashHeight).clamp(0, size.height)),
-        paint,
-      );
-      startY += dashHeight + dashSpace;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

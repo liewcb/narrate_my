@@ -87,14 +87,9 @@ class ARStorytellingPanel extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Active 3D Model: Preloaded in background as soon as Storytelling starts,
-                      // and kept alive with Visibility(maintainState: true) so toggling off/on is INSTANT (0ms reload)!
-                      if (hasModelAsset)
-                        Visibility(
-                          visible: show3DModel,
-                          maintainState: true,
-                          child: const AR3DViewerOverlay(),
-                        ),
+                      // 3D Model: Rendered when active, and completely unmounted when hidden to free WebGL/GPU memory
+                      if (hasModelAsset && show3DModel)
+                        const AR3DViewerOverlay(),
 
                       // Re-scan & re-place prompt: Prominently displayed floating on top whenever Manja is reset after lockscreen
                       if (!data.hasAvatarInScene && !data.isPlaneDetected)

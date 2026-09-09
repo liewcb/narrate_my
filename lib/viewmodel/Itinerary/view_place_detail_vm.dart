@@ -1,19 +1,19 @@
+import 'package:narrate_my/model/repositories/interfaces/itinerary/place_repository.dart';
 // lib/viewmodel/Itinerary/view_place_detail_vm.dart
 import 'package:flutter/foundation.dart';
 
 import '../../core/services/database_manager.dart';
 import '../../model/entities/place.dart';
-import '../../model/repositories/adapters/itinerary/place_repository_adapter.dart';
 
 /// Loads and exposes the [Place] shown by the View Place Detail screen.
 ///
 /// If an already-joined [initialPlace] is supplied (e.g. the stop's cached
 /// `Place`), it is shown immediately and the repository refresh happens in
-/// the background. Otherwise the place is resolved via [PlaceRepositoryAdapter]
+/// the background. Otherwise the place is resolved via [PlaceRepository]
 /// using the unique `placeId`.
 class ViewPlaceDetailViewModel extends ChangeNotifier {
   final String _placeId;
-  final PlaceRepositoryAdapter _placeRepo;
+  final PlaceRepository _placeRepo;
   final ValueChanged<bool>? _onStatusChanged; // new
 
   Place? _place;
@@ -24,7 +24,7 @@ class ViewPlaceDetailViewModel extends ChangeNotifier {
   ViewPlaceDetailViewModel({
     required String placeId,
     Place? initialPlace,
-    PlaceRepositoryAdapter? placeRepo,
+    PlaceRepository? placeRepo,
     ValueChanged<bool>? onStatusChanged, // new
   })  : _placeId = placeId,
         _placeRepo = placeRepo ?? DatabaseManager().placeRepository,

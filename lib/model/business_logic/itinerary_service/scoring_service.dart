@@ -73,7 +73,7 @@ class ScoringService {
     'beach',
   ];
 
-  /// Hard-blocked types — transport / utility places are never candidates.
+  /// Hard-blocked types — transport, medical, and utility places are never candidates.
   static const Set<String> _hardBlockedTypes = {
     'airport',
     'train_station',
@@ -87,6 +87,28 @@ class ScoringService {
     'fire_station',
     'local_government_office',
     'cemetery',
+    'pharmacy',
+    'drugstore',
+    'convenience_store',
+    'supermarket',
+    'grocery_or_supermarket',
+    'bank',
+    'atm',
+    'post_office',
+    'hospital',
+    'doctor',
+    'dentist',
+    'physiotherapist',
+    'car_repair',
+    'car_dealer',
+    'car_rental',
+    'car_wash',
+    'laundry',
+    'hair_care',
+    'beauty_salon',
+    'storage',
+    'funeral_home',
+    'travel_agency',
   };
 
   List<ScoredAttraction> scorePlaces({
@@ -96,6 +118,7 @@ class ScoringService {
     required String explorationTime,
     Coordinates? tripLocation,
     String travelerType = 'Solo',
+    String transportMode = 'walking',
     String travelPace = 'Standard',
     List<String> accessibilityRequirements = const [],
     List<String> dietaryRestrictions = const [],
@@ -108,6 +131,8 @@ class ScoringService {
       debugPrint('[SCORING] Total places     : ${places.length}');
       debugPrint('[SCORING] Interests        : $selectedInterests');
       debugPrint('[SCORING] Must-visit IDs   : $mustVisitIds');
+      debugPrint('[SCORING] Traveler type    : $travelerType');
+      debugPrint('[SCORING] Transport mode   : $transportMode');
       debugPrint('[SCORING] Weight model     : interest=$weightInterest '
           'rating=$weightRating');
     }
@@ -119,15 +144,32 @@ class ScoringService {
     int blockedCount = 0;
 
     for (final place in places) {
-      // Hard-block transport / utility types (must-visits still allowed).
+      // Hard-block transport / utility / retail pharmacy types (must-visits still allowed).
       final isMustVisit = mustVisitIdsSet.contains(place.placeId);
       final placeTypesLower = place.types.map((t) => t.toLowerCase()).toSet();
-      final isBlocked = placeTypesLower.any(_hardBlockedTypes.contains);
+      final isBlockedType = placeTypesLower.any(_hardBlockedTypes.contains);
 
-      if (isBlocked && !isMustVisit) {
+      final nameLower = place.name.toLowerCase();
+      final isBlockedName = nameLower.contains('guardian') ||
+          nameLower.contains('watsons') ||
+          nameLower.contains('caring pharmacy') ||
+          nameLower.contains('7-eleven') ||
+          nameLower.contains('familymart') ||
+          nameLower.contains('kk super mart') ||
+          nameLower.contains('clinic') ||
+          nameLower.contains('klinik') ||
+          nameLower.contains('dental') ||
+          nameLower.contains('pharmacy') ||
+          nameLower.contains('taxi') ||
+          nameLower.contains('hotel transfer') ||
+          nameLower.contains('car rental') ||
+          nameLower.contains('van rental') ||
+          nameLower.contains('tour package');
+
+      if ((isBlockedType || isBlockedName) && !isMustVisit) {
         blockedCount++;
         if (enableDebugLogs) {
-          debugPrint('[SCORING] BLOCKED (type) : ${place.name} '
+          debugPrint('[SCORING] BLOCKED (utility/pharmacy/taxi) : ${place.name} '
               '| types=${place.types}');
         }
         continue;
@@ -143,13 +185,181 @@ class ScoringService {
         selectedInterests,
       );
 
+      // ── Core Sightseeing & Landmark Bonus ──────────────────────
+      final isFoodVenue = placeTypesLower.any((t) =>
+          t == 'restaurant' ||
+          t == 'cafe' ||
+          t == 'bakery' ||
+          t == 'food' ||
+          t == 'meal_takeaway' ||
+          t == 'meal_delivery') ||
+          (place.category ?? '').toLowerCase().contains('food') ||
+          (place.category ?? '').toLowerCase().contains('restaurant') ||
+          (place.category ?? '').toLowerCase().contains('cafe');
+
+      final isNightlifeVenue = placeTypesLower.any((t) =>
+          t == 'bar' ||
+          t == 'night_club' ||
+          t == 'casino' ||
+          t == 'wine_bar' ||
+          t == 'liquor_store') ||
+          (place.category ?? '').toLowerCase().contains('bar') ||
+          (place.category ?? '').toLowerCase().contains('nightlife');
+
+      final isReligiousPlace = !isFoodVenue && !isNightlifeVenue && placeTypesLower.any((t) =>
+          t == 'place_of_worship' ||
+          t == 'hindu_temple' ||
+          t == 'church' ||
+          t == 'mosque' ||
+          t == 'synagogue');
+
+      final isSecularAttraction = !isFoodVenue && !isNightlifeVenue && !isReligiousPlace && placeTypesLower.any((t) =>
+          t == 'tourist_attraction' ||
+          t == 'museum' ||
+          t == 'art_gallery' ||
+          t == 'park' ||
+          t == 'natural_feature' ||
+          t == 'amusement_park' ||
+          t == 'theme_park' ||
+          t == 'water_park' ||
+          t == 'zoo' ||
+          t == 'aquarium' ||
+          t == 'botanical_garden' ||
+          t == 'hiking_area' ||
+          t == 'beach' ||
+          t == 'historical_landmark' ||
+          t == 'monument' ||
+          t == 'scenic_viewpoint');
+
+      var adjustedInterestScore = interestScore;
+      if (isSecularAttraction && adjustedInterestScore < 0.65) {
+        adjustedInterestScore = 0.65;
+      } else if (isReligiousPlace && adjustedInterestScore < 0.52) {
+        adjustedInterestScore = 0.52;
+      }
+
+      // Food cap: food venues are for meals, not primary tourist sights
+      if (isFoodVenue && adjustedInterestScore > 0.40) {
+        adjustedInterestScore = 0.40;
+      }
+
+      // Nightlife cap: nightlife venues score moderately so they can be chosen for evening
+      if (isNightlifeVenue && adjustedInterestScore > 0.42) {
+        adjustedInterestScore = 0.42;
+      }
+
       // ── Google rating (0..1) ───────────────────────────────────
       final ratingScore = (place.rating / 5.0).clamp(0.0, 1.0);
 
+      // Core attraction boost: secular sights get +0.12, religious places get +0.03
+      final attractionBonus = isSecularAttraction
+          ? 0.12
+          : (isReligiousPlace ? 0.03 : (isNightlifeVenue ? 0.05 : 0.0));
+
+      // Local authentic coffee & regional specialty boost for dining
+      var localSpecialtyBonus = 0.0;
+      if (isFoodVenue) {
+        final nameLower = place.placeName.toLowerCase();
+        if (nameLower.contains('kopi') ||
+            nameLower.contains('coffee') ||
+            nameLower.contains('kopitiam') ||
+            nameLower.contains('cafe') ||
+            nameLower.contains('nyonya') ||
+            nameLower.contains('cendol') ||
+            nameLower.contains('satay') ||
+            nameLower.contains('chicken rice') ||
+            nameLower.contains('laksa') ||
+            nameLower.contains('peranakan') ||
+            nameLower.contains('baba') ||
+            nameLower.contains('jonker') ||
+            nameLower.contains('melaka') ||
+            nameLower.contains('dim sum') ||
+            nameLower.contains('roti')) {
+          localSpecialtyBonus = 0.18;
+        }
+      }
+
+      // ── Traveler Type Alignment (Family / Couple / Friends / Solo) ─────
+      var travelerTypeBonus = 0.0;
+      final typeLower = travelerType.toLowerCase();
+      if (typeLower.contains('family')) {
+        // Family friendly: parks, zoos, aquariums, theme parks, museums, beaches
+        final isFamilyFriendly = placeTypesLower.any((t) =>
+            t == 'amusement_park' ||
+            t == 'theme_park' ||
+            t == 'water_park' ||
+            t == 'zoo' ||
+            t == 'aquarium' ||
+            t == 'park' ||
+            t == 'museum' ||
+            t == 'botanical_garden' ||
+            t == 'beach');
+        if (isFamilyFriendly) {
+          travelerTypeBonus = 0.14;
+        } else if (isNightlifeVenue || isBlockedName) {
+          travelerTypeBonus = -0.30; // Strongly avoid bars/clubs for families
+        }
+      } else if (typeLower.contains('couple')) {
+        // Romantic / aesthetic: viewpoints, art galleries, cafes, quiet nature
+        final isCoupleFriendly = placeTypesLower.any((t) =>
+            t == 'scenic_viewpoint' ||
+            t == 'art_gallery' ||
+            t == 'cafe' ||
+            t == 'beach' ||
+            t == 'botanical_garden') ||
+            nameLower.contains('sunset') ||
+            nameLower.contains('view') ||
+            nameLower.contains('bistro') ||
+            nameLower.contains('lounge');
+        if (isCoupleFriendly) {
+          travelerTypeBonus = 0.14;
+        }
+      } else if (typeLower.contains('friend')) {
+        // Vibrant: markets, amusement, entertainment, street food
+        final isSocial = placeTypesLower.any((t) =>
+            t == 'amusement_park' ||
+            t == 'bowling_alley' ||
+            t == 'cafe' ||
+            t == 'night_club' ||
+            t == 'bar') ||
+            nameLower.contains('market') ||
+            nameLower.contains('food court');
+        if (isSocial) travelerTypeBonus = 0.10;
+      }
+
+      // ── Distance & Transport Penalty ────────────────────────────
+      // Prevents recommending distant places (e.g. driving 2 hours for curry puff)
+      var distancePenalty = 0.0;
+      if (tripLocation != null &&
+          place.latitude.abs() <= 90 &&
+          place.longitude.abs() <= 180 &&
+          !(place.latitude == 0 && place.longitude == 0)) {
+        final distKm = tripLocation.distanceTo(place.coordinates);
+        final mode = transportMode.toLowerCase();
+
+        if (mode == 'walking') {
+          if (distKm > 2.0) {
+            distancePenalty = ((distKm - 2.0) * 0.08).clamp(0.0, 0.45);
+          }
+        } else {
+          // Driving or transit: reasonable destination area is ~12km
+          if (distKm > 12.0) {
+            distancePenalty = ((distKm - 12.0) * 0.02).clamp(0.0, 0.45);
+          }
+          // Extra penalty for minor food / snack stalls far from city center
+          if (isFoodVenue && distKm > 10.0 && !isMustVisit) {
+            distancePenalty += 0.20;
+          }
+        }
+      }
+
       // ── Weighted total ─────────────────────────────────────────
-      final rawScore =
-          interestScore * weightInterest +
-              ratingScore * weightRating;
+      final rawScore = adjustedInterestScore * weightInterest +
+          ratingScore * weightRating +
+          attractionBonus +
+          localSpecialtyBonus +
+          travelerTypeBonus -
+          distancePenalty;
 
       final totalScore = rawScore.clamp(0.0, 1.0);
 

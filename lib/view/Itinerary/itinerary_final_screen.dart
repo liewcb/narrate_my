@@ -1,8 +1,8 @@
-﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/schedule_display.dart';
 import '../../core/widgets/app_confirmation_dialog.dart';
 import '../../model/business_logic/itinerary_service/generation_pipeline_service.dart';
 import '../../model/business_logic/itinerary_service/schedule_construction_service.dart';
@@ -12,7 +12,7 @@ import '../../viewmodel/Itinerary/itinerary_final_vm.dart';
 import './add_place_screen.dart';
 import './edit_itinerary_screen.dart';
 import './generation_screen.dart';
-import './my_itineraries_screen.dart';
+import '../../core/routes/app_routes.dart';
 import './widgets/view_place_detail_screen.dart';
 
 class ItineraryFinalScreen extends StatefulWidget {
@@ -82,7 +82,7 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
     if (_vm.itineraryId != null && !_vm.hasUnsavedChanges) {
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const MyItinerariesScreen()),
+        MaterialPageRoute(builder: (_) => const AppRoutes(initialIndex: 1)),
             (route) => false,
       );
       return;
@@ -110,7 +110,7 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const MyItinerariesScreen()),
+          MaterialPageRoute(builder: (_) => const AppRoutes(initialIndex: 1)),
               (route) => false,
         );
       }
@@ -126,8 +126,51 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
 
     if (!_vm.canSave) {
       debugPrint('[FINAL SAVE] Cannot save: itinerary is not valid or empty.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot save: itinerary is not valid or empty.')),
+      );
       return;
     }
+
+    // Show saving modal dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: AppColors.surface,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Text(
+                    'Saving itinerary...',
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
 
     debugPrint('[FINAL SAVE] Calling ViewModel.save()');
     final saved = await _vm.save();
@@ -136,16 +179,19 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
 
     if (!mounted) return;
 
+    // Dismiss the saving dialog
+    Navigator.of(context, rootNavigator: true).pop();
+
     if (saved) {
       debugPrint('[FINAL SAVE] Save succeeded. Clearing draft and navigating.');
       await _vm.clearDraft();
 
+      if (!mounted) return;
       debugPrint('[FINAL SAVE] Navigation started');
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(
-          builder: (_) => const MyItinerariesScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const AppRoutes(initialIndex: 1)),
+        (route) => false,
       );
       debugPrint('[FINAL SAVE] Navigation completed');
     } else {
@@ -154,7 +200,10 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
       debugPrint('[FINAL SAVE] Save did not succeed; staying on final screen. '
           'saveMessage=$msg');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg)),
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: AppColors.error,
+        ),
       );
     }
   }
@@ -169,7 +218,7 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
           return false;
         },
         child: Scaffold(
-          backgroundColor: AppColors.bg,
+          backgroundColor: const Color(0xFFF8F5EF),
           body: ListenableBuilder(
             listenable: _vm,
             builder: (context, _) {
@@ -256,49 +305,30 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
                       selectedIndex: _vm.selectedDayIndex,
                       onDaySelected: (index) {
                         _vm.selectDay(index);
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          final key = _dayKeys[index];
-                          if (key.currentContext != null) {
-                            Scrollable.ensureVisible(
-                              key.currentContext!,
-                              duration: const Duration(milliseconds: 400),
-                              curve: Curves.easeInOut,
-                              alignment: 0.1,
-                            );
-                          }
-                        });
                       },
                     ),
                   ),
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                        final day = days[index];
+                      (context, index) {
+                        final displayedDays = _vm.selectedDayIndex == -1
+                            ? days
+                            : [days[_vm.selectedDayIndex.clamp(0, days.length - 1)]];
+                        final day = displayedDays[index];
+                        final realIndex = day.dayNumber - 1;
                         return Container(
-                          key: _dayKeys[index],
+                          key: realIndex < _dayKeys.length ? _dayKeys[realIndex] : null,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 24, vertical: 8),
                           child: _DayCard(
                             day: day,
-                            isSelected: index == _vm.selectedDayIndex,
+                            isSelected: true,
                             onTapDay: () {
-                              _vm.selectDay(index);
-                              WidgetsBinding.instance.addPostFrameCallback((
-                                  _) {
-                                if (_dayKeys[index].currentContext != null) {
-                                  Scrollable.ensureVisible(
-                                    _dayKeys[index].currentContext!,
-                                    duration: const Duration(
-                                        milliseconds: 400),
-                                    curve: Curves.easeInOut,
-                                    alignment: 0.1,
-                                  );
-                                }
-                              });
+                              _vm.selectDay(realIndex);
                             },
                             onAddPlace: () async {
-                              final days = _vm.result.scheduledDays;
-                              if (days == null || index >= days.length)
+                              final scheduledDays = _vm.result.scheduledDays;
+                              if (scheduledDays == null || realIndex >= scheduledDays.length)
                                 return;
                               final updated =
                               await Navigator.push<ScheduledDay>(
@@ -307,12 +337,12 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
                                   builder: (_) =>
                                       AddPlaceScreen(
                                         itineraryId: _vm.itineraryId ?? '',
-                                        dayIndex: index,
+                                        dayIndex: realIndex,
                                         explorationTime: _vm.explorationTime,
-                                        workingDay: days[index],
+                                        workingDay: scheduledDays[realIndex],
                                         itineraryUsedPlaceIds: _vm
                                             .allPlaceIds,
-                                        dayDate: days[index].date,
+                                        dayDate: scheduledDays[realIndex].date,
                                         transportMode:
                                         _vm.draft?.transportation ??
                                             'walking',
@@ -324,12 +354,12 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
                                         mustVisitPlaceIds: _vm
                                             .mustVisitPlaceIds,
                                         destinationCenter:
-                                        _vm.destinationCenterForDay(index),
+                                        _vm.destinationCenterForDay(realIndex),
                                       ),
                                 ),
                               );
                               if (updated != null && mounted) {
-                                _vm.applyDayUpdate(index, updated);
+                                _vm.applyDayUpdate(realIndex, updated);
                               }
                             },
                             onEditDay: () {
@@ -362,7 +392,9 @@ class _ItineraryFinalScreenState extends State<ItineraryFinalScreen> {
                           ),
                         );
                       },
-                      childCount: days.length,
+                      childCount: _vm.selectedDayIndex == -1
+                          ? days.length
+                          : 1,
                     ),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 140)),
@@ -650,6 +682,8 @@ class _DayPillsDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final isAllDays = selectedIndex == -1;
+
     return SizedBox(
       height: minExtent,
       child: Container(
@@ -658,39 +692,72 @@ class _DayPillsDelegate extends SliverPersistentHeaderDelegate {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: List.generate(days.length, (index) {
-              final day = days[index];
-              final isSelected = index == selectedIndex;
-              return Padding(
+            children: [
+              // All Days pill
+              Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
-                  onTap: () => onDaySelected(index),
+                  onTap: () => onDaySelected(-1),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.primary : AppColors.surface,
+                      color: isAllDays ? AppColors.primary : AppColors.surface,
                       borderRadius: BorderRadius.circular(AppRadius.pill),
                       border: Border.all(
-                        color: isSelected ? AppColors.primary : AppColors.moduleBorder,
-                        width: isSelected ? 2 : 1,
+                        color: isAllDays ? AppColors.primary : AppColors.moduleBorder,
+                        width: isAllDays ? 2 : 1,
                       ),
-                      boxShadow: isSelected
+                      boxShadow: isAllDays
                           ? [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))]
                           : null,
                     ),
                     child: Text(
-                      'Day ${day.dayNumber}${index == 0 ? ' • ${day.date}' : ''}',
+                      'All Days',
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                        color: isSelected ? AppColors.surface : AppColors.inkFaint,
+                        fontWeight: isAllDays ? FontWeight.bold : FontWeight.w600,
+                        color: isAllDays ? AppColors.surface : AppColors.inkFaint,
                       ),
                     ),
                   ),
                 ),
-              );
-            }),
+              ),
+              // Day pills
+              ...List.generate(days.length, (index) {
+                final day = days[index];
+                final isSelected = index == selectedIndex;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => onDaySelected(index),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.primary : AppColors.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                        border: Border.all(
+                          color: isSelected ? AppColors.primary : AppColors.moduleBorder,
+                          width: isSelected ? 2 : 1,
+                        ),
+                        boxShadow: isSelected
+                            ? [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))]
+                            : null,
+                      ),
+                      child: Text(
+                        'Day ${day.dayNumber}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                          color: isSelected ? AppColors.surface : AppColors.inkFaint,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
           ),
         ),
       ),
@@ -724,15 +791,15 @@ class _DayCard extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.05) : AppColors.surface,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.moduleBorder.withOpacity(0.6),
-            width: isSelected ? 2.5 : 1,
+            color: isSelected ? const Color(0xFF9BB9AD) : const Color(0xFFE5DDD2),
+            width: isSelected ? 1.5 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: isSelected ? AppColors.primary.withOpacity(0.15) : AppShadows.card,
+              color: Colors.black.withOpacity(0.04),
               offset: const Offset(0, 4),
               blurRadius: 20,
             ),
@@ -811,7 +878,7 @@ class _DayCard extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Stops
-            ..._buildStops(),
+            ..._buildStops(context),
 
             // Add button
             if (isSelected) ...[
@@ -849,7 +916,7 @@ class _DayCard extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildStops() {
+  List<Widget> _buildStops(BuildContext context) {
     final List<Widget> widgets = [];
     for (int i = 0; i < day.stops.length; i++) {
       final stop = day.stops[i];
@@ -862,23 +929,31 @@ class _DayCard extends StatelessWidget {
         ),
       );
       if (i < day.stops.length - 1) {
-        final transitText = stop.transitTime ?? '';
-        widgets.add(
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                const Icon(
-                    Icons.directions_car, size: 14, color: AppColors.inkFaint),
-                const SizedBox(width: 6),
-                Text(
-                  transitText.isNotEmpty ? transitText : 'travel',
-                  style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
-                ),
-              ],
+        final nextStop = day.stops[i + 1];
+        if (!stop.isUnscheduled && !nextStop.isUnscheduled) {
+          final transitText = stop.transitTime ?? '';
+          widgets.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    getTransportationIcon(
+                      context.read<ItineraryFinalViewModel>().draft?.transportation,
+                    ),
+                    size: 14,
+                    color: AppColors.inkFaint,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    transitText.isNotEmpty ? transitText : 'travel',
+                    style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
+                  ),
+                ],
+              ),
             ),
-          ),
-        );
+          );
+        }
       }
     }
     return widgets;
@@ -911,7 +986,9 @@ class _StopItem extends StatelessWidget {
               height: 12,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isFirst ? AppColors.primary : AppColors.moduleBorder,
+                color: stop.isUnscheduled
+                    ? Colors.orange.shade400
+                    : (isFirst ? AppColors.primary : AppColors.moduleBorder),
                 border: Border.all(
                     color: isFirst ? Colors.transparent : AppColors.surface,
                     width: 2),
@@ -932,13 +1009,40 @@ class _StopItem extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${stop.time} • ${stop.duration}',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: isFirst ? AppColors.primary : AppColors.inkFaint,
-                ),
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                children: [
+                  Text(
+                    stop.isUnscheduled
+                        ? 'Time to be arranged'
+                        : '${stop.time} • ${stop.duration}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: stop.isUnscheduled
+                          ? Colors.orange.shade800
+                          : (isFirst ? AppColors.primary : AppColors.inkFaint),
+                    ),
+                  ),
+                  if (stop.isUnscheduled)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.orange.shade300, width: 0.8),
+                      ),
+                      child: Text(
+                        'Not scheduled yet',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 6),
 
@@ -1000,6 +1104,33 @@ class _StopItem extends StatelessWidget {
                   ),
                 ),
               ),
+              if (stop.conflict != null && stop.conflict!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFFB74D), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFFE65100)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          stop.conflict!,
+                          style: GoogleFonts.nunito(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFFD84315),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
             ],
           ),

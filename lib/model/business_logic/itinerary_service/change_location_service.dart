@@ -1,3 +1,6 @@
+import 'package:narrate_my/model/repositories/interfaces/itinerary/place_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_stop_repository.dart';
+import 'package:narrate_my/model/repositories/interfaces/itinerary/itinerary_repository.dart';
 // lib/model/business_logic/itinerary_service/change_location_service.dart
 import 'dart:async';
 import 'dart:convert';
@@ -11,9 +14,6 @@ import '../../../core/services/google_maps_service.dart';
 import '../../entities/itinerary.dart';
 import '../../entities/itinerary_stop.dart';
 import '../../entities/place.dart';
-import '../../repositories/adapters/itinerary/itinerary_repository_adapter.dart';
-import '../../repositories/adapters/itinerary/itinerary_stop_repository_adapter.dart';
-import '../../repositories/adapters/itinerary/place_repository_adapter.dart';
 import '../../../view/Itinerary/manage_itinerary/itinerary_status_resolver.dart';
 import './itinerary_validator.dart';
 import './scoring_service.dart';
@@ -92,11 +92,11 @@ class ChangeLocationService {
   static const Duration overallBudget = Duration(seconds: 10);
   static const Duration aiTimeout = Duration(seconds: 7);
 
-  final ItineraryRepositoryImpl _itineraryRepo =
+  final ItineraryRepository _itineraryRepo =
       DatabaseManager().itineraryRepository;
-  final ItineraryStopRepositoryImpl _stopRepo =
+  final ItineraryStopRepository _stopRepo =
       DatabaseManager().itineraryStopRepository;
-  final PlaceRepositoryAdapter _placeRepo =
+  final PlaceRepository _placeRepo =
       DatabaseManager().placeRepository;
   final GoogleMapsService _maps = GoogleMapsService();
   final ItineraryValidator _validator = ItineraryValidator();
@@ -938,11 +938,45 @@ class ChangeLocationService {
     final stops = List<ItineraryStop>.from(resulting)
       ..sort((a, b) => a.stopOrder.compareTo(b.stopOrder));
 
+    // 1. If replaced stop has a predecessor, ensure it starts after predecessor ends + travel time
+    if (replacedIndex > 0) {
+      final prev = stops[replacedIndex - 1];
+      final curr = stops[replacedIndex];
+      int travel = curr.travelFromPrevMinutes ?? 15;
+      if (prev.place != null && curr.place != null) {
+        final routed = await _validator.travelMinutesBetween(
+          prev.place!.coordinates,
+          curr.place!.coordinates,
+          itinerary.transportationMode,
+        );
+        if (routed != null) travel = routed;
+      }
+
+      final earliestStart = prev.endTime.add(Duration(minutes: travel));
+      if (curr.startTime.isBefore(earliestStart)) {
+        final newStart = earliestStart;
+        final newEnd = newStart.add(Duration(minutes: curr.durationMinutes));
+        stops[replacedIndex] = _copyWithTimes(curr, newStart, newEnd)
+            .copyWith(travelFromPrevMinutes: travel);
+      } else {
+        stops[replacedIndex] = curr.copyWith(travelFromPrevMinutes: travel);
+      }
+    }
+
     var cursorEnd = stops[replacedIndex].endTime;
     for (var i = replacedIndex + 1; i < stops.length; i++) {
       final next = stops[i];
+      int travel = next.travelFromPrevMinutes ?? 15;
+      if (stops[i - 1].place != null && next.place != null) {
+        final routed = await _validator.travelMinutesBetween(
+          stops[i - 1].place!.coordinates,
+          next.place!.coordinates,
+          itinerary.transportationMode,
+        );
+        if (routed != null) travel = routed;
+      }
+
       if (next.stopStatus == EditStopStatuses.completed) {
-        final travel = next.travelFromPrevMinutes ?? 0;
         if (next.startTime.isBefore(cursorEnd.add(Duration(minutes: travel)))) {
           return null;
         }
@@ -950,15 +984,16 @@ class ChangeLocationService {
         continue;
       }
 
-      final travel = next.travelFromPrevMinutes ?? 0;
       final earliest = cursorEnd.add(Duration(minutes: travel));
       if (next.startTime.isBefore(earliest)) {
         final shiftedStart = earliest;
         final shiftedEnd = shiftedStart.add(
             Duration(minutes: next.durationMinutes));
-        stops[i] = _copyWithTimes(next, shiftedStart, shiftedEnd);
+        stops[i] = _copyWithTimes(next, shiftedStart, shiftedEnd)
+            .copyWith(travelFromPrevMinutes: travel);
         cursorEnd = shiftedEnd;
       } else {
+        stops[i] = next.copyWith(travelFromPrevMinutes: travel);
         cursorEnd = next.endTime;
       }
     }
@@ -1017,15 +1052,6 @@ class ChangeLocationService {
     Place? place = stop.place;
     place ??= await _placeRepo.getPlace(stop.placeId);
     return stop.copyWith(place: place);
-  }
-
-  Future<Place?> _loadPlace(String placeId) async {
-    try {
-      return await _placeRepo.getPlace(placeId);
-    } catch (e) {
-      debugPrint('[ChangeLocation] Place load failed: $e');
-      return null;
-    }
   }
 
   Future<List<ItineraryStop>> _loadDayStops(
