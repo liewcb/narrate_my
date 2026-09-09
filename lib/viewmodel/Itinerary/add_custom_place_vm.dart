@@ -25,9 +25,16 @@ import '../../model/repositories/interfaces/bookmark/bookmark_repository.dart';
 ///     identity → name → coordinates → opening hours (on the itinerary
 ///     DAY date, not the device date) → duplicates (stable place_id).
 ///   - Build "RECOMMENDED FOR THIS DAY" from the existing day stops'
-///     geography + interests, never as if the day were empty.
+///     geography + interests, never as if the day were empty — and only
+///     after each candidate passed the DETERMINISTIC feasibility gate:
+///     NEARBY (real route from the day), REACHABLE (routing service
+///     returns a valid route for the transport mode) and ACHIEVABLE
+///     (proven insertable into the EXISTING day schedule: window,
+///     opening hours at the proposed visit, travel legs, order, daily
+///     capacity). AI never decides feasibility.
 ///   - Run AI planning + deterministic validation for the selected place
-///     against existingStops + newPlace (existing stops are preserved).
+///     against existingStops + newPlace (existing stops are preserved),
+///     but only AFTER the same gate passed at selection time.
 ///   - Preview mode: return the proposed day to the host (no DB write).
 ///   - Database mode: replace ONLY this day's stops through the repo.
 class AddCustomPlaceVM extends ChangeNotifier {
@@ -48,6 +55,12 @@ class AddCustomPlaceVM extends ChangeNotifier {
   /// Cached day contexts per 1-based day index.
   final Map<int, List<ExistingStopContext>> _dayContextCache = {};
   final Map<String, CustomPlacePlanResult> _planCache = {};
+
+  /// Cached deterministic feasibility verdicts per day+place
+  /// ('stage' = nearby/reachable/achievable gate). Reused by the
+  /// recommendation gate and selection so no candidate is routed or
+  /// scheduled against the day twice.
+  final Map<String, PlacementFeasibility> _feasibilityCache = {};
 
   /// Preview mode: the host injected a TEMPORARY day schedule. It is the
   /// source of truth for this day — refresh must never replace it with
@@ -289,6 +302,9 @@ class AddCustomPlaceVM extends ChangeNotifier {
     if (dayIndex1Based == _dayIndex) {
       _previewMode = true;
       _previewStops = List.of(stops);
+      // The host's temporary day changed — cached feasibility is stale.
+      _feasibilityCache.removeWhere(
+          (k, _) => k.startsWith('${_dayIndex}_'));
     }
     _dayContextCache[dayIndex1Based] = stops;
   }
@@ -301,6 +317,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
     _dayDate = newDayDate;
     _previewMode = false;
     _previewStops = null;
+    _feasibilityCache.clear();
     _clearSelection();
     await load();
   }
@@ -314,6 +331,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
     debugPrint('[ADD_CUSTOM_REFRESH] Reloading day context');
     _dayContextCache.remove(_dayIndex);
     _planCache.removeWhere((k, _) => k.startsWith('${_dayIndex}_'));
+    _feasibilityCache.removeWhere((k, _) => k.startsWith('${_dayIndex}_'));
     debugPrint('[ADD_CUSTOM_REFRESH] Clearing stale search state');
     _searchResults = [];
     _searchError = null;
@@ -648,7 +666,30 @@ class AddCustomPlaceVM extends ChangeNotifier {
       debugPrint('[ADD_CUSTOM_RECOMMENDATION] Candidate count after '
           'duplicate filtering = ${deduped.length}');
 
-      _recommendations = deduped.take(maxResults).toList();
+      // NEARBY + REACHABLE + ACHIEVABLE gate: a candidate is only
+      // recommended once a REAL route exists from the day AND it can be
+      // inserted into the EXISTING day schedule (deterministic engine —
+      // no AI, no proximity-only shortcut). Expensive checks run LAST
+      // and are bounded + cached.
+      final feasible = <Place>[];
+      var evaluated = 0;
+      for (final p in deduped) {
+        if (feasible.length >= maxResults) break;
+        if (evaluated >= maxResults * 2) break; // bound routing/schedule work
+        evaluated++;
+        final verdict = await _feasibilityFor(p);
+        if (verdict.feasible) {
+          feasible.add(p);
+        } else {
+          debugPrint('[ADD_CUSTOM_RECOMMENDATION] REJECT ${p.placeId} '
+              '(${p.placeName}) stage=${verdict.stage} '
+              'reason=${verdict.reason}');
+        }
+      }
+      debugPrint('[ADD_CUSTOM_RECOMMENDATION] Candidate count after '
+          'feasibility = ${feasible.length} (evaluated $evaluated)');
+
+      _recommendations = feasible;
       debugPrint('[ADD_CUSTOM_RECOMMENDATION] Final recommendation count '
           '= ${_recommendations.length}');
       if (_recommendations.isEmpty) {
@@ -686,9 +727,12 @@ class AddCustomPlaceVM extends ChangeNotifier {
 
   // ─── Selection + proximity + planning ───────────────────────
 
-  /// Select a candidate; VALIDATE AGAIN, then compute distance/travel
-  /// info (information only) and run AI planning against
-  /// existing day stops + the new place.
+  /// Select a candidate; VALIDATE AGAIN, then prove it is NEARBY /
+  /// REACHABLE / ACHIEVABLE with the deterministic gate (real route +
+  /// insertion into the EXISTING day), and only then run the AI-assisted
+  /// (but deterministically verified) insertion planning. An infeasible
+  /// candidate gets a clear [_planError] and no plan — the Add button
+  /// (which requires `planResult.success`) stays disabled.
   Future<void> selectPlace(String placeId) async {
     _selectedPlaceId = placeId;
     _proximity = null;
@@ -711,23 +755,59 @@ class AddCustomPlaceVM extends ChangeNotifier {
       return;
     }
 
-    // Coordinates are known valid here → safe for routing/proximity.
-    try {
-      _proximity = await _service.evaluateProximity(
+    // Reachability + achievability gate (cached; deterministic).
+    final verdict = await _feasibilityFor(place);
+    if (verdict.distanceKm != null) {
+      final km = verdict.distanceKm!;
+      _proximity = PlaceProximityInfo(
         place: place,
-        existingDayPlaces: dayPlaces,
-        transportMode: transportMode,
+        distanceFromItineraryKm: km,
+        proximity: km < 3.0 ? 'Near' : (km < 10.0 ? 'Moderate' : 'Far'),
+        travelMinutes: verdict.travelMinutes ?? 0,
+        travelText: '${verdict.travelMinutes ?? 0} min',
       );
-      debugPrint('[ADD_CUSTOM_ROUTE] Distance from day stops = '
-          '${_proximity!.distanceFromItineraryKm.toStringAsFixed(1)} km, '
-          'travel ≈ ${_proximity!.travelMinutes} min — route information '
-          'is context, not a data-validity judgement');
-      notifyListeners();
-    } catch (e) {
-      debugPrint('[ADD_CUSTOM_ROUTE] proximity error: $e');
+      debugPrint('[ADD_CUSTOM_ROUTE] place=$placeId distance='
+          '${km.toStringAsFixed(1)}km realTravelTime='
+          '${verdict.travelMinutes ?? 0}min '
+          '(displayed from the routed feasibility check)');
     }
+    if (!verdict.feasible) {
+      _planError = verdict.reason;
+      _planResult = null;
+      debugPrint('[ADD_CUSTOM_PLAN] GATE FAIL ${place.placeId} — '
+          'stage=${verdict.stage} reason=${verdict.reason}');
+      notifyListeners();
+      return;
+    }
+    debugPrint('[ADD_CUSTOM_PLAN] GATE PASS ${place.placeId} — nearby + '
+        'reachable + achievable (deterministic); proceeding to planning');
+    notifyListeners();
 
     await planInsertion();
+  }
+
+  /// Cached deterministic feasibility check for the current day.
+  Future<PlacementFeasibility> _feasibilityFor(Place place) async {
+    final key = '${_dayIndex}_${place.placeId}';
+    final cached = _feasibilityCache[key];
+    if (cached != null) {
+      final verdictText = cached.feasible
+          ? 'FEASIBLE'
+          : 'NOT FEASIBLE (${cached.stage}: ${cached.reason})';
+      debugPrint('[ADD_CUSTOM_PLAN] feasibility cache hit ${place.placeId} '
+          'result=$verdictText');
+      return cached;
+    }
+    final contexts = await _loadDayContext(_dayIndex);
+    final result = await _service.evaluatePlacementFeasibility(
+      newPlace: place,
+      existingStops: contexts,
+      date: _dayDate,
+      explorationTime: explorationTime,
+      transportMode: transportMode,
+    );
+    _feasibilityCache[key] = result;
+    return result;
   }
 
   /// Run AI planning + deterministic validation for the selected place.
@@ -884,6 +964,7 @@ class AddCustomPlaceVM extends ChangeNotifier {
 
       _dayContextCache.remove(_dayIndex);
       _planCache.removeWhere((k, _) => k.startsWith('${_dayIndex}_'));
+      _feasibilityCache.removeWhere((k, _) => k.startsWith('${_dayIndex}_'));
       _clearSelection();
       await load();
       return true;

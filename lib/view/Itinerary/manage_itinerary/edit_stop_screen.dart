@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 import '../../../core/ai_assistant/global_ai_assistant.dart';
 import '../../../core/config/api_keys.dart';
 import '../../../core/config/itinerary_constants.dart';
-import '../../../core/services/google_maps_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_confirmation_dialog.dart';
 import '../../../core/services/database_manager.dart';
@@ -489,21 +488,19 @@ class _EditStopScreenState extends State<EditStopScreen> {
     }
   }
 
+  /// Change-location flow: select → confirm → the EXISTING repository
+  /// updates ONLY this itinerary_stops row's place_id. NO route or
+  /// distance calculation happens before the save — location editing is
+  /// direct record customization, not route optimization.
   Future<String?> _applyLocationReplacement(Place selected) async {
-    final info = await _viewModel.travelInfoToPlace(selected);
     if (!mounted) return 'Edit screen is no longer open.';
 
     final proceed = await showConfirmationDialog(
       context: context,
       title: 'Use ${selected.placeName}?',
-      message: info == null
-          ? 'This place will replace the current stop location.'
-          : 'From the previous stop:\n\n'
-          'Distance: ${info.distanceKm.toStringAsFixed(1)} km\n'
-          'Estimated travel time: '
-          '${info.travelMinutes == null ? 'unknown' : '${info.travelMinutes} minutes'}\n\n'
-          'Travel information is advisory — the change is allowed even '
-          'if the route is not optimal.',
+      message: 'This place will replace the current stop\'s location.\n\n'
+          'The stop keeps its time, duration and place in the day. '
+          'No other stop will change.',
       confirmLabel: 'Use Location',
       icon: Icons.place_outlined,
       iconBgColor: AppColors.surface2,
@@ -511,6 +508,8 @@ class _EditStopScreenState extends State<EditStopScreen> {
       confirmColor: AppColors.accent,
     );
     if (proceed != true) {
+      debugPrint('[EDIT_STOP_LOCATION] Traveler cancelled — original place '
+          'kept (no database change)');
       return 'Location change cancelled.';
     }
 

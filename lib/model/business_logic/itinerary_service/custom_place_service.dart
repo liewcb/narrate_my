@@ -131,6 +131,71 @@ class CustomPlacePlanResult {
       CustomPlacePlanResult(success: false, message: message);
 }
 
+/// Deterministic feasibility verdict for the Add Place gate.
+///
+/// A candidate is only feasible when it is
+///   NEARBY    — real route computed from the day's stops (not just
+///               straight-line distance),
+///   REACHABLE — the routing service actually returns a valid route for
+///               the selected transport mode, and
+///   ACHIEVABLE— it can be inserted into the EXISTING day schedule
+///               (window, opening hours at the proposed visit time,
+///               travel legs, chronological order, daily capacity).
+///
+/// No AI participates in this decision; it is pure deterministic data.
+class PlacementFeasibility {
+  final bool feasible;
+
+  /// Failing stage: '' | 'data' | 'opening-hours' | 'route' | 'schedule'.
+  final String stage;
+
+  /// Traveler-facing failure reason ('' when feasible).
+  final String reason;
+
+  /// Deterministic best insertion position within the existing day.
+  final int? insertIndex;
+  final DateTime? visitStart;
+  final DateTime? visitEnd;
+
+  /// Straight-line distance (km) to the nearest existing stop.
+  final double? distanceKm;
+
+  /// REAL routed travel time (minutes) from that stop.
+  final int? travelMinutes;
+
+  const PlacementFeasibility._({
+    required this.feasible,
+    required this.stage,
+    required this.reason,
+    this.insertIndex,
+    this.visitStart,
+    this.visitEnd,
+    this.distanceKm,
+    this.travelMinutes,
+  });
+
+  factory PlacementFeasibility.fail(String stage, String reason) =>
+      PlacementFeasibility._(feasible: false, stage: stage, reason: reason);
+
+  factory PlacementFeasibility.success({
+    required int insertIndex,
+    required DateTime visitStart,
+    required DateTime visitEnd,
+    double? distanceKm,
+    int? travelMinutes,
+  }) =>
+      PlacementFeasibility._(
+        feasible: true,
+        stage: '',
+        reason: '',
+        insertIndex: insertIndex,
+        visitStart: visitStart,
+        visitEnd: visitEnd,
+        distanceKm: distanceKm,
+        travelMinutes: travelMinutes,
+      );
+}
+
 /// Minimal schedule context for one existing stop of the day. The caller
 /// (temporary editor state) supplies these Ã¢â‚¬â€ the service never reads the
 /// database, so the preview stays temporary and fast.
@@ -268,6 +333,207 @@ class CustomPlaceService {
       travelText: '${travel.ceil()} min',
     );
   }
+
+  // ============================================================
+  // 2A. DETERMINISTIC PLACEMENT FEASIBILITY — Add Place gate
+  // ============================================================
+
+  /// Proves that [newPlace] is NEARBY / REACHABLE / ACHIEVABLE against
+  /// the EXISTING day before it may be recommended or added.
+  ///
+  /// Staged (cheapest first, bounded routing work):
+  ///   1. data integrity      — identity, name, STRICT coordinates
+  ///                            (before ANY routing call), day duplicate
+  ///   2. open on the day     — existing [_checkOpeningHours] engine on
+  ///                            the itinerary DATE
+  ///   3. reachability        — one REAL route from the nearest existing
+  ///                            stop via the existing routing service;
+  ///                            no route / invalid time / exception →
+  ///                            NOT reachable (never treated as success)
+  ///   4. achievability       — the SAME deterministic day-insertion
+  ///                            engines used by [planInsertion]
+  ///                            ([_scanFeasiblePositions] +
+  ///                            [_buildRoutedSlot]): existing stops stay
+  ///                            in the chain; the CANDIDATE's full visit
+  ///                            window is re-checked against opening
+  ///                            hours, the exploration window is a hard
+  ///                            bound, and real routed travel times for
+  ///                            the affected legs must keep the day
+  ///                            valid (max 3 positions attempted).
+  ///
+  /// AI is never consulted here — deterministic data is the authority.
+  Future<PlacementFeasibility> evaluatePlacementFeasibility({
+    required Place newPlace,
+    required List<ExistingStopContext> existingStops,
+    required DateTime date,
+    required String explorationTime,
+    required String transportMode,
+  }) async {
+    final pid = newPlace.placeId.trim();
+    debugPrint('[ADD_CUSTOM_VALIDATE] FEASIBILITY start place=$pid '
+        '(${newPlace.placeName}) itineraryDate=$date '
+        'transport=$transportMode existingStops=${existingStops.length}');
+
+    // ── Stage 1: data integrity BEFORE any routing/schedule work ────
+    if (pid.isEmpty) {
+      return PlacementFeasibility.fail(
+          'data', 'This place does not have a valid place ID.');
+    }
+    if (newPlace.placeName.trim().isEmpty) {
+      return PlacementFeasibility.fail(
+          'data', 'This place does not have a valid name.');
+    }
+    final lat = newPlace.placeLatitude;
+    final lng = newPlace.placeLongitude;
+    if (lat.isNaN ||
+        lat.isInfinite ||
+        lng.isNaN ||
+        lng.isInfinite ||
+        lat < -90 ||
+        lat > 90 ||
+        lng < -180 ||
+        lng > 180 ||
+        (lat == 0 && lng == 0)) {
+      debugPrint('[ADD_CUSTOM_COORDINATE] place=$pid result=REJECT '
+          '(lat=$lat lng=$lng) — no routing attempted');
+      return PlacementFeasibility.fail(
+          'data', 'This place does not have valid coordinates.');
+    }
+    if (existingStops.any((s) => s.place.placeId == pid)) {
+      debugPrint('[ADD_CUSTOM_DUPLICATE] place=$pid result=REJECT — '
+          'already scheduled in this day');
+      return PlacementFeasibility.fail(
+          'data', 'This place is already in your itinerary.');
+    }
+
+    final window = ItineraryConstants.explorationWindowFor(explorationTime);
+
+    // ── Stage 2: open on the ITINERARY date (existing engine) ──────
+    final closedToday = _checkOpeningHours(
+      place: newPlace,
+      date: date,
+      windowStartMinutes: window.startMinutes,
+      windowEndMinutes: window.endMinutes,
+    );
+    debugPrint('[ADD_CUSTOM_OPENING_HOURS] place=$pid dayCheck='
+        '${closedToday == null ? "PASS" : "REJECT — $closedToday"}');
+    if (closedToday != null) {
+      return PlacementFeasibility.fail('opening-hours', closedToday);
+    }
+
+    final duration = _resolveDuration(newPlace: newPlace, suggested: null);
+    if (duration > window.totalMinutes) {
+      debugPrint('[ADD_CUSTOM_PLAN] place=$pid result=REJECT '
+          'reason=duration $duration exceeds day capacity '
+          '${window.totalMinutes} min');
+      return PlacementFeasibility.fail('schedule',
+          "There isn't enough time in the day for this visit.");
+    }
+
+    // ── Stage 3: REACHABILITY — a real route from the day ──────────
+    double? distanceKm;
+    int? travelMinutes;
+    if (existingStops.isNotEmpty) {
+      ExistingStopContext? nearest;
+      var nearestKm = double.infinity;
+      for (final s in existingStops) {
+        final d = s.place.coordinates.distanceTo(newPlace.coordinates);
+        if (d < nearestKm) {
+          nearestKm = d;
+          nearest = s;
+        }
+      }
+      distanceKm = nearestKm;
+      debugPrint('[ADD_CUSTOM_ROUTE] place=$pid straight-line from '
+          'nearest stop=${nearest!.place.placeName}: '
+          '${nearestKm.toStringAsFixed(1)} km — requesting REAL route '
+          '($transportMode)…');
+      try {
+        final info = await _mapsService.getTravelTime(
+          origin: nearest.place.coordinates,
+          destination: newPlace.coordinates,
+          mode: transportMode,
+        );
+        final minutes = info.durationMinutes;
+        if (minutes.isNaN || minutes.isInfinite || minutes < 0) {
+          debugPrint('[ADD_CUSTOM_ROUTE] place=$pid result=REJECT '
+              'reason=invalid travel time ($minutes)');
+          return PlacementFeasibility.fail('route',
+              'This place cannot be reached by the selected transport '
+                  'mode.');
+        }
+        travelMinutes = minutes.ceil();
+        debugPrint('[ADD_CUSTOM_ROUTE] place=$pid result=REACHABLE '
+            'travelTime=$travelMinutes min');
+      } catch (e) {
+        debugPrint('[ADD_CUSTOM_ROUTE] place=$pid result=REJECT '
+            'reason=no route available ($e)');
+        return PlacementFeasibility.fail('route',
+            'This place cannot be reached by the selected transport mode.');
+      }
+    }
+
+    // ── Stage 4: ACHIEVABILITY — insertion into the EXISTING day ───
+    final scan = _scanFeasiblePositions(
+      existingStops: existingStops,
+      newPlace: newPlace,
+      newDuration: duration,
+      date: date,
+      window: window,
+      transportMode: transportMode,
+    );
+    if (scan.feasible.isEmpty) {
+      final reason = scan.failureReason.isEmpty
+          ? 'This place cannot fit into the available schedule.'
+          : scan.failureReason;
+      debugPrint('[ADD_CUSTOM_PLAN] place=$pid result=REJECT '
+          'reason=no feasible position: $reason');
+      return PlacementFeasibility.fail('schedule', reason);
+    }
+
+    for (var attempt = 0;
+        attempt < scan.feasible.length && attempt < 3;
+        attempt++) {
+      final position = scan.feasible[attempt].position;
+      final slot = await _buildRoutedSlot(
+        position: position,
+        existingStops: existingStops,
+        newPlace: newPlace,
+        newDuration: duration,
+        date: date,
+        window: window,
+        transportMode: transportMode,
+      );
+      if (slot == null) {
+        debugPrint('[ADD_CUSTOM_PLAN] place=$pid position=$position '
+            'result=REJECT — real routed travel times, opening hours at '
+            'the proposed visit, or the day window invalidate this '
+            'position');
+        continue;
+      }
+      final inserted = slot[position];
+      debugPrint('[ADD_CUSTOM_PLAN] place=$pid result=ACHIEVABLE '
+          'proposedPosition=$position visit='
+          '${_hhmm(inserted.startTime)}-${_hhmm(inserted.endTime)} '
+          'visitDuration=${inserted.durationMinutes}min '
+          'openingHoursAtVisit=PASS dayWindow=$window');
+      return PlacementFeasibility.success(
+        insertIndex: position,
+        visitStart: inserted.startTime,
+        visitEnd: inserted.endTime,
+        distanceKm: distanceKm,
+        travelMinutes: travelMinutes,
+      );
+    }
+
+    return PlacementFeasibility.fail('schedule',
+        'The planned visit would be outside the place\'s opening hours or '
+        'does not fit the day\'s remaining schedule.');
+  }
+
+  String _hhmm(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:'
+      '${t.minute.toString().padLeft(2, '0')}';
 
   /// Retrieve places geographically near the insertion anchors.
   ///

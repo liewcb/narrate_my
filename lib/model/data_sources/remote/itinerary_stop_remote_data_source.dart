@@ -33,14 +33,11 @@ class ItineraryStopRemoteSource {
   }
 
   Future<ItineraryStop> update(ItineraryStop stop) async {
-    // 1. Get the full map (which keeps SQLite happy)
     final data = stop.toMap();
 
-    // 2. Remove the locked fields so Supabase doesn't crash!
-    data.remove('stop_id');
-    data.remove('created_at');
+    // Always use the current update timestamp.
+    data['updated_at'] = DateTime.now().toIso8601String();
 
-    // 3. Send the safe data to Supabase
     final response = await _client
         .from('itinerary_stops')
         .update(data)
@@ -48,8 +45,9 @@ class ItineraryStopRemoteSource {
         .select()
         .single();
 
-    // ✅ FIXED: Route the response through the DTO so times are parsed correctly
-    return ItineraryStopDTO.fromMap(response).toEntity();
+    return ItineraryStopDTO
+        .fromMap(response as Map<String, dynamic>)
+        .toEntity();
   }
 
   Future<void> delete(int stopId) async {
