@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../localization/app_localizations.dart';
 import '../services/google_maps_launcher.dart';
 import '../theme/app_theme.dart';
 
@@ -26,7 +27,9 @@ class GoogleMapsDirectionsButton extends StatelessWidget {
     );
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open Google Maps.')),
+        SnackBar(
+          content: Text(AppLocalizations.t('recommendation.mapsOpenFailed')),
+        ),
       );
     }
   }
@@ -38,11 +41,13 @@ class GoogleMapsDirectionsButton extends StatelessWidget {
       child: Semantics(
         button: true,
         link: true,
-        label: 'Open directions to $destinationName in Google Maps',
+        label: AppLocalizations.t(
+          'recommendation.openDirectionsSemantics',
+        ).replaceFirst('{place}', destinationName),
         child: OutlinedButton.icon(
           onPressed: () => _open(context),
           icon: const Icon(Icons.directions_rounded),
-          label: const Text('Open in Google Maps'),
+          label: Text(AppLocalizations.t('recommendation.openInGoogleMaps')),
           style: OutlinedButton.styleFrom(
             foregroundColor: AppColors.primary,
             side: const BorderSide(color: AppColors.primary, width: 1.5),

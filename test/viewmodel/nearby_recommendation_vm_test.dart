@@ -7,6 +7,7 @@ import 'package:narrate_my/model/entities/ar_site.dart';
 import 'package:narrate_my/model/entities/recommendation.dart';
 import 'package:narrate_my/model/business_logic/shared_services/location_service.dart';
 import 'package:narrate_my/core/services/permission_service.dart';
+import 'package:narrate_my/core/localization/app_localizations.dart';
 import 'package:narrate_my/model/repositories/interfaces/ar_exploration/ar_site_repository.dart';
 import 'package:narrate_my/model/repositories/interfaces/recommendation/recommendation_repository.dart';
 import 'package:narrate_my/viewmodel/recommendation/nearby_recommendation_vm.dart';
@@ -14,14 +15,17 @@ import 'package:permission_handler/permission_handler.dart';
 
 class _FakeRecommendationRepository implements RecommendationRepository {
   final List<bool> forceRefreshCalls = [];
+  final List<String> languageCodeCalls = [];
 
   @override
   Future<List<Recommendation>> getNearbyRecommendations({
     required double latitude,
     required double longitude,
+    required String languageCode,
     bool forceRefresh = false,
   }) async {
     forceRefreshCalls.add(forceRefresh);
+    languageCodeCalls.add(languageCode);
     return const [];
   }
 }
@@ -82,6 +86,9 @@ Position _position(double latitude, double longitude) => Position(
 );
 
 void main() {
+  setUp(() => AppLocalizations.currentCode = 'en');
+  tearDown(() => AppLocalizations.currentCode = 'en');
+
   group('REQ_401_9 movement threshold', () {
     const origin = Coordinates(latitude: 3.1390, longitude: 101.6869);
 
@@ -130,5 +137,45 @@ void main() {
         await location.close();
       },
     );
+  });
+
+  test('requests recommendations in the selected profile language', () async {
+    final repository = _FakeRecommendationRepository();
+    final location = _FakeLocationService();
+    final viewModel = NearbyRecommendationVm(
+      repository,
+      _FakeArSiteRepository(),
+      locationService: location,
+      permissionService: _GrantedPermissionService(),
+    );
+
+    AppLocalizations.currentCode = 'zh';
+    await viewModel.loadRecommendations();
+
+    expect(repository.languageCodeCalls, ['zh']);
+
+    viewModel.dispose();
+    await location.close();
+  });
+
+  test('refreshes dynamic text after the language changes', () async {
+    final repository = _FakeRecommendationRepository();
+    final location = _FakeLocationService();
+    final viewModel = NearbyRecommendationVm(
+      repository,
+      _FakeArSiteRepository(),
+      locationService: location,
+      permissionService: _GrantedPermissionService(),
+    );
+
+    await viewModel.loadRecommendations();
+    AppLocalizations.currentCode = 'ms';
+    await viewModel.refreshForLanguageChange();
+
+    expect(repository.languageCodeCalls, ['en', 'ms']);
+    expect(repository.forceRefreshCalls, [false, false]);
+
+    viewModel.dispose();
+    await location.close();
   });
 }

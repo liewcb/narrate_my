@@ -15,13 +15,18 @@ class RecommendationRemoteDataSource {
   Future<List<RecommendationDto>> getNearbyRecommendations({
     required double latitude,
     required double longitude,
+    required String languageCode,
   }) async {
     try {
       final accessToken = _supabase.auth.currentSession?.accessToken;
       final response = await _supabase.functions
           .invoke(
             'recommend-nearby',
-            body: {'latitude': latitude, 'longitude': longitude},
+            body: {
+              'latitude': latitude,
+              'longitude': longitude,
+              'language_code': languageCode,
+            },
             headers: accessToken == null
                 ? null
                 : {'Authorization': 'Bearer $accessToken'},

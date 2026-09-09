@@ -17,6 +17,7 @@ class ARRecommendationRepositoryAdapter implements ARRecommendationRepository {
     required double latitude,
     required double longitude,
     required List<String> excludedMarkerIds,
+    required String languageCode,
   }) async {
     final dtos = await _remoteDataSource.recommend(
       currentMarkerId: currentMarkerId,
@@ -24,6 +25,7 @@ class ARRecommendationRepositoryAdapter implements ARRecommendationRepository {
       latitude: latitude,
       longitude: longitude,
       excludedMarkerIds: excludedMarkerIds,
+      languageCode: languageCode,
     );
     final unique = <String, ARRecommendation>{};
     for (final dto in dtos) {

@@ -325,9 +325,9 @@ class AppLocalizations {
     'ui.enterPhoneNumber': 'Enter Phone Number',
 
     // nearby_recommendation_screen.dart / nearby_recommendation_details_screen.dart
-    // / nearby_ar_site_details_screen.dart — static UI chrome only. Recommendation
-    // text itself (name/address/reason) is fetched from the backend and is
-    // deliberately NOT translated here — see Recommendation.fromJson.
+    // / nearby_ar_site_details_screen.dart. Dynamic recommendation text is
+    // localized by the recommendation Edge Functions; these keys cover the
+    // app-generated labels around it.
     'recommendation.mapLegendRecommended': 'Recommended',
     'recommendation.arAvailable': 'AR available',
     'recommendation.headerTitle': 'Nearby Attractions',
@@ -363,6 +363,11 @@ class AppLocalizations {
     'recommendation.distanceLabel': 'DISTANCE',
     'recommendation.estTravelLabel': 'EST. TRAVEL',
     'recommendation.estTravelValue': '~{minutes} min by car',
+    'recommendation.walkTravelValue': '{minutes} min walk',
+    'recommendation.openInGoogleMaps': 'Open in Google Maps',
+    'recommendation.mapsOpenFailed': 'Unable to open Google Maps.',
+    'recommendation.openDirectionsSemantics':
+        'Open directions to {place} in Google Maps',
     'recommendation.bookmarked': 'Bookmarked',
     'recommendation.bookmark': 'Bookmark',
     'recommendation.arLocationLabel': 'AR LOCATION',
@@ -735,6 +740,11 @@ class AppLocalizations {
     'recommendation.distanceLabel': '距离',
     'recommendation.estTravelLabel': '预计车程',
     'recommendation.estTravelValue': '车程约 {minutes} 分钟',
+    'recommendation.walkTravelValue': '步行 {minutes} 分钟',
+    'recommendation.openInGoogleMaps': '在 Google 地图中打开',
+    'recommendation.mapsOpenFailed': '无法打开 Google 地图。',
+    'recommendation.openDirectionsSemantics':
+        '在 Google 地图中打开前往 {place} 的路线',
     'recommendation.bookmarked': '已收藏',
     'recommendation.bookmark': '收藏',
     'recommendation.arLocationLabel': 'AR 地点',
@@ -1160,6 +1170,11 @@ class AppLocalizations {
     'recommendation.distanceLabel': 'JARAK',
     'recommendation.estTravelLabel': 'ANGGARAN PERJALANAN',
     'recommendation.estTravelValue': '~{minutes} minit dengan kereta',
+    'recommendation.walkTravelValue': '{minutes} minit berjalan kaki',
+    'recommendation.openInGoogleMaps': 'Buka dalam Google Maps',
+    'recommendation.mapsOpenFailed': 'Tidak dapat membuka Google Maps.',
+    'recommendation.openDirectionsSemantics':
+        'Buka arah ke {place} dalam Google Maps',
     'recommendation.bookmarked': 'Ditanda buku',
     'recommendation.bookmark': 'Tanda buku',
     'recommendation.arLocationLabel': 'LOKASI AR',
@@ -1614,6 +1629,11 @@ class AppLocalizations {
     'recommendation.distanceLabel': 'DISTANCIA',
     'recommendation.estTravelLabel': 'TIEMPO ESTIMADO',
     'recommendation.estTravelValue': '~{minutes} min en coche',
+    'recommendation.walkTravelValue': '{minutes} min a pie',
+    'recommendation.openInGoogleMaps': 'Abrir en Google Maps',
+    'recommendation.mapsOpenFailed': 'No se pudo abrir Google Maps.',
+    'recommendation.openDirectionsSemantics':
+        'Abrir indicaciones a {place} en Google Maps',
     'recommendation.bookmarked': 'Guardado',
     'recommendation.bookmark': 'Guardar',
     'recommendation.arLocationLabel': 'UBICACIÓN DE RA',
@@ -2041,6 +2061,11 @@ class AppLocalizations {
     'recommendation.distanceLabel': 'दूरी',
     'recommendation.estTravelLabel': 'अनुमानित यात्रा समय',
     'recommendation.estTravelValue': '~{minutes} मिनट (कार से)',
+    'recommendation.walkTravelValue': '{minutes} मिनट पैदल',
+    'recommendation.openInGoogleMaps': 'Google Maps में खोलें',
+    'recommendation.mapsOpenFailed': 'Google Maps नहीं खोला जा सका।',
+    'recommendation.openDirectionsSemantics':
+        'Google Maps में {place} के लिए दिशानिर्देश खोलें',
     'recommendation.bookmarked': 'बुकमार्क किया गया',
     'recommendation.bookmark': 'बुकमार्क करें',
     'recommendation.arLocationLabel': 'AR स्थान',

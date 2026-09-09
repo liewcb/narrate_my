@@ -7,13 +7,20 @@ const PRIMARY_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_MODEL") ??
   "gemini-3.5-flash-lite";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_FALLBACK_MODEL") ??
   "gemini-3.6-flash";
-const PROMPT_VERSION = "ar-context-v3-accessibility";
+const PROMPT_VERSION = "ar-context-v4-localized";
 const DEFAULT_RADIUS_KM = 30;
 const CACHE_TTL_HOURS = 24;
 const MAX_PLACE_MATCH_DISTANCE_KM = 3;
 const GEMINI_REQUEST_TIMEOUT_MS = 25_000;
 const PLACES_REQUEST_TIMEOUT_MS = 10_000;
 const DAILY_CALL_BUDGET = numberFromEnv("GEMINI_DAILY_CALL_BUDGET", 100);
+const OUTPUT_LANGUAGES: Record<string, string> = {
+  en: "English",
+  zh: "Simplified Chinese",
+  ms: "Bahasa Melayu",
+  es: "Spanish",
+  hi: "Hindi",
+};
 
 interface Preferences {
   attraction_interests: string[];
@@ -51,6 +58,9 @@ interface Candidate {
 }
 
 interface RankedCandidate extends Candidate {
+  localizedName: string;
+  localizedCategory: string;
+  localizedSummary: string;
   reason: string;
   relationship: string;
   accessibilityEvidence: string;
@@ -105,6 +115,7 @@ Deno.serve(async (req) => {
     const currentAttractionName = optionalString(body.current_attraction_name);
     const latitude = Number(body.latitude);
     const longitude = Number(body.longitude);
+    const languageCode = supportedLanguageCode(body.language_code);
     const radiusKm = clamp(
       body.radius_km == null ? DEFAULT_RADIUS_KM : Number(body.radius_km),
       2,
@@ -199,6 +210,7 @@ Deno.serve(async (req) => {
       bucket(latitude),
       bucket(longitude),
       [...excludedMarkerIds].sort().join(","),
+      languageCode,
       preferenceHash,
       candidateHash,
     ].join("|"));
@@ -241,6 +253,7 @@ Deno.serve(async (req) => {
       longitude,
       preferences,
       candidates,
+      languageCode,
     });
 
     let ranked: RankedCandidate[];
@@ -263,7 +276,7 @@ Deno.serve(async (req) => {
         "Gemini AR ranking failed; using candidate fallback:",
         error,
       );
-      ranked = deterministicFallback(candidates, preferences);
+      ranked = deterministicFallback(candidates, preferences, languageCode);
       modelName = "deterministic-fallback";
       source = "deterministic_fallback";
     }
@@ -572,6 +585,7 @@ function buildPrompt({
   longitude,
   preferences,
   candidates,
+  languageCode,
 }: {
   current: Candidate;
   currentSite: ARSite | null | undefined;
@@ -579,6 +593,7 @@ function buildPrompt({
   longitude: number;
   preferences: Preferences;
   candidates: Candidate[];
+  languageCode: string;
 }): string {
   const candidateList = candidates.map((item) => ({
     id: item.attractionId,
@@ -589,11 +604,22 @@ function buildPrompt({
     distance_km: Number(item.distanceKm.toFixed(2)),
   }));
   const accessibilityRules = buildAccessibilityRules(preferences);
+  const languageMarker = outputLanguageMarker(languageCode);
 
   return `
 You are NarrateMy's AR recommendation engine for tourists in Malaysia.
 
 POLICY VERSION: ${PROMPT_VERSION}
+${languageMarker}
+
+LOCALISATION RULES
+- Write display_name, display_category, display_summary, reason, and
+  relationship in ${languageName(languageCode)}.
+- For proper attraction names, use an established ${languageName(languageCode)}
+  name when one exists; otherwise keep the official name unchanged.
+- Translate descriptive text naturally, without translating IDs or addresses.
+- Keep accessibility_evidence in English because it is an internal safety
+  field and is not displayed to the tourist.
 
 The tourist is currently viewing an attraction using AR. Select up to 3
 attractions from CANDIDATE ATTRACTIONS that continue or complement the current
@@ -647,7 +673,7 @@ that satisfies every active accessibility constraint. Use an empty string only
 when no accessibility constraint is active.
 
 Return JSON only in this exact shape:
-{"recommendations":[{"id":"candidate id","reason":"one concise personalised reason","relationship":"Continue History","accessibility_evidence":"Step-free entrance and lifts"}]}
+{"recommendations":[{"id":"candidate id","display_name":"Localized attraction name","display_category":"Localized category","display_summary":"Localized description","reason":"Localized concise reason","relationship":"Localized relationship","accessibility_evidence":"Step-free entrance and lifts"}]}
 `.trim();
 }
 
@@ -787,6 +813,11 @@ function validateGeneratedRecommendations(
     used.add(candidate.attractionId);
     result.push({
       ...candidate,
+      localizedName: optionalString(row.display_name) ?? candidate.name,
+      localizedCategory: optionalString(row.display_category) ??
+        candidate.category,
+      localizedSummary: optionalString(row.display_summary) ??
+        candidate.summary,
       reason: optionalString(row.reason) ??
         "This attraction complements your current AR experience.",
       relationship: optionalString(row.relationship) ??
@@ -802,6 +833,7 @@ function validateGeneratedRecommendations(
 function deterministicFallback(
   candidates: Candidate[],
   preferences: Preferences,
+  languageCode: string,
 ): RankedCandidate[] {
   if (accessibilityProfile(preferences).hasConstraints) return [];
   const interests = preferences.attraction_interests.map((item) =>
@@ -824,10 +856,11 @@ function deterministicFallback(
     .slice(0, 3)
     .map((item, index) => ({
       ...item,
-      reason: interests.length > 0
-        ? "A nearby AR attraction that fits your interests and continues your visit."
-        : "A nearby AR attraction that offers a complementary next experience.",
-      relationship: "Nearby complement",
+      localizedName: item.name,
+      localizedCategory: item.category,
+      localizedSummary: item.summary,
+      reason: localizedFallbackReason(languageCode, interests.length > 0),
+      relationship: localizedFallbackRelationship(languageCode),
       accessibilityEvidence: "",
       rank: index + 1,
     }));
@@ -890,7 +923,7 @@ async function resolveRecommendations({
       return {
         ...item,
         placeId: place.id,
-        resolvedName: item.name,
+        resolvedName: item.localizedName,
         resolvedAddress: place.formattedAddress ?? item.address ??
           "Address unavailable",
         resolvedLatitude: place.latitude,
@@ -925,7 +958,7 @@ function trustedMarkerFallback(
   return {
     ...item,
     placeId: `narratemy-ar-${item.attractionId}`,
-    resolvedName: item.name,
+    resolvedName: item.localizedName,
     resolvedAddress: item.address ?? "Address unavailable",
     resolvedLatitude: item.latitude,
     resolvedLongitude: item.longitude,
@@ -1117,9 +1150,9 @@ async function recommendationResponse(
       marker_id: item.markerId,
       place_id: item.placeId,
       name: item.resolvedName,
-      category: item.category,
+      category: item.localizedCategory,
       address: item.resolvedAddress,
-      summary: item.summary,
+      summary: item.localizedSummary,
       reason: item.reason,
       relationship: item.relationship,
       rank: item.rank,
@@ -1166,6 +1199,12 @@ function validateStoredRecommendations(
       updatedAt: optionalString(row.updatedAt) ?? "",
       address: optionalString(row.address),
       googlePlaceId: optionalString(row.googlePlaceId),
+      localizedName: optionalString(row.localizedName) ??
+        optionalString(row.name) ?? "AR attraction",
+      localizedCategory: optionalString(row.localizedCategory) ??
+        optionalString(row.category) ?? "AR attraction",
+      localizedSummary: optionalString(row.localizedSummary) ??
+        optionalString(row.summary) ?? "",
       reason: optionalString(row.reason) ?? "Recommended for your visit.",
       relationship: optionalString(row.relationship) ??
         "Complementary experience",
@@ -1469,6 +1508,59 @@ function requiredEnv(name: string): string {
 function numberFromEnv(name: string, fallback: number): number {
   const value = Number(Deno.env.get(name));
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function supportedLanguageCode(value: unknown): string {
+  const code = optionalString(value)?.toLowerCase() ?? "en";
+  return Object.hasOwn(OUTPUT_LANGUAGES, code) ? code : "en";
+}
+
+function languageName(languageCode: string): string {
+  return OUTPUT_LANGUAGES[languageCode] ?? OUTPUT_LANGUAGES.en;
+}
+
+function outputLanguageMarker(languageCode: string): string {
+  return `OUTPUT LANGUAGE: ${languageName(languageCode)} (${languageCode})`;
+}
+
+function localizedFallbackRelationship(languageCode: string): string {
+  const relationships: Record<string, string> = {
+    zh: "附近的互补景点",
+    ms: "Tarikan pelengkap berhampiran",
+    es: "Atracción complementaria cercana",
+    hi: "पास का पूरक आकर्षण",
+  };
+  return relationships[languageCode] ?? "Nearby complementary attraction";
+}
+
+function localizedFallbackReason(
+  languageCode: string,
+  matchesInterests: boolean,
+): string {
+  const reasons: Record<string, [string, string]> = {
+    zh: [
+      "这是一处符合您兴趣并能延续行程的附近 AR 景点。",
+      "这是一处可作为下一站互补体验的附近 AR 景点。",
+    ],
+    ms: [
+      "Tarikan AR berhampiran ini sepadan dengan minat anda dan meneruskan lawatan anda.",
+      "Tarikan AR berhampiran ini menawarkan pengalaman pelengkap untuk destinasi seterusnya.",
+    ],
+    es: [
+      "Esta atracción de RA cercana coincide con sus intereses y continúa su visita.",
+      "Esta atracción de RA cercana ofrece una experiencia complementaria para su próxima parada.",
+    ],
+    hi: [
+      "यह पास का AR आकर्षण आपकी रुचियों से मेल खाता है और आपकी यात्रा को आगे बढ़ाता है।",
+      "यह पास का AR आकर्षण आपकी अगली मंज़िल के लिए एक पूरक अनुभव देता है।",
+    ],
+  };
+  const english: [string, string] = [
+    "A nearby AR attraction that fits your interests and continues your visit.",
+    "A nearby AR attraction that offers a complementary next experience.",
+  ];
+  const selected = reasons[languageCode] ?? english;
+  return selected[matchesInterests ? 0 : 1];
 }
 
 function delay(milliseconds: number): Promise<void> {

@@ -10,7 +10,7 @@ const PRIMARY_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_MODEL") ??
   "gemini-3.5-flash-lite";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_RECOMMENDATION_FALLBACK_MODEL") ??
   "gemini-3.6-flash";
-const PROMPT_VERSION = "nearby-v4-accessibility-proximity";
+const PROMPT_VERSION = "nearby-v5-localized";
 const DEFAULT_RADIUS_KM = 10;
 const MAX_RADIUS_KM = 20;
 const MAX_RECOMMENDATIONS = 7;
@@ -19,6 +19,13 @@ const PLACES_REQUEST_TIMEOUT_MS = 10_000;
 const CACHE_TTL_HOURS = numberFromEnv("RECOMMENDATION_CACHE_TTL_HOURS", 24);
 const CACHE_STALE_DAYS = numberFromEnv("RECOMMENDATION_CACHE_STALE_DAYS", 7);
 const DAILY_CALL_BUDGET = numberFromEnv("GEMINI_DAILY_CALL_BUDGET", 100);
+const OUTPUT_LANGUAGES: Record<string, string> = {
+  en: "English",
+  zh: "Simplified Chinese",
+  ms: "Bahasa Melayu",
+  es: "Spanish",
+  hi: "Hindi",
+};
 
 interface Preferences {
   attraction_interests: string[];
@@ -30,6 +37,7 @@ interface Preferences {
 }
 
 interface RecommendationItem {
+  search_name?: string;
   name: string;
   category: string;
   address: string | null;
@@ -86,6 +94,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const latitude = Number(body.latitude);
     const longitude = Number(body.longitude);
+    const languageCode = supportedLanguageCode(body.language_code);
     const radiusKm = clamp(
       body.radius_km == null ? DEFAULT_RADIUS_KM : Number(body.radius_km),
       1,
@@ -124,6 +133,7 @@ Deno.serve(async (req) => {
         longitudeBucket,
         radiusKm.toFixed(2),
         maximumRadiusKm.toFixed(2),
+        languageCode,
         preferenceHash,
       ].join("|"),
     );
@@ -169,6 +179,7 @@ Deno.serve(async (req) => {
       latitude,
       longitude,
       preferences,
+      languageCode,
     });
     if (loggedRecommendations) {
       try {
@@ -217,6 +228,7 @@ Deno.serve(async (req) => {
       radiusKm,
       maximumRadiusKm,
       preferences,
+      languageCode,
     });
 
     try {
@@ -396,12 +408,14 @@ async function findCompatibleRecommendationLog({
   latitude,
   longitude,
   preferences,
+  languageCode,
 }: {
   supabase: SupabaseAdminClient;
   userId: string | null;
   latitude: number;
   longitude: number;
   preferences: Preferences;
+  languageCode: string;
 }): Promise<
   {
     recommendations: RecommendationItem[];
@@ -438,9 +452,12 @@ async function findCompatibleRecommendationLog({
   }
 
   const expectedPreferences = stablePreferences(preferences);
+  const expectedLanguageMarker = outputLanguageMarker(languageCode);
   for (const row of (data ?? []) as Array<Record<string, any>>) {
+    const loggedPrompt = String(row.prompt ?? "");
     if (
-      !String(row.prompt ?? "").includes(`POLICY VERSION: ${PROMPT_VERSION}`)
+      !loggedPrompt.includes(`POLICY VERSION: ${PROMPT_VERSION}`) ||
+      !loggedPrompt.includes(expectedLanguageMarker)
     ) {
       continue;
     }
@@ -582,7 +599,10 @@ async function searchPlace({
     accessibilityOptions: PlaceAccessibilityOptions;
   } | null
 > {
-  const query = [recommendation.name, recommendation.address]
+  const query = [
+    recommendation.search_name ?? recommendation.name,
+    recommendation.address,
+  ]
     .filter((value) => value && String(value).trim())
     .join(", ");
   const response = await fetch(
@@ -625,7 +645,9 @@ async function searchPlace({
 
   const places = Array.isArray(data?.places) ? data.places : [];
   if (places.length === 0) return null;
-  const targetName = normaliseName(recommendation.name);
+  const targetName = normaliseName(
+    recommendation.search_name ?? recommendation.name,
+  );
   const matched = places.find((place: Record<string, unknown>) => {
     const displayName = (place.displayName as Record<string, unknown> | null)
       ?.text;
@@ -930,18 +952,32 @@ function buildPrompt({
   radiusKm,
   maximumRadiusKm,
   preferences,
+  languageCode,
 }: {
   latitude: number;
   longitude: number;
   radiusKm: number;
   maximumRadiusKm: number;
   preferences: Preferences;
+  languageCode: string;
 }): string {
   const accessibilityRules = buildAccessibilityRules(preferences);
+  const languageMarker = outputLanguageMarker(languageCode);
   return `
 You are NarrateMy's tourism recommendation engine for Malaysia.
 
 POLICY VERSION: ${PROMPT_VERSION}
+${languageMarker}
+
+LOCALISATION RULES
+- Write name, category, and reason in ${languageName(languageCode)}.
+- For proper place names, use an established ${languageName(languageCode)}
+  name when one exists; otherwise keep the official name unchanged.
+- Keep search_name in the place's official or commonly searchable Malaysian/
+  English form so Google Places can verify it.
+- Keep address in its official, commonly searchable form; do not translate it.
+- Keep accessibility_evidence in English because it is an internal safety
+  field and is not displayed to the tourist.
 
 Recommend 5 to ${MAX_RECOMMENDATIONS} real, identifiable tourist places. Return at least 5
 when 5 suitable places exist. Never invent a place merely to reach the target.
@@ -984,7 +1020,7 @@ RULES
    that satisfies them in accessibility_evidence. If compatibility is unknown,
    omit the place. Use an empty string only when no accessibility constraint is active.
 8. Return JSON only in this exact shape:
-{"recommendations":[{"name":"Place name","category":"Museum","address":"Known or approximate address","rank":1,"reason":"Why it fits","accessibility_evidence":"Step-free entrance and lifts"}]}
+{"recommendations":[{"search_name":"Official searchable place name","name":"Localized display name","category":"Localized category","address":"Official unmodified address","rank":1,"reason":"Localized reason","accessibility_evidence":"Step-free entrance and lifts"}]}
 `.trim();
 }
 
@@ -1002,6 +1038,9 @@ function validateRecommendations(
       const rating = optionalNumber(row.rating);
       const rank = optionalNumber(row.rank);
       return {
+        ...(optionalString(row.search_name) == null
+          ? {}
+          : { search_name: optionalString(row.search_name)! }),
         name: String(row.name ?? "").trim(),
         category: String(row.category ?? "").trim(),
         address: row.address == null ? null : String(row.address).trim(),
@@ -1117,7 +1156,9 @@ function isAccessiblePlace(
   if (
     (profile.wheelchair || profile.mobility) &&
     isMobilityRiskText(
-      `${recommendation.name} ${recommendation.category} ${recommendation.reason}`,
+      `${recommendation.search_name ?? ""} ${recommendation.name} ` +
+        `${recommendation.category} ${recommendation.address ?? ""} ` +
+        recommendation.reason,
     )
   ) {
     return false;
@@ -1358,4 +1399,17 @@ class PlacesRequestError extends Error {
     this.status = status;
     this.name = "PlacesRequestError";
   }
+}
+
+function supportedLanguageCode(value: unknown): string {
+  const code = optionalString(value)?.toLowerCase() ?? "en";
+  return Object.hasOwn(OUTPUT_LANGUAGES, code) ? code : "en";
+}
+
+function languageName(languageCode: string): string {
+  return OUTPUT_LANGUAGES[languageCode] ?? OUTPUT_LANGUAGES.en;
+}
+
+function outputLanguageMarker(languageCode: string): string {
+  return `OUTPUT LANGUAGE: ${languageName(languageCode)} (${languageCode})`;
 }
