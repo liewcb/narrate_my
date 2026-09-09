@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../../core/config/api_keys.dart';          // ✅ import API keys
 import '../../../viewmodel/Itinerary/add_from_bookmarks_vm.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../model/dto/bookmark_with_place_dto.dart';
@@ -23,15 +24,28 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
   @override
   void initState() {
     super.initState();
-    _vm = AddFromBookmarksViewModel(userId: widget.userId,
-        destinationNames: widget.destinationName == null || widget.destinationName!.isEmpty ? const [] : [widget.destinationName!]);
+    _vm = AddFromBookmarksViewModel(
+      userId: widget.userId,
+      destinationNames: widget.destinationName == null || widget.destinationName!.isEmpty
+          ? const []
+          : [widget.destinationName!],
+    );
     _vm.addListener(_refresh);
     _vm.load();
   }
-  void _refresh() { if (mounted) setState(() {}); }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
   void _toggleSelection(String id) => _vm.toggleSelection(id);
+
   @override
-  void dispose() { _vm.removeListener(_refresh); _vm.dispose(); super.dispose(); }
+  void dispose() {
+    _vm.removeListener(_refresh);
+    _vm.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,16 +57,25 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
         children: [
           ListView(
             padding: const EdgeInsets.only(
-              top: 100, left: 20, right: 20, bottom: 140,
+              top: 100,
+              left: 20,
+              right: 20,
+              bottom: 140,
             ),
             children: [
               TextField(
                 onChanged: _vm.setQuery,
-                decoration: const InputDecoration(hintText: 'Search bookmarks', prefixIcon: Icon(Icons.search)),
+                decoration: const InputDecoration(
+                  hintText: 'Search bookmarks',
+                  prefixIcon: Icon(Icons.search),
+                ),
               ),
               const SizedBox(height: 16),
               if (_vm.error != null)
-                TextButton(onPressed: _vm.load, child: Text('${_vm.error} Retry')),
+                TextButton(
+                  onPressed: _vm.load,
+                  child: Text('${_vm.error} Retry'),
+                ),
               if (_isLoading)
                 const Center(
                   child: Padding(
@@ -97,10 +120,14 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
                 onPressed: () => Navigator.pop(context),
               ),
             ),
-            title: Text("Add from bookmarks",
-                style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.ink,
-                )),
+            title: Text(
+              "Add from bookmarks",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.ink,
+              ),
+            ),
             centerTitle: false,
           ),
         ),
@@ -111,9 +138,15 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
   Widget _buildBookmarkCard(BookmarkWithPlaceDTO dto) {
     final place = dto.place;
     final bool isChecked = _selectedPlaceIds.contains(place.placeId);
-    final photoUrl = place.photoReference != null
-        ? 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=200&photoreference=${place.photoReference}'
+
+    // ✅ Fix: Use the correct field name `placePhotoRef` and add the API key.
+    final photoUrl = place.placePhotoRef != null && place.placePhotoRef!.isNotEmpty
+        ? 'https://maps.googleapis.com/maps/api/place/photo'
+        '?maxwidth=200'
+        '&photoreference=${place.placePhotoRef}'
+        '&key=${ApiKeys.googleMapsApiKey}'
         : null;
+
     final subtitle = place.types.isNotEmpty ? place.types.first : 'Place';
 
     return Container(
@@ -122,7 +155,11 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: InkWell(
@@ -135,16 +172,23 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  width: 64, height: 64,
+                  width: 64,
+                  height: 64,
                   color: AppColors.moduleBorder,
                   child: photoUrl != null
-                      ? Image.network(photoUrl, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            color: AppColors.moduleBorder,
-                            child: const Icon(Icons.image_not_supported, size: 24),
-                          ),
-                        )
-                      : const Icon(Icons.place, size: 24, color: AppColors.inkFaint),
+                      ? Image.network(
+                    photoUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: AppColors.moduleBorder,
+                      child: const Icon(Icons.image_not_supported, size: 24),
+                    ),
+                  )
+                      : const Icon(
+                    Icons.place,
+                    size: 24,
+                    color: AppColors.inkFaint,
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
@@ -152,21 +196,29 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(place.name,
-                        style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.ink,
-                        )),
+                    Text(
+                      place.name,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ink,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(subtitle,
-                        style: TextStyle(fontSize: 14, color: AppColors.inkFaint)),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 14, color: AppColors.inkFaint),
+                    ),
                     if (place.rating > 0) ...[
                       const SizedBox(height: 4),
                       Row(
                         children: [
                           Icon(Icons.star, size: 14, color: Colors.amber),
                           const SizedBox(width: 4),
-                          Text(place.rating.toStringAsFixed(1),
-                              style: TextStyle(fontSize: 12, color: AppColors.inkFaint)),
+                          Text(
+                            place.rating.toStringAsFixed(1),
+                            style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
+                          ),
                         ],
                       ),
                     ],
@@ -175,7 +227,8 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
               ),
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                width: 24, height: 24,
+                width: 24,
+                height: 24,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isChecked ? AppColors.green : Colors.transparent,
@@ -197,13 +250,17 @@ class _AddFromBookmarksScreenState extends State<AddFromBookmarksScreen> {
 
   Widget _buildStickyFooter() {
     return Positioned(
-      bottom: 0, left: 0, right: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
       child: ClipRRect(
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             padding: EdgeInsets.only(
-              left: 20, right: 20, top: 20,
+              left: 20,
+              right: 20,
+              top: 20,
               bottom: MediaQuery.of(context).padding.bottom + 20,
             ),
             decoration: BoxDecoration(
