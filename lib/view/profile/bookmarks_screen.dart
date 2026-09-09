@@ -80,16 +80,20 @@ class _BookmarksView extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Remove bookmark?'),
-        content: Text('Remove $placeName from your bookmarks?'),
+        title: Text(AppLocalizations.t('ui.removeBookmarkTitle')),
+        content: Text(
+          AppLocalizations.t(
+            'ui.removeBookmarkMessage',
+          ).replaceFirst('{place}', placeName),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.t('ui.cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Remove'),
+            child: Text(AppLocalizations.t('ui.remove')),
           ),
         ],
       ),
@@ -156,7 +160,7 @@ class _BookmarkCardState extends State<_BookmarkCard> {
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Remove bookmark',
+                    tooltip: AppLocalizations.t('ui.removeBookmarkTooltip'),
                     icon: const Icon(
                       Icons.delete_outline,
                       color: AppColors.error,
@@ -199,9 +203,9 @@ class _BookmarkCardState extends State<_BookmarkCard> {
                           const SizedBox(height: 10),
                         ],
                         if (address.isNotEmpty) ...[
-                          const Text(
-                            'Address',
-                            style: TextStyle(
+                          Text(
+                            AppLocalizations.t('ui.address'),
+                            style: const TextStyle(
                               color: AppColors.inkFaint,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
